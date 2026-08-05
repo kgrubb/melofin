@@ -1,56 +1,67 @@
-import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
+import { useEffect } from 'react'
+import { Stack, useRouter, useSegments } from 'expo-router'
+import { StatusBar } from 'expo-status-bar'
+import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { AppErrorBoundary } from '@/src/ui/AppErrorBoundary'
+import { useSessionStore } from '@/src/store/session'
+import { useSettingsStore } from '@/src/store/settings'
+import { colors } from '@/src/theme/tokens'
+import { LoadingState, Screen } from '@/src/ui/primitives'
 
-import { useColorScheme } from '@/components/useColorScheme';
-
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
-
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
-
-export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+const AuthGate = ({ children }: { readonly children: React.ReactNode }) => {
+  const hydrated = useSessionStore((s) => s.hydrated)
+  const session = useSessionStore((s) => s.session)
+  const hydrateSession = useSessionStore((s) => s.hydrate)
+  const hydrateSettings = useSettingsStore((s) => s.hydrate)
+  const segments = useSegments()
+  const router = useRouter()
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    void hydrateSession()
+    void hydrateSettings()
+  }, [hydrateSession, hydrateSettings])
+
+  useEffect(() => {
+    if (!hydrated) return
+    const inAuth = segments[0] === '(auth)'
+    if (!session && !inAuth) {
+      router.replace('/(auth)/server')
+      return
     }
-  }, [loaded]);
+    if (session && inAuth) {
+      router.replace('/(app)/(tabs)/home')
+    }
+  }, [hydrated, session, segments, router])
 
-  if (!loaded) {
-    return null;
+  if (!hydrated) {
+    return (
+      <Screen centered>
+        <LoadingState label="Starting Melio" />
+      </Screen>
+    )
   }
 
-  return <RootLayoutNav />;
+  return children
 }
 
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
+export default function RootLayout() {
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
-  );
+    <SafeAreaProvider>
+      <AppErrorBoundary>
+        <StatusBar style="light" />
+        <AuthGate>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.background },
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(app)" />
+          </Stack>
+        </AuthGate>
+      </AppErrorBoundary>
+    </SafeAreaProvider>
+  )
 }
