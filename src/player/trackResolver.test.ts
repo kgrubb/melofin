@@ -1,0 +1,102 @@
+import { describe, expect, it } from 'vitest'
+import { emptyOfflineIndex, upsertEntry } from '@/src/domain/offline'
+import { resolveTrackSource } from '@/src/player/trackResolver'
+import type { JellyfinContext } from '@/src/services/jellyfin/client'
+
+describe('trackResolver', () => {
+  it('prefers cached files', () => {
+    const index = upsertEntry(emptyOfflineIndex(), {
+      itemId: '1',
+      title: 't',
+      artist: 'a',
+      album: 'b',
+      durationMs: 1,
+      path: '/data/1',
+      sizeBytes: 1,
+      downloadedAt: 1,
+      lastAccessedAt: 1,
+      kind: 'user',
+      complete: true,
+    })
+    const resolved = resolveTrackSource(
+      { id: '1', title: 't', artist: 'a', album: 'b', durationMs: 1 },
+      index,
+      null,
+      'user',
+    )
+    expect(resolved?.fromCache).toBe(true)
+    expect(resolved?.uri).toContain('file://')
+  })
+
+  it('builds remote urls when online', () => {
+    const context = {
+      serverUrl: 'https://jf.example',
+      deviceId: 'dev',
+      accessToken: 'token',
+    } as JellyfinContext
+    const resolved = resolveTrackSource(
+      { id: '42', title: 't', artist: 'a', album: 'b', durationMs: 1 },
+      emptyOfflineIndex(),
+      context,
+      'user-1',
+    )
+    expect(resolved?.fromCache).toBe(false)
+    expect(resolved?.uri).toContain('/Audio/42/universal')
+    expect(resolved?.uri).toContain('api_key=token')
+  })
+
+  it('returns null without context and ignores incomplete cache', () => {
+    expect(
+      resolveTrackSource(
+        { id: '1', title: 't', artist: 'a', album: 'b', durationMs: 1 },
+        emptyOfflineIndex(),
+        null,
+        'user',
+      ),
+    ).toBeNull()
+
+    const incomplete = upsertEntry(emptyOfflineIndex(), {
+      itemId: '1',
+      title: 't',
+      artist: 'a',
+      album: 'b',
+      durationMs: 1,
+      path: 'file:///data/1',
+      sizeBytes: 1,
+      downloadedAt: 1,
+      lastAccessedAt: 1,
+      kind: 'prefetch',
+      complete: false,
+    })
+    expect(
+      resolveTrackSource(
+        { id: '1', title: 't', artist: 'a', album: 'b', durationMs: 1 },
+        incomplete,
+        null,
+        'user',
+      ),
+    ).toBeNull()
+
+    const withScheme = upsertEntry(emptyOfflineIndex(), {
+      itemId: '2',
+      title: 't',
+      artist: 'a',
+      album: 'b',
+      durationMs: 1,
+      path: 'file:///data/2',
+      sizeBytes: 1,
+      downloadedAt: 1,
+      lastAccessedAt: 1,
+      kind: 'user',
+      complete: true,
+    })
+    expect(
+      resolveTrackSource(
+        { id: '2', title: 't', artist: 'a', album: 'b', durationMs: 1 },
+        withScheme,
+        null,
+        'user',
+      )?.uri,
+    ).toBe('file:///data/2')
+  })
+})
