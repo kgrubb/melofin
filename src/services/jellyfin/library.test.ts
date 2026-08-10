@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   artworkUrl,
+  audioAuthHeaders,
+  buildAudioStreamUrl,
+  buildPlaybackStreamCandidates,
   buildUniversalStreamUrl,
   mapBaseItem,
   toQueueTrack,
@@ -40,6 +43,26 @@ describe('library mappers', () => {
     expect(mapBaseItem({ Id: 'p', Name: 'Mix', Type: 'Playlist' }).overview).toBeUndefined()
   })
 
+  it('maps playlist entry ids', () => {
+    expect(
+      mapBaseItem({
+        Id: 'song',
+        Name: 'Song',
+        Type: 'Audio',
+        PlaylistItemId: 'entry-1',
+      }).playlistEntryId,
+    ).toBe('entry-1')
+    expect(
+      mapBaseItem({
+        Id: 'song',
+        Name: 'Song',
+        Type: 'Audio',
+        PlaylistItemId: '  ',
+      }).playlistEntryId,
+    ).toBeUndefined()
+    expect(mapBaseItem({ Id: 'song', Name: 'Song', Type: 'Audio' }).playlistEntryId).toBeUndefined()
+  })
+
   it('falls back to album primary artwork for songs', () => {
     const item = mapBaseItem({
       Id: 'song',
@@ -52,15 +75,32 @@ describe('library mappers', () => {
     expect(item.imageItemId).toBe('album')
   })
 
+  it('maps album and artist ids onto queue tracks', () => {
+    const item = mapBaseItem({
+      Id: 'song',
+      Name: 'Song',
+      Type: 'Audio',
+      Album: 'Record',
+      AlbumId: 'album-1',
+      ArtistItems: [{ Id: 'artist-1', Name: 'Primary' }],
+      AlbumArtists: [{ Id: 'album-artist', Name: 'Album Artist' }],
+    })
+    expect(item.albumId).toBe('album-1')
+    expect(item.artistId).toBe('artist-1')
+    expect(toQueueTrack(item).albumId).toBe('album-1')
+    expect(toQueueTrack(item).artistId).toBe('artist-1')
+  })
+
   it('falls back to album artists and empty media source', () => {
     const item = mapBaseItem({
       Id: '2',
       Name: 'Song',
       Type: 'Audio',
-      AlbumArtists: [{ Name: 'Album Artist' }],
+      AlbumArtists: [{ Id: 'aa1', Name: 'Album Artist' }],
       MediaSources: [],
     })
     expect(item.artists).toEqual(['Album Artist'])
+    expect(item.artistId).toBe('aa1')
     expect(item.mediaSourceId).toBe('2')
     expect(item.imageTag).toBeUndefined()
     expect(mapBaseItem({}).name).toBe('Unknown')
@@ -85,6 +125,15 @@ describe('library mappers', () => {
     expect(userImageUrl(context, 'u1', undefined, 'thumb')).toContain('maxHeight=120')
     expect(userImageUrl(context, '')).toBeUndefined()
     expect(buildUniversalStreamUrl(context, '1', 'u')).toContain('UserId=u')
+    expect(buildUniversalStreamUrl(context, '1', 'u')).toContain('/universal?')
+    expect(buildUniversalStreamUrl(context, '1', 'u')).toContain('flac')
+    expect(buildUniversalStreamUrl(context, '1', 'u')).toContain('opus')
+    expect(buildAudioStreamUrl(context, '1', 'u')).toContain('/Audio/1/stream.mp3')
+    expect(buildAudioStreamUrl(context, '1', 'u')).not.toContain('static=true')
+    expect(audioAuthHeaders(context)?.['X-Emby-Token']).toBe('t')
+    expect(
+      audioAuthHeaders({ serverUrl: 'https://jf', deviceId: 'd' } as JellyfinContext),
+    ).toBeUndefined()
     expect(
       buildUniversalStreamUrl(
         { serverUrl: 'https://jf', deviceId: 'd' } as JellyfinContext,
@@ -92,5 +141,9 @@ describe('library mappers', () => {
         'u',
       ),
     ).not.toContain('api_key=')
+    const candidates = buildPlaybackStreamCandidates(context, '1', 'u')
+    expect(candidates).toHaveLength(2)
+    expect(candidates[0]).toContain('/universal?')
+    expect(candidates[1]).toContain('/stream.mp3')
   })
 })

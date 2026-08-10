@@ -14,30 +14,15 @@ import { useLibraryStore } from '@/src/store/library'
 import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
-import { Glass, Toggle } from '@/src/theme/Glass'
+import { Surface, Toggle } from '@/src/theme/Glass'
 import { PressableScale } from '@/src/theme/motion'
-import { Icon } from '@/src/ui/Icon'
+import { CloseChip } from '@/src/ui/NavChrome'
 import {
   GlassButton,
   Muted,
-  PrimaryButton,
   Screen,
 } from '@/src/ui/primitives'
 import { colors, motion, radii, spacing, typography } from '@/src/theme/tokens'
-
-const CloseChip = ({ onPress }: { readonly onPress: () => void }) => (
-  <PressableScale
-    accessibilityRole="button"
-    accessibilityLabel="Close"
-    scaleTo={motion.scale.button}
-    onPress={onPress}
-    style={styles.closePress}
-  >
-    <Glass style={styles.closeGlass} contentStyle={styles.closeInner} intensity={26}>
-      <Icon name="chevron.down" tintColor={colors.text} size={22} />
-    </Glass>
-  </PressableScale>
-)
 
 export default function SettingsScreen() {
   const router = useRouter()
@@ -82,7 +67,7 @@ export default function SettingsScreen() {
           Settings
         </Text>
 
-        <Glass style={styles.card} contentStyle={styles.profileInner} intensity={26}>
+        <Surface style={styles.card} contentStyle={styles.profileInner}>
           {avatarUrl ? (
             <Image
               source={{ uri: avatarUrl }}
@@ -106,10 +91,10 @@ export default function SettingsScreen() {
             </Muted>
             <Muted>App {Constants.expoConfig?.version ?? '1.0.0'}</Muted>
           </View>
-        </Glass>
+        </Surface>
 
         <Text style={styles.sectionLabel}>Library</Text>
-        <Glass style={styles.card} contentStyle={styles.cardInner} intensity={26}>
+        <Surface style={styles.card} contentStyle={styles.cardInner}>
           <Muted>Sync mode</Muted>
           <View style={styles.modes}>
             {LIBRARY_SYNC_MODES.map((mode) => {
@@ -121,6 +106,7 @@ export default function SettingsScreen() {
                   accessibilityState={{ selected: on }}
                   onPress={() => void setSyncMode(mode)}
                   scaleTo={motion.scale.button}
+                  hitSlop={4}
                   style={[styles.modeChip, on ? styles.modeChipOn : null]}
                 >
                   <Text style={on ? styles.modeLabelOn : styles.modeLabel}>
@@ -137,10 +123,10 @@ export default function SettingsScreen() {
             onPress={() => void syncLibrary('manual')}
             disabled={syncing}
           />
-        </Glass>
+        </Surface>
 
         <Text style={styles.sectionLabel}>Playback</Text>
-        <Glass style={styles.card} contentStyle={styles.cardInner} intensity={26}>
+        <Surface style={styles.card} contentStyle={styles.cardInner}>
           <View style={styles.row}>
             <View style={styles.rowCopy}>
               <Text style={styles.rowTitle}>Prefetch next tracks</Text>
@@ -153,14 +139,15 @@ export default function SettingsScreen() {
             />
           </View>
           <Muted>Cache budget {(budgetBytes / (1024 * 1024 * 1024)).toFixed(0)} GB</Muted>
-        </Glass>
+        </Surface>
 
         <GlassButton
           label="Clear offline cache"
           onPress={() => void setOfflineIndex(emptyOfflineIndex(budgetBytes))}
         />
-        <PrimaryButton
+        <GlassButton
           label="Log out"
+          destructive
           onPress={() => {
             resetPlayer()
             void clearLibrary()
@@ -180,21 +167,8 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: spacing.xs,
-  },
-  closePress: {
-    width: 40,
-    height: 40,
-  },
-  closeGlass: {
-    borderRadius: radii.pill,
-    width: 40,
-    height: 40,
-  },
-  closeInner: {
-    flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
+    paddingBottom: spacing.xs,
   },
   scroll: {
     gap: spacing.md,
@@ -202,7 +176,6 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    fontSize: 34,
     color: colors.text,
     marginTop: spacing.sm,
   },
@@ -274,7 +247,9 @@ const styles = StyleSheet.create({
   modeChip: {
     borderRadius: radii.pill,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.elevated,
   },
   modeChipOn: {

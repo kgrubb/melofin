@@ -93,28 +93,32 @@ export const GlassButton = ({
   label,
   onPress,
   disabled,
+  destructive = false,
 }: {
   readonly label: string
   readonly onPress: () => void
   readonly disabled?: boolean
+  readonly destructive?: boolean
 }) => (
   <PressableScale
     accessibilityRole="button"
     accessibilityLabel={label}
     disabled={disabled}
     onPress={onPress}
-    style={[styles.glassButtonPress, disabled ? styles.buttonDisabled : null]}
+    style={[styles.secondaryPress, disabled ? styles.buttonDisabled : null]}
   >
-    <Glass style={styles.glassButtonShell} contentStyle={styles.glassButton}>
-      <Text style={styles.glassButtonLabel}>{label}</Text>
-    </Glass>
+    <View style={[styles.secondaryButton, destructive ? styles.secondaryButtonDanger : null]}>
+      <Text style={destructive ? styles.secondaryLabelDanger : styles.secondaryLabel}>
+        {label}
+      </Text>
+    </View>
   </PressableScale>
 )
 
 export const Field = ({
   containerStyle,
   label,
-  inset = false,
+  inset = true,
   ...props
 }: TextInputProps & {
   readonly containerStyle?: StyleProp<ViewStyle>
@@ -227,23 +231,33 @@ const styles = StyleSheet.create({
     fontSize: 17,
     letterSpacing: 0.2,
   },
-  glassButtonPress: {
+  secondaryPress: {
     marginTop: spacing.sm,
     borderRadius: radii.pill,
     overflow: 'hidden',
   },
-  glassButtonShell: {
-    borderRadius: radii.pill,
-  },
-  glassButton: {
+  secondaryButton: {
     minHeight: 52,
+    borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
+    backgroundColor: colors.elevated,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
-  glassButtonLabel: {
+  secondaryButtonDanger: {
+    backgroundColor: 'rgba(251, 113, 133, 0.14)',
+    borderColor: 'rgba(251, 113, 133, 0.35)',
+  },
+  secondaryLabel: {
     color: colors.text,
     fontWeight: '600',
+    fontSize: 16,
+  },
+  secondaryLabelDanger: {
+    color: colors.danger,
+    fontWeight: '700',
     fontSize: 16,
   },
   fieldWrap: {

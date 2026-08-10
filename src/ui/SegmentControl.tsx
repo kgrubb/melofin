@@ -49,7 +49,7 @@ export const SegmentControl = <T extends string>({
   }))
 
   return (
-    <Glass style={styles.shell} contentStyle={styles.row} intensity={24}>
+    <Glass style={styles.shell} contentStyle={styles.row} intensity={16}>
       <Animated.View style={[styles.pill, pillStyle]} />
       {values.map((item) => {
         const selected = item === value
@@ -57,7 +57,7 @@ export const SegmentControl = <T extends string>({
           <Pressable
             key={item}
             onPress={() => onChange(item)}
-            accessibilityRole="button"
+            accessibilityRole="tab"
             accessibilityState={{ selected }}
             style={styles.chipPress}
             onLayout={(event: LayoutChangeEvent) => {
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   chip: {
-    minHeight: 36,
+    minHeight: 44,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',

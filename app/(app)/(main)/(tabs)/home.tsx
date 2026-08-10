@@ -26,7 +26,6 @@ import { useSessionStore } from '@/src/store/session'
 import { usePlayerStore } from '@/src/store/player'
 import { useSettingsStore } from '@/src/store/settings'
 import { AccentGradient } from '@/src/theme/Atmosphere'
-import { Glass } from '@/src/theme/Glass'
 import { PressableScale } from '@/src/theme/motion'
 import { EmptyState, ErrorState, LoadingState, Muted, Screen } from '@/src/ui/primitives'
 import { Icon } from '@/src/ui/Icon'
@@ -109,29 +108,33 @@ const ShuffleChip = ({
   icon,
   onPress,
   primary = false,
+  busy = false,
 }: {
   readonly label: string
   readonly icon: string
   readonly onPress: () => void
   readonly primary?: boolean
+  readonly busy?: boolean
 }) => (
   <PressableScale
     accessibilityRole="button"
     accessibilityLabel={label}
+    accessibilityState={{ busy, disabled: busy }}
+    disabled={busy}
     scaleTo={motion.scale.button}
     onPress={onPress}
     style={styles.shufflePress}
   >
     {primary ? (
       <AccentGradient style={styles.shufflePrimary}>
-        <Icon name={icon} tintColor={colors.onAccent} size={18} />
+        <Icon name={icon} tintColor={colors.onAccent} size={22} />
         <Text style={styles.shufflePrimaryLabel}>{label}</Text>
       </AccentGradient>
     ) : (
-      <Glass style={styles.shuffleGlass} contentStyle={styles.shuffleInner} intensity={26}>
-        <Icon name={icon} tintColor={colors.text} size={18} />
+      <View style={styles.shuffleSecondary}>
+        <Icon name={icon} tintColor={colors.text} size={22} />
         <Text style={styles.shuffleLabel}>{label}</Text>
-      </Glass>
+      </View>
     )}
   </PressableScale>
 )
@@ -141,8 +144,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets()
   const context = useSessionStore((s) => s.context)
   const session = useSessionStore((s) => s.session)
-  const replaceQueue = usePlayerStore((s) => s.replaceQueue)
-  const setPlaying = usePlayerStore((s) => s.setPlaying)
+  const playQueue = usePlayerStore((s) => s.playQueue)
   const offlineIndex = useSettingsStore((s) => s.offlineIndex)
   const [albums, setAlbums] = useState<readonly LibraryItem[]>([])
   const [resume, setResume] = useState<readonly LibraryItem[]>([])
@@ -178,10 +180,9 @@ export default function HomeScreen() {
   const playShuffled = useCallback(
     (tracks: readonly QueueTrack[]) => {
       if (tracks.length === 0) return
-      replaceQueue(shuffleTracks(tracks, Date.now()), 0)
-      setPlaying(true)
+      playQueue(shuffleTracks(tracks, Date.now()), 0)
     },
-    [replaceQueue, setPlaying],
+    [playQueue],
   )
 
   const load = useCallback(async () => {
@@ -227,8 +228,7 @@ export default function HomeScreen() {
 
   const openItem = (item: LibraryItem) => {
     if (item.type === 'Audio') {
-      replaceQueue(toHeroTracks([item]), 0)
-      setPlaying(true)
+      playQueue(toHeroTracks([item]), 0)
       return
     }
     if (item.type === 'MusicAlbum') {
@@ -357,16 +357,19 @@ export default function HomeScreen() {
               label={busy === 'all' ? 'Loading…' : 'Shuffle all'}
               icon="shuffle"
               primary
+              busy={busy === 'all'}
               onPress={() => void shuffleAll()}
             />
             <ShuffleChip
               label={busy === 'favorites' ? 'Loading…' : 'Favorites'}
               icon="heart.fill"
+              busy={busy === 'favorites'}
               onPress={() => void shuffleFavorites()}
             />
             <ShuffleChip
               label="Downloads"
               icon="arrow.down.circle.fill"
+              busy={busy !== null}
               onPress={shuffleDownloads}
             />
           </View>
@@ -417,15 +420,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   avatarPress: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
   },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.elevated,
   },
   avatarFallback: {
@@ -464,15 +467,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
   },
-  shuffleGlass: {
-    borderRadius: radii.pill,
-  },
-  shuffleInner: {
+  shuffleSecondary: {
     minHeight: 52,
+    borderRadius: radii.pill,
     paddingHorizontal: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
+    backgroundColor: colors.elevated,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   shuffleLabel: {
     color: colors.text,

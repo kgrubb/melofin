@@ -5,6 +5,7 @@
     "noImplicitAny": true,
     "strictNullChecks": true,
     "noUncheckedIndexedAccess": true,
+    "resolveJsonModule": true,
     "paths": {
       "@/*": ["./*"]
     },
