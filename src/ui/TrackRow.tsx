@@ -11,6 +11,7 @@ export const TrackRow = ({
   onLongPress,
   accessoryLabel,
   index,
+  accessibilityHint,
 }: {
   readonly item: LibraryItem
   readonly artworkUrl?: string
@@ -18,6 +19,7 @@ export const TrackRow = ({
   readonly onLongPress?: () => void
   readonly accessoryLabel?: string
   readonly index?: number
+  readonly accessibilityHint?: string
 }) => {
   const subtitle =
     item.artists.filter(Boolean).join(', ') || item.album || undefined
@@ -30,6 +32,7 @@ export const TrackRow = ({
     <PressableHighlight
       accessibilityRole="button"
       accessibilityLabel={a11y}
+      accessibilityHint={accessibilityHint}
       onPress={onPress}
       onLongPress={onLongPress}
       style={styles.row}

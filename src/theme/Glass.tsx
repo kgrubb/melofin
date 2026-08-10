@@ -27,11 +27,15 @@ const webGlassStyle = {
   backgroundColor: 'rgba(28, 14, 48, 0.28)',
 } as ViewStyle
 
+/**
+ * Floating chrome material (tab bar, mini player, sheet controls).
+ * Do not use in the content layer — use `Surface` for cards/rows/forms.
+ */
 export const Glass = ({
   children,
   style,
   contentStyle,
-  intensity = Platform.OS === 'web' ? 36 : 28,
+  intensity = Platform.OS === 'web' ? 36 : 18,
   ...rest
 }: Props) => {
   const [reduceTransparency, setReduceTransparency] = useState(false)
@@ -63,7 +67,7 @@ export const Glass = ({
 
   if (Platform.OS === 'web') {
     return (
-      <View style={[styles.shell, webGlassStyle, style]} {...rest}>
+      <View style={[styles.shell, styles.blurFill, webGlassStyle, style]} {...rest}>
         <LinearGradient
           colors={[...gradients.card]}
           start={{ x: 0, y: 0 }}
@@ -76,6 +80,7 @@ export const Glass = ({
   }
 
   if (isLiquidGlassAvailable()) {
+    // Let system Liquid Glass sample content — avoid paint that mutes the material.
     return (
       <GlassView style={[styles.shell, style]} {...rest}>
         <View style={[styles.inner, contentStyle]} pointerEvents="box-none">
@@ -86,7 +91,7 @@ export const Glass = ({
   }
 
   return (
-    <View style={[styles.shell, style]} {...rest} pointerEvents="box-none">
+    <View style={[styles.shell, styles.blurFill, style]} {...rest} pointerEvents="box-none">
       <BlurView
         intensity={intensity}
         tint="dark"
@@ -103,6 +108,21 @@ export const Glass = ({
     </View>
   )
 }
+
+/** Content-layer standard material (grouped cards, list rows, forms). */
+export const Surface = ({
+  children,
+  style,
+  contentStyle,
+  ...rest
+}: ViewProps & {
+  readonly children?: ReactNode
+  readonly contentStyle?: StyleProp<ViewStyle>
+}) => (
+  <View style={[styles.surface, style]} {...rest}>
+    <View style={[styles.inner, contentStyle]}>{children}</View>
+  </View>
+)
 
 export const Toggle = ({
   value,
@@ -160,14 +180,25 @@ const styles = StyleSheet.create({
   shell: {
     overflow: 'hidden',
     borderRadius: radii.lg,
+  },
+  blurFill: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(24, 12, 40, 0.22)',
+  },
+  surface: {
+    overflow: 'hidden',
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   passThrough: {
     pointerEvents: 'none',
   },
   fallback: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
     backgroundColor: 'rgba(36, 20, 58, 0.94)',
   },
   inner: {

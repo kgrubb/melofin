@@ -59,11 +59,6 @@ const tabFromPath = (pathname: string): TabName | null => {
   return null
 }
 
-const isCollectionPath = (pathname: string): boolean =>
-  pathname.includes('/album/') ||
-  pathname.includes('/artist/') ||
-  pathname.includes('/playlist/')
-
 const TabGlyph = ({
   outline,
   filled,
@@ -99,31 +94,38 @@ export const FloatingTabBar = () => {
     if (pathTab) setLastTab(pathTab)
   }, [pathTab])
 
-  const active: TabName = pathTab ?? (isCollectionPath(pathname) ? lastTab : 'home')
-
-  if (nowPlayingOpen || onSheet) return null
+  // Overlay routes (/player, settings, queue) must keep lastTab — falling back
+  // to 'home' made the selection thrash on every minimize.
+  const active: TabName = pathTab ?? lastTab
 
   const bottom = Math.max(insets.bottom, spacing.sm)
+  const covered = nowPlayingOpen || onSheet
 
   return (
     <View
-      pointerEvents="box-none"
+      pointerEvents={covered ? 'none' : 'box-none'}
       style={[styles.wrap, { bottom, height: chrome.tabBarHeight }]}
+      accessibilityElementsHidden={covered}
+      importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}
     >
-      <Glass style={styles.glass} contentStyle={styles.row} intensity={Platform.OS === 'web' ? 40 : 30}>
+      <Glass
+        style={styles.glass}
+        contentStyle={styles.row}
+        intensity={Platform.OS === 'web' ? 40 : 18}
+      >
         {TABS.map((tab) => {
           const focused = active === tab.name
           const color = focused ? colors.text : colors.textSecondary
           return (
             <PressableScale
               key={tab.name}
-              accessibilityRole="button"
+              accessibilityRole="tab"
               accessibilityLabel={tab.title}
               accessibilityState={{ selected: focused }}
               scaleTo={motion.scale.button}
               onPress={() => {
                 setLastTab(tab.name)
-                router.replace(tab.href)
+                router.navigate(tab.href)
               }}
               style={styles.tab}
             >

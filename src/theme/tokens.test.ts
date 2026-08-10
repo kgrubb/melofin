@@ -10,11 +10,12 @@ describe('theme tokens', () => {
   })
 
   it('exposes shared motion language', () => {
-    expect(motion.scale.button).toBe(0.96)
-    expect(motion.scale.card).toBe(0.98)
-    expect(motion.duration.ui).toBe(280)
+    expect(motion.scale.button).toBe(0.97)
+    expect(motion.scale.card).toBe(0.985)
+    expect(motion.duration.ui).toBe(240)
     expect(motion.spring.sheet.damping).toBe(26)
-    expect(motion.sheet.dismissDistance).toBe(140)
+    expect(motion.sheet.dismissDistance).toBe(280)
+    expect(motion.sheet.dismissProgress).toBe(0.82)
   })
 
   it('pads scroll content under floating chrome', () => {

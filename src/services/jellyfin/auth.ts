@@ -69,7 +69,7 @@ export const loginWithPassword = async (
   }
 }
 
-export type QuickConnectState = {
+type QuickConnectState = {
   readonly secret: string
   readonly code: string
 }
@@ -175,12 +175,19 @@ export const loginWithAccessToken = (
 ): Promise<Result<AuthSuccess>> =>
   toSuccess(serverUrl, accessToken, userId, userName, allowInsecureHttp, serverName)
 
-export const completeSsoAuth = async (
+type SsoAuthAttempt = 'pending' | Result<AuthSuccess>
+
+/**
+ * Redeems a Jellyfin SSO OID state for an access token.
+ * Returns `'pending'` when the IdP callback has not marked the state Valid yet
+ * (plugin responds with HTTP 500), so callers can poll safely.
+ */
+export const attemptCompleteSsoAuth = async (
   serverUrl: string,
   provider: string,
   data: string,
   allowInsecureHttp: boolean,
-): Promise<Result<AuthSuccess>> => {
+): Promise<SsoAuthAttempt> => {
   const base = await createJellyfinContext(serverUrl)
   if (!base.ok) return base
   try {
@@ -193,7 +200,11 @@ export const completeSsoAuth = async (
         appVersion: APP_VERSION,
         data,
       },
+      {
+        validateStatus: (status) => status === 200 || status === 500,
+      },
     )
+    if (response.status === 500) return 'pending'
     const accessToken = response.data?.AccessToken ?? response.data?.accessToken
     const user = response.data?.User ?? response.data?.user
     const userId = user?.Id ?? user?.id
@@ -209,8 +220,25 @@ export const completeSsoAuth = async (
       allowInsecureHttp,
     )
   } catch (cause) {
+    if (axios.isAxiosError(cause) && !cause.response) return 'pending'
     return mapAuthError(cause)
   }
 }
 
-export { ssoStartUrl } from '@/src/services/jellyfin/sso'
+export const completeSsoAuth = async (
+  serverUrl: string,
+  provider: string,
+  data: string,
+  allowInsecureHttp: boolean,
+): Promise<Result<AuthSuccess>> => {
+  const attempt = await attemptCompleteSsoAuth(
+    serverUrl,
+    provider,
+    data,
+    allowInsecureHttp,
+  )
+  if (attempt === 'pending') {
+    return err(appError('unauthorized', 'SSO incomplete'))
+  }
+  return attempt
+}

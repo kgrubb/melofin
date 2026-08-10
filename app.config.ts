@@ -1,7 +1,12 @@
 import type { ExpoConfig, ConfigContext } from 'expo/config'
 
+// CommonJS — Expo evaluates app.config without TS path resolution.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { CARPLAY_ENABLED } = require('./features') as typeof import('./features')
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
+  owner: 'kgrubb',
   name: 'Melio',
   slug: 'melio',
   version: '1.0.0',
@@ -15,32 +20,20 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     infoPlist: {
       UIBackgroundModes: ['audio'],
       NSLocalNetworkUsageDescription:
-        'Melio uses the local network to find Jellyfin servers.',
+        'Melio uses the local network to reach your Jellyfin server.',
+      // Triggers the Local Network permission prompt on device.
+      NSBonjourServices: ['_http._tcp.', '_jellyfin._tcp.'],
+      // Jellyfin is user-hosted and often plain HTTP on LAN.
       NSAppTransportSecurity: {
-        NSAllowsArbitraryLoads: false,
+        NSAllowsArbitraryLoads: true,
         NSAllowsLocalNetworking: true,
-        NSExceptionDomains: {
-          localhost: {
-            NSExceptionAllowsInsecureHTTPLoads: true,
-            NSIncludesSubdomains: true,
-          },
-        },
-      },
-      UIApplicationSceneManifest: {
-        UIApplicationSupportsMultipleScenes: true,
-        UISceneConfigurations: {
-          CPTemplateApplicationSceneSessionRoleApplication: [
-            {
-              UISceneConfigurationName: 'CarPlay',
-              UISceneDelegateClassName: 'RNCPStore',
-            },
-          ],
-        },
       },
     },
-    entitlements: {
-      'com.apple.developer.carplay-audio': true,
-    },
+    entitlements: CARPLAY_ENABLED
+      ? {
+          'com.apple.developer.carplay-audio': true,
+        }
+      : {},
   },
   android: {
     package: 'app.melio.player',
@@ -59,7 +52,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   plugins: [
     'expo-router',
     'expo-secure-store',
-    'expo-image',
     [
       'expo-audio',
       {
@@ -85,14 +77,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         },
       },
     ],
-    './plugins/withCarPlayAudio.js',
+    ...(CARPLAY_ENABLED ? ['./plugins/withCarPlayAudio.js'] : []),
   ],
   experiments: {
     typedRoutes: true,
   },
   extra: {
+    carPlayEnabled: CARPLAY_ENABLED,
     eas: {
-      projectId: 'melio-placeholder',
+      projectId: '402e26b5-7bf9-430f-a1b8-c03751cba89d',
+      owner: 'kgrubb',
     },
   },
   updates: {

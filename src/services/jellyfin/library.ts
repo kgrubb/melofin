@@ -10,6 +10,7 @@ import { appError, err, ok, type Result } from '@/src/domain/result'
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
 import {
   dedupeLibraryItems,
+  dedupePlaylistTracks,
   LIBRARY_PAGE_SIZE,
   shouldFetchNextPage,
 } from '@/src/services/jellyfin/libraryPaging'
@@ -18,8 +19,10 @@ import { mapBaseItem, type LibraryItem } from '@/src/services/jellyfin/mappers'
 export type { LibraryItem } from '@/src/services/jellyfin/mappers'
 export {
   artworkUrl,
+  audioAuthHeaders,
+  buildAudioStreamUrl,
+  buildPlaybackStreamCandidates,
   buildUniversalStreamUrl,
-  mapBaseItem,
   toQueueTrack,
   userImageUrl,
 } from '@/src/services/jellyfin/mappers'
@@ -292,22 +295,37 @@ export const fetchPlaylistTracks = async (
   userId: string,
   playlistId: string,
 ): Promise<Result<readonly LibraryItem[]>> => {
-  try {
-    const response = await getPlaylistsApi(context.api).getPlaylistItems({
-      playlistId,
-      userId,
-      enableImages: true,
-      enableUserData: true,
-      fields: ['PrimaryImageAspectRatio'],
-      limit: 500,
-    })
-    return ok(dedupeLibraryItems(mapItems(response.data.Items)))
-  } catch {
-    // Some servers reject /Playlists/{id}/Items — fall back to parent Items query.
-    const fallback = await fetchChildren(context, userId, playlistId)
-    if (fallback.ok) return fallback
-    return fail('Failed to load playlist tracks', fallback.error.cause)
+  const pageSize = LIBRARY_PAGE_SIZE
+  const collect = async (
+    startIndex: number,
+    acc: readonly LibraryItem[],
+  ): Promise<Result<readonly LibraryItem[]>> => {
+    try {
+      const response = await getPlaylistsApi(context.api).getPlaylistItems({
+        playlistId,
+        userId,
+        startIndex,
+        limit: pageSize,
+        enableImages: true,
+        enableUserData: true,
+        fields: ['PrimaryImageAspectRatio'],
+      })
+      const page = mapItems(response.data.Items)
+      const merged = [...acc, ...page]
+      const total = Number(response.data.TotalRecordCount ?? merged.length)
+      if (!shouldFetchNextPage(startIndex, page.length, total, pageSize)) {
+        return ok(dedupePlaylistTracks(merged))
+      }
+      return collect(startIndex + page.length, merged)
+    } catch (cause) {
+      if (acc.length > 0) return ok(dedupePlaylistTracks(acc))
+      // Some servers reject /Playlists/{id}/Items — fall back to parent Items query.
+      const fallback = await fetchChildren(context, userId, playlistId)
+      if (fallback.ok) return fallback
+      return fail('Failed to load playlist tracks', cause)
+    }
   }
+  return collect(0, [])
 }
 
 export const fetchItem = async (
@@ -339,21 +357,5 @@ export const fetchResume = async (
     return ok(dedupeLibraryItems(mapItems(response.data.Items)))
   } catch (cause) {
     return fail('Failed to load resume', cause)
-  }
-}
-
-export const toggleFavorite = async (
-  context: JellyfinContext,
-  userId: string,
-  itemId: string,
-  favorite: boolean,
-): Promise<Result<void>> => {
-  try {
-    const library = getUserLibraryApi(context.api)
-    if (favorite) await library.markFavoriteItem({ userId, itemId })
-    else await library.unmarkFavoriteItem({ userId, itemId })
-    return ok(undefined)
-  } catch (cause) {
-    return fail('Failed to update favorite', cause)
   }
 }

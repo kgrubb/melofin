@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router'
 import { isInsecureHttpUrl, normalizeServerUrl } from '@/src/domain/jellyfin'
 import { probePublicInfo } from '@/src/services/jellyfin/client'
 import { Brand, Field, Muted, PrimaryButton, Screen } from '@/src/ui/primitives'
-import { Glass, Toggle } from '@/src/theme/Glass'
+import { Surface, Toggle } from '@/src/theme/Glass'
 import { authCardEntering, useMotionEnabled } from '@/src/theme/motion'
 import { colors, spacing } from '@/src/theme/tokens'
 
@@ -54,7 +54,7 @@ export default function ServerScreen() {
       </View>
 
       <Animated.View entering={authCardEntering(enabled)}>
-        <Glass style={styles.card} contentStyle={styles.cardInner}>
+        <Surface style={styles.card} contentStyle={styles.cardInner}>
           <Field
             label="Server"
             accessibilityLabel="Server URL"
@@ -80,7 +80,7 @@ export default function ServerScreen() {
             onPress={() => void onContinue()}
             disabled={busy}
           />
-        </Glass>
+        </Surface>
       </Animated.View>
     </Screen>
   )

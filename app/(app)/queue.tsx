@@ -1,32 +1,17 @@
 import { FlatList, Platform, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { usePlayerStore } from '@/src/store/player'
-import { Glass } from '@/src/theme/Glass'
+import { Surface } from '@/src/theme/Glass'
 import { PressableScale } from '@/src/theme/motion'
-import { Icon } from '@/src/ui/Icon'
+import { CloseChip } from '@/src/ui/NavChrome'
 import { Screen } from '@/src/ui/primitives'
 import { colors, motion, radii, spacing, typography } from '@/src/theme/tokens'
-
-const CloseChip = ({ onPress }: { readonly onPress: () => void }) => (
-  <PressableScale
-    accessibilityRole="button"
-    accessibilityLabel="Close"
-    scaleTo={motion.scale.button}
-    onPress={onPress}
-    style={styles.closePress}
-  >
-    <Glass style={styles.closeGlass} contentStyle={styles.closeInner} intensity={26}>
-      <Icon name="chevron.down" tintColor={colors.text} size={22} />
-    </Glass>
-  </PressableScale>
-)
 
 export default function QueueScreen() {
   const router = useRouter()
   const tracks = usePlayerStore((s) => s.tracks)
   const currentIndex = usePlayerStore((s) => s.currentIndex)
-  const skipToIndex = usePlayerStore((s) => s.skipToIndex)
-  const setPlaying = usePlayerStore((s) => s.setPlaying)
+  const playAtIndex = usePlayerStore((s) => s.playAtIndex)
 
   return (
     <Screen padBottom={false}>
@@ -34,7 +19,6 @@ export default function QueueScreen() {
         <CloseChip
           onPress={() => {
             if (router.canGoBack()) router.back()
-            else router.replace('/(app)/player')
           }}
         />
       </View>
@@ -55,21 +39,22 @@ export default function QueueScreen() {
           const active = index === currentIndex
           return (
             <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel={`${item.title} by ${item.artist}`}
+              accessibilityState={{ selected: active }}
               scaleTo={motion.scale.card}
               onPress={() => {
-                skipToIndex(index)
-                setPlaying(true)
+                playAtIndex(index)
               }}
             >
-              <Glass
+              <Surface
                 style={[styles.row, active ? styles.rowActive : null]}
                 contentStyle={styles.rowInner}
-                intensity={26}
               >
                 <Text style={[styles.text, active ? styles.active : null]} numberOfLines={2}>
                   {index + 1}. {item.title} — {item.artist}
                 </Text>
-              </Glass>
+              </Surface>
             </PressableScale>
           )
         }}
@@ -82,25 +67,11 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: spacing.xs,
-  },
-  closePress: {
-    width: 40,
-    height: 40,
-  },
-  closeGlass: {
-    borderRadius: radii.pill,
-    width: 40,
-    height: 40,
-  },
-  closeInner: {
-    flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
+    paddingBottom: spacing.xs,
   },
   title: {
     ...typography.title,
-    fontSize: 34,
     color: colors.text,
     marginBottom: spacing.md,
   },
@@ -113,6 +84,7 @@ const styles = StyleSheet.create({
   },
   rowActive: {
     borderColor: colors.accent,
+    backgroundColor: 'rgba(217, 70, 239, 0.12)',
   },
   rowInner: {
     paddingHorizontal: spacing.md,
