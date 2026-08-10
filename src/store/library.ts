@@ -4,6 +4,11 @@ import {
   type LibrarySyncTrigger,
 } from '@/src/domain/librarySync'
 import {
+  removePlaylistItem,
+  upsertPlaylistItem,
+  type PlaylistCacheEntry,
+} from '@/src/domain/playlists'
+import {
   fetchAlbums,
   fetchArtists,
   fetchPlaylists,
@@ -35,6 +40,39 @@ const emptyLibraryCache = (): LibraryCache => ({
   serverUrl: null,
 })
 
+const asCacheEntry = (item: LibraryItem): PlaylistCacheEntry => ({
+  id: item.id,
+  name: item.name,
+  type: item.type,
+  artists: item.artists,
+  durationMs: item.durationMs,
+  childCount: item.childCount,
+  imageTag: item.imageTag,
+  imageItemId: item.imageItemId,
+  overview: item.overview,
+})
+
+const fromCacheEntry = (entry: PlaylistCacheEntry): LibraryItem => ({
+  id: entry.id,
+  name: entry.name,
+  type: entry.type,
+  artists: entry.artists,
+  durationMs: entry.durationMs,
+  childCount: entry.childCount,
+  imageTag: entry.imageTag,
+  imageItemId: entry.imageItemId,
+  overview: entry.overview,
+})
+
+const persistPlaylists = async (
+  state: LibraryCache,
+  playlists: readonly LibraryItem[],
+): Promise<LibraryCache> => {
+  const next: LibraryCache = { ...state, playlists }
+  await writeJsonFile(LIBRARY_CACHE_FILE, next)
+  return next
+}
+
 type LibraryState = LibraryCache & {
   readonly hydrated: boolean
   readonly syncing: boolean
@@ -43,6 +81,9 @@ type LibraryState = LibraryCache & {
   readonly clearCache: () => Promise<void>
   readonly syncLibrary: (trigger: LibrarySyncTrigger) => Promise<boolean>
   readonly maybeSyncOnOpen: () => Promise<void>
+  readonly upsertPlaylist: (item: LibraryItem) => Promise<void>
+  readonly removePlaylist: (id: string) => Promise<void>
+  readonly refreshPlaylists: () => Promise<boolean>
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -126,5 +167,31 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       await get().clearCache()
     }
     await get().syncLibrary('open')
+  },
+  upsertPlaylist: async (item) => {
+    const playlists = upsertPlaylistItem(
+      get().playlists.map(asCacheEntry),
+      asCacheEntry(item),
+    ).map(fromCacheEntry)
+    const next = await persistPlaylists(get(), playlists)
+    set(next)
+  },
+  removePlaylist: async (id) => {
+    const playlists = removePlaylistItem(get().playlists.map(asCacheEntry), id).map(
+      fromCacheEntry,
+    )
+    const next = await persistPlaylists(get(), playlists)
+    set(next)
+  },
+  refreshPlaylists: async () => {
+    const session = useSessionStore.getState()
+    if (!session.context || !session.session) {
+      return false
+    }
+    const result = await fetchPlaylists(session.context, session.session.userId)
+    if (!result.ok) return false
+    const next = await persistPlaylists(get(), result.value)
+    set({ ...next, syncError: null })
+    return true
   },
 }))

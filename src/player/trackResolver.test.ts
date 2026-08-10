@@ -41,8 +41,12 @@ describe('trackResolver', () => {
       'user-1',
     )
     expect(resolved?.fromCache).toBe(false)
-    expect(resolved?.uri).toContain('/Audio/42/universal')
+    expect(resolved?.uri).toContain('/Audio/42/universal?')
     expect(resolved?.uri).toContain('api_key=token')
+    expect(resolved?.uri).toContain('flac')
+    expect(resolved?.fallbackUris?.[0]).toContain('/stream.mp3')
+    expect(resolved?.headers?.['X-Emby-Token']).toBe('token')
+    expect(resolved?.playMethod).toBe('DirectPlay')
   })
 
   it('returns null without context and ignores incomplete cache', () => {

@@ -1,7 +1,4 @@
-/* Reanimated shared values are intentionally mutated. */
-/* eslint-disable react-hooks/immutability */
 import {
-  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -23,19 +20,10 @@ import { colors, motion, radii } from '@/src/theme/tokens'
 
 export const useMotionEnabled = (): boolean => !useReducedMotion()
 
-export const hapticLight = (): void => {
-  if (Platform.OS === 'web') return
-}
-
-export const hapticMedium = (): void => {
-  if (Platform.OS === 'web') return
-}
-
 type ScaleProps = Omit<PressableProps, 'style'> & {
   readonly children: ReactNode
   readonly scaleTo?: number
   readonly style?: StyleProp<ViewStyle>
-  readonly haptic?: 'light' | 'medium' | 'none'
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
@@ -44,10 +32,8 @@ export const PressableScale = ({
   children,
   scaleTo = motion.scale.button,
   style,
-  haptic = 'light',
   onPressIn,
   onPressOut,
-  onPress,
   disabled,
   ...rest
 }: ScaleProps) => {
@@ -70,11 +56,6 @@ export const PressableScale = ({
         if (enabled) scale.value = withSpring(1, motion.spring.press)
         onPressOut?.(event)
       }}
-      onPress={(event) => {
-        if (haptic === 'light') hapticLight()
-        if (haptic === 'medium') hapticMedium()
-        onPress?.(event)
-      }}
       style={[style, animatedStyle]}
       {...rest}
     >
@@ -95,7 +76,6 @@ export const PressableHighlight = ({
   contentStyle,
   onPressIn,
   onPressOut,
-  onPress,
   disabled,
   ...rest
 }: HighlightProps) => {
@@ -118,10 +98,6 @@ export const PressableHighlight = ({
         if (enabled) highlight.value = withSpring(0, motion.spring.press)
         onPressOut?.(event)
       }}
-      onPress={(event) => {
-        hapticLight()
-        onPress?.(event)
-      }}
       style={style}
       {...rest}
     >
@@ -137,18 +113,15 @@ type IconButtonProps = Omit<PressableProps, 'style'> & {
   readonly children: ReactNode
   readonly size?: number
   readonly style?: StyleProp<ViewStyle>
-  readonly haptic?: 'light' | 'medium' | 'none'
 }
 
 export const IconButton = ({
   children,
   size = 44,
   style,
-  haptic = 'light',
   ...rest
 }: IconButtonProps) => (
   <PressableScale
-    haptic={haptic}
     style={[styles.iconButton, { width: size, height: size, borderRadius: size / 2 }, style]}
     {...rest}
   >
@@ -168,7 +141,7 @@ export const miniExiting = (enabled: boolean) =>
 export const authCardEntering = (enabled: boolean) =>
   enabled
     ? FadeInDown.duration(motion.duration.ui).springify().damping(motion.spring.selection.damping)
-    : FadeIn.duration(motion.duration.fast)
+    : undefined
 
 const styles = StyleSheet.create({
   highlightFrame: {
@@ -176,7 +149,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
   },
   highlightWash: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.text,
     pointerEvents: 'none',
   },

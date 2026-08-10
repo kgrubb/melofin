@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { WebView } from 'react-native-webview'
 import {
@@ -9,15 +9,14 @@ import {
   loginWithAccessToken,
   loginWithPassword,
   pollQuickConnect,
-  ssoStartUrl,
   type AuthSuccess,
 } from '@/src/services/jellyfin/auth'
 import {
   openSsoPopup,
-  parseSsoBridgeMessage,
-  SSO_BRIDGE_SCRIPT,
   type SsoBridgeResult,
 } from '@/src/services/jellyfin/ssoBridge'
+import { loginWithSsoAuthorizeUrl } from '@/src/services/jellyfin/ssoNative'
+import { extractOidcState, ssoStartUrl } from '@/src/services/jellyfin/sso'
 import { useSessionStore } from '@/src/store/session'
 import {
   Field,
@@ -27,13 +26,17 @@ import {
   Screen,
   Title,
 } from '@/src/ui/primitives'
-import { Atmosphere } from '@/src/theme/Atmosphere'
-import { Glass } from '@/src/theme/Glass'
-import { authCardEntering, IconButton, useMotionEnabled } from '@/src/theme/motion'
-import { Icon } from '@/src/ui/Icon'
+import { Surface } from '@/src/theme/Glass'
+import { authCardEntering, useMotionEnabled } from '@/src/theme/motion'
+import { BackButton } from '@/src/ui/NavChrome'
 import { colors, spacing } from '@/src/theme/tokens'
 import type { Result } from '@/src/domain/result'
 import Animated from 'react-native-reanimated'
+
+type NativeSsoCapture = {
+  readonly provider: string
+  readonly startUrl: string
+}
 
 export default function LoginScreen() {
   const router = useRouter()
@@ -50,9 +53,10 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false)
   const [qcCode, setQcCode] = useState<string | null>(null)
   const [providers, setProviders] = useState<readonly string[]>([])
-  const [ssoUrl, setSsoUrl] = useState<string | null>(null)
+  const [ssoCapture, setSsoCapture] = useState<NativeSsoCapture | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const handledSso = useRef(false)
+  const capturedAuthorize = useRef(false)
 
   const allowInsecureHttp = params.allowInsecureHttp === '1'
   const serverUrl = params.serverUrl
@@ -75,21 +79,24 @@ export default function LoginScreen() {
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
-  const finish = async (result: Result<AuthSuccess>) => {
-    if (!result.ok) {
-      setError(result.error.message)
+  const finish = useCallback(
+    async (result: Result<AuthSuccess>) => {
+      if (!result.ok) {
+        setError(result.error.message)
+        setBusy(false)
+        setSsoCapture(null)
+        return
+      }
+      const { context, ...session } = result.value
+      await setAuthenticated(session, context)
       setBusy(false)
-      setSsoUrl(null)
-      return
-    }
-    const { context, ...session } = result.value
-    await setAuthenticated(session, context)
-    setBusy(false)
-    setSsoUrl(null)
-    router.replace('/(app)/(tabs)/home')
-  }
+      setSsoCapture(null)
+      // AuthGate owns the auth → app handoff (avoids double replace flicker).
+    },
+    [setAuthenticated],
+  )
 
-  const finishBridge = async (bridge: SsoBridgeResult) => {
+  const finishBridge = async (bridge: SsoBridgeResult, provider: string) => {
     if (handledSso.current) return
     handledSso.current = true
     setBusy(true)
@@ -106,7 +113,7 @@ export default function LoginScreen() {
       )
       return
     }
-    await finish(await completeSsoAuth(serverUrl, providers[0] ?? 'default', bridge.data, allowInsecureHttp))
+    await finish(await completeSsoAuth(serverUrl, provider, bridge.data, allowInsecureHttp))
   }
 
   const onPasswordLogin = async () => {
@@ -138,72 +145,62 @@ export default function LoginScreen() {
   const onSso = async (provider: string) => {
     setError(null)
     handledSso.current = false
+    capturedAuthorize.current = false
+    setBusy(true)
     if (Platform.OS === 'web') {
-      setBusy(true)
       try {
         const bridge = await openSsoPopup(serverUrl, provider)
-        await finishBridge(bridge)
+        await finishBridge(bridge, provider)
       } catch (cause) {
         setBusy(false)
         setError(cause instanceof Error ? cause.message : 'SSO failed')
       }
       return
     }
-    setSsoUrl(ssoStartUrl(serverUrl, provider))
+    // Capture IdP authorize URL (with OIDC state) via a brief WebView hop, then continue
+    // in the system browser where Authentik passkeys work.
+    setSsoCapture({ provider, startUrl: ssoStartUrl(serverUrl, provider) })
   }
 
-  if (ssoUrl && Platform.OS !== 'web') {
-    return (
-      <Atmosphere style={styles.webviewWrap}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => setSsoUrl(null)}
-          style={styles.webviewBack}
-          hitSlop={12}
-        >
-          <Icon name="chevron.left" tintColor={colors.text} size={22} />
-        </Pressable>
-        <WebView
-          source={{ uri: ssoUrl }}
-          onMessage={(event) => {
-            const bridge = parseSsoBridgeMessage(event.nativeEvent.data)
-            if (bridge) void finishBridge(bridge)
-          }}
-          injectedJavaScriptBeforeContentLoaded={SSO_BRIDGE_SCRIPT}
-          injectedJavaScript={SSO_BRIDGE_SCRIPT}
-          onLoadEnd={(event) => {
-            // Re-inject after Authentik → Jellyfin redirects.
-            const url = event.nativeEvent.url ?? ''
-            if (url.includes('/sso/')) {
-              // Bridge already injected via props; handled by XHR hook.
-            }
-          }}
-        />
-      </Atmosphere>
-    )
+  const hostOf = (value: string): string => {
+    try {
+      return new URL(value).host
+    } catch {
+      return ''
+    }
+  }
+
+  const onCaptureNavigation = (url: string) => {
+    if (!ssoCapture || capturedAuthorize.current) return
+    const serverHost = hostOf(serverUrl)
+    const host = hostOf(url)
+    if (!serverHost || !host || host === serverHost) return
+    const state = extractOidcState(url)
+    if (!state) return
+    capturedAuthorize.current = true
+    const provider = ssoCapture.provider
+    setSsoCapture(null)
+    void loginWithSsoAuthorizeUrl(
+      serverUrl,
+      provider,
+      url,
+      state,
+      allowInsecureHttp,
+    ).then((result) => finish(result))
   }
 
   return (
     <Screen centered padBottom={false}>
       <View style={styles.hero}>
         <View style={styles.titleRow}>
-          <IconButton
-            accessibilityRole="button"
-            accessibilityLabel="Back to server selection"
-            onPress={goBackToServer}
-            hitSlop={12}
-            style={styles.back}
-          >
-            <Icon name="chevron.left" tintColor={colors.text} size={22} />
-          </IconButton>
+          <BackButton onPress={goBackToServer} label="Back to server selection" />
           <Title>{serverName}</Title>
         </View>
         <Muted>Sign in to continue listening</Muted>
       </View>
 
       <Animated.View entering={authCardEntering(enabled)}>
-        <Glass style={styles.card} contentStyle={styles.cardInner}>
+        <Surface style={styles.card} contentStyle={styles.cardInner}>
           <Field
             label="Username"
             accessibilityLabel="Username"
@@ -237,22 +234,51 @@ export default function LoginScreen() {
           {providers.map((provider) => (
             <GlassButton
               key={provider}
-              label={`Continue with ${provider}`}
+              label={busy ? `Continue with ${provider}…` : `Continue with ${provider}`}
               onPress={() => void onSso(provider)}
               disabled={busy}
             />
           ))}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          {Platform.OS === 'web' && providers.length > 0 ? (
+          {providers.length > 0 ? (
             <View style={styles.hint}>
               <Muted>
-                If Authentik opens but Melio doesn’t continue, finish with Quick Connect — browser SSO
-                can’t always return tokens from the provider popup.
+                {Platform.OS === 'web'
+                  ? 'If Authentik opens but Melio doesn’t continue, finish with Quick Connect — browser SSO can’t always return tokens from the provider popup.'
+                  : 'SSO opens in the system browser so passkeys work. Melio finishes sign-in automatically after Authentik succeeds.'}
               </Muted>
             </View>
           ) : null}
-        </Glass>
+        </Surface>
       </Animated.View>
+
+      {ssoCapture ? (
+        <WebView
+          source={{ uri: ssoCapture.startUrl }}
+          style={styles.hiddenWebView}
+          onNavigationStateChange={(nav) => onCaptureNavigation(nav.url)}
+          onShouldStartLoadWithRequest={(request) => {
+            onCaptureNavigation(request.url)
+            // Block loading the IdP inside WKWebView once we've handed off to the system browser.
+            if (capturedAuthorize.current) return false
+            try {
+              return new URL(request.url).host === new URL(serverUrl).host
+            } catch {
+              return true
+            }
+          }}
+          onError={() => {
+            setSsoCapture(null)
+            setBusy(false)
+            setError('SSO failed to open the identity provider')
+          }}
+          onHttpError={() => {
+            setSsoCapture(null)
+            setBusy(false)
+            setError('SSO failed to open the identity provider')
+          }}
+        />
+      ) : null}
     </Screen>
   )
 }
@@ -266,12 +292,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-  },
-  back: {
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginLeft: -spacing.sm,
   },
   card: {
@@ -290,17 +310,11 @@ const styles = StyleSheet.create({
   hint: {
     marginTop: spacing.md,
   },
-  webviewWrap: {
-    flex: 1,
-  },
-  webviewBack: {
+  hiddenWebView: {
     position: 'absolute',
-    top: spacing.lg,
-    left: spacing.md,
-    zIndex: 2,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    overflow: 'hidden',
   },
 })

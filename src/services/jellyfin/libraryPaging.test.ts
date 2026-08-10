@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   dedupeLibraryItems,
+  dedupePlaylistTracks,
   LIBRARY_PAGE_SIZE,
   shouldFetchNextPage,
 } from '@/src/services/jellyfin/libraryPaging'
@@ -25,6 +26,23 @@ describe('libraryPaging', () => {
     ).toEqual([
       { id: 'a', name: '1' },
       { id: 'b', name: '2' },
+    ])
+  })
+
+  it('dedupes playlist tracks by entry id', () => {
+    expect(
+      dedupePlaylistTracks([
+        { id: 'song', playlistEntryId: 'e1' },
+        { id: 'song', playlistEntryId: 'e2' },
+        { id: 'song', playlistEntryId: 'e1' },
+        { id: 'other' },
+        { id: 'other' },
+        { id: '' },
+      ]),
+    ).toEqual([
+      { id: 'song', playlistEntryId: 'e1' },
+      { id: 'song', playlistEntryId: 'e2' },
+      { id: 'other' },
     ])
   })
 })

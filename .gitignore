@@ -30,6 +30,10 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# Accidental Xcode.app bundles dropped in the repo (use /Applications/Xcode.app)
+/Xcode.app/
+/Xcode *.app/
+
 # local env files
 .env*.local
 

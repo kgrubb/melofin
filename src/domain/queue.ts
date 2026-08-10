@@ -6,6 +6,8 @@ export type QueueTrack = {
   readonly durationMs: number
   readonly artworkUrl?: string
   readonly mediaSourceId?: string
+  readonly albumId?: string
+  readonly artistId?: string
 }
 
 export type RepeatMode = 'off' | 'one' | 'all'

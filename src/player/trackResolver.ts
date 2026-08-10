@@ -1,10 +1,15 @@
 import type { QueueTrack } from '@/src/domain/queue'
 import type { OfflineIndex } from '@/src/domain/offline'
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
-import { buildUniversalStreamUrl } from '@/src/services/jellyfin/library'
+import {
+  audioAuthHeaders,
+  buildPlaybackStreamCandidates,
+} from '@/src/services/jellyfin/library'
 
 export type ResolvedSource = {
   readonly uri: string
+  readonly fallbackUris?: readonly string[]
+  readonly headers?: Readonly<Record<string, string>>
   readonly playMethod: 'DirectPlay' | 'Transcode'
   readonly fromCache: boolean
 }
@@ -24,8 +29,16 @@ export const resolveTrackSource = (
     }
   }
   if (!context) return null
+  const [primary, ...fallbackUris] = buildPlaybackStreamCandidates(
+    context,
+    track.id,
+    userId,
+  )
+  if (!primary) return null
   return {
-    uri: buildUniversalStreamUrl(context, track.id, userId),
+    uri: primary,
+    fallbackUris,
+    headers: audioAuthHeaders(context),
     playMethod: 'DirectPlay',
     fromCache: false,
   }
