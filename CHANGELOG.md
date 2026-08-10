@@ -7,7 +7,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Playlist create, rename, delete, and add/remove tracks synced with Jellyfin
+- Artist and album links from Now Playing (dismisses into the collection screen)
+- Lock-screen / Control Center next and previous track controls (`expo-audio` patch)
+- CarPlay gated behind a `CARPLAY_ENABLED` feature flag
 - Domain tests for audio-session playback rules and pause/resume scrobble intents
+
+### Changed
+
+- Now Playing is full-screen and morphs back into the mini player on dismiss
+- Collections live under a `(main)` stack with shared floating tab bar / mini player chrome
+- Local iOS builds target macOS 15 / Xcode 16.4 (Expo SDK 54)
 
 ### Fixed
 
