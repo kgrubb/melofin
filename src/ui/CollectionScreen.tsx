@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
-import { FlatList, Platform, StyleSheet, Text, View } from 'react-native'
-import Animated from 'react-native-reanimated'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Alert, FlatList, Platform, StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { formatCollectionDuration } from '@/src/domain/format'
+import { normalizePlaylistName, playlistStub } from '@/src/domain/playlists'
 import {
   artworkUrl,
   fetchChildren,
@@ -13,14 +13,22 @@ import {
   toQueueTrack,
   type LibraryItem,
 } from '@/src/services/jellyfin/library'
+import {
+  addTracksToPlaylist,
+  createPlaylist,
+  deletePlaylist,
+  removeTracksFromPlaylist,
+  renamePlaylist,
+} from '@/src/services/jellyfin/playlists'
 import { downloadTrack } from '@/src/offline/downloader'
+import { useLibraryStore } from '@/src/store/library'
 import { useSessionStore } from '@/src/store/session'
 import { usePlayerStore } from '@/src/store/player'
 import { useSettingsStore } from '@/src/store/settings'
 import { AccentGradient } from '@/src/theme/Atmosphere'
-import { Glass } from '@/src/theme/Glass'
-import { PressableScale, settleEntering, useMotionEnabled } from '@/src/theme/motion'
+import { PressableScale } from '@/src/theme/motion'
 import { Icon } from '@/src/ui/Icon'
+import { BackButton, MoreButton } from '@/src/ui/NavChrome'
 import { EdgeBackGesture } from '@/src/ui/EdgeBackGesture'
 import {
   ErrorState,
@@ -28,6 +36,11 @@ import {
   Muted,
   Screen,
 } from '@/src/ui/primitives'
+import {
+  PlaylistNameModal,
+  PlaylistPickerModal,
+  presentTrackActions,
+} from '@/src/ui/PlaylistActions'
 import { TrackRow } from '@/src/ui/TrackRow'
 import { colors, motion, radii, scrollUnderChromePad, spacing, typography } from '@/src/theme/tokens'
 
@@ -78,20 +91,6 @@ const CircleAction = ({
         />
       </View>
     )}
-  </PressableScale>
-)
-
-const BackChip = ({ onPress }: { readonly onPress: () => void }) => (
-  <PressableScale
-    accessibilityRole="button"
-    accessibilityLabel="Back"
-    scaleTo={motion.scale.button}
-    onPress={onPress}
-    style={styles.backPress}
-  >
-    <Glass style={styles.backGlass} contentStyle={styles.backInner} intensity={26}>
-      <Icon name="chevron.left" tintColor={colors.text} size={20} />
-    </Glass>
   </PressableScale>
 )
 
@@ -161,7 +160,7 @@ const CollectionHero = ({
               icon="shuffle"
               active={shuffle}
               onPress={onShuffle}
-              size={40}
+              size={44}
               iconSize={22}
             />
             <CircleAction
@@ -186,14 +185,17 @@ export const CollectionScreen = ({
 }) => {
   const insets = useSafeAreaInsets()
   const router = useRouter()
-  const enabled = useMotionEnabled()
   const params = useLocalSearchParams<{ id: string | string[] }>()
   const id = Array.isArray(params.id) ? params.id[0] : params.id
   const context = useSessionStore((s) => s.context)
   const session = useSessionStore((s) => s.session)
-  const replaceQueue = usePlayerStore((s) => s.replaceQueue)
+  const playlists = useLibraryStore((s) => s.playlists)
+  const upsertPlaylist = useLibraryStore((s) => s.upsertPlaylist)
+  const removePlaylistFromCache = useLibraryStore((s) => s.removePlaylist)
+  const refreshPlaylists = useLibraryStore((s) => s.refreshPlaylists)
+  const playQueue = usePlayerStore((s) => s.playQueue)
   const enqueueTracks = usePlayerStore((s) => s.enqueueTracks)
-  const setPlaying = usePlayerStore((s) => s.setPlaying)
+  const togglePlaying = usePlayerStore((s) => s.togglePlaying)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const shuffle = usePlayerStore((s) => s.shuffle)
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle)
@@ -204,25 +206,38 @@ export const CollectionScreen = ({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
+  const [mutating, setMutating] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [pendingTrackId, setPendingTrackId] = useState<string | null>(null)
+  const [createFromPicker, setCreateFromPicker] = useState(false)
+  const loadSeq = useRef(0)
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back()
     else router.replace('/(app)/(tabs)/library')
   }, [router])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { readonly silent?: boolean }) => {
     if (!context || !session || !id) return
-    setLoading(true)
-    setError(null)
+    loadSeq.current += 1
+    const seq = loadSeq.current
+    if (!opts?.silent) {
+      setLoading(true)
+      setError(null)
+    }
     const [meta, children] = await Promise.all([
       fetchItem(context, session.userId, id),
       kind === 'playlist'
         ? fetchPlaylistTracks(context, session.userId, id)
         : fetchChildren(context, session.userId, id),
     ])
-    setLoading(false)
+    if (seq !== loadSeq.current) return
+    if (!opts?.silent) setLoading(false)
     if (!children.ok) {
-      setError(children.error.message)
+      if (!opts?.silent) setError(children.error.message)
+      else Alert.alert('Couldn’t refresh playlist', children.error.message)
       return
     }
     setTracks(children.value)
@@ -233,12 +248,163 @@ export const CollectionScreen = ({
     void load()
   }, [load])
 
+  const requireSession = (): boolean => {
+    if (context && session) return true
+    Alert.alert('Sign in required', 'Sign in to manage playlists.')
+    return false
+  }
+
+  const runRename = async (name: string) => {
+    if (!context || !session || !id || mutating) return
+    setMutating(true)
+    try {
+      const result = await renamePlaylist(context, id, name)
+      if (!result.ok) {
+        Alert.alert('Couldn’t rename playlist', result.error.message)
+        return
+      }
+      const nextName = normalizePlaylistName(name)
+      setRenameOpen(false)
+      setCollection((prev) => (prev ? { ...prev, name: nextName } : prev))
+      if (collection) {
+        await upsertPlaylist({ ...collection, name: nextName })
+      } else {
+        await upsertPlaylist({
+          ...playlistStub(id, nextName, tracks.length),
+          type: 'Playlist',
+          artists: [],
+          durationMs: 0,
+        })
+      }
+      await refreshPlaylists()
+    } finally {
+      setMutating(false)
+    }
+  }
+
+  const runDelete = () => {
+    if (!requireSession() || !context || !session || !id || mutating) return
+    setMutating(true)
+    Alert.alert('Delete playlist?', 'This removes the playlist from Jellyfin.', [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+        onPress: () => setMutating(false),
+      },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            try {
+              const result = await deletePlaylist(context, id)
+              if (!result.ok) {
+                Alert.alert('Couldn’t delete playlist', result.error.message)
+                return
+              }
+              await removePlaylistFromCache(id)
+              await refreshPlaylists()
+              goBack()
+            } finally {
+              setMutating(false)
+            }
+          })()
+        },
+      },
+    ])
+  }
+
+  const openPlaylistMenu = () => {
+    if (kind !== 'playlist' || mutating) return
+    presentTrackActions('Playlist', [
+      { text: 'Rename', onPress: () => setRenameOpen(true) },
+      { text: 'Delete', style: 'destructive', onPress: runDelete },
+    ])
+  }
+
+  const removeTrack = async (entryId: string) => {
+    if (!context || !session || !id || mutating) return
+    setMutating(true)
+    try {
+      const result = await removeTracksFromPlaylist(context, id, [entryId])
+      if (!result.ok) {
+        Alert.alert('Couldn’t remove track', result.error.message)
+        return
+      }
+      setTracks((prev) => prev.filter((track) => track.playlistEntryId !== entryId))
+      await load({ silent: true })
+      await refreshPlaylists()
+    } finally {
+      setMutating(false)
+    }
+  }
+
+  const addPendingToPlaylist = async (playlistId: string) => {
+    if (!context || !session || !pendingTrackId || mutating) return
+    setMutating(true)
+    try {
+      const result = await addTracksToPlaylist(
+        context,
+        session.userId,
+        playlistId,
+        [pendingTrackId],
+      )
+      if (!result.ok) {
+        Alert.alert('Couldn’t add to playlist', result.error.message)
+        return
+      }
+      setPickerOpen(false)
+      setCreateFromPicker(false)
+      setPendingTrackId(null)
+      await refreshPlaylists()
+      if (kind === 'playlist' && playlistId === id) await load({ silent: true })
+    } finally {
+      setMutating(false)
+    }
+  }
+
+  const createWithPending = async (name: string) => {
+    if (!context || !session || !pendingTrackId || mutating) return
+    setMutating(true)
+    try {
+      const result = await createPlaylist(context, session.userId, name, [pendingTrackId])
+      if (!result.ok) {
+        Alert.alert('Couldn’t create playlist', result.error.message)
+        return
+      }
+      await upsertPlaylist({
+        ...playlistStub(result.value, name, 1),
+        type: 'Playlist',
+        artists: [],
+        durationMs: 0,
+      })
+      setCreateOpen(false)
+      setCreateFromPicker(false)
+      setPendingTrackId(null)
+      await refreshPlaylists()
+      router.push(`/(app)/playlist/${result.value}`)
+    } finally {
+      setMutating(false)
+    }
+  }
+
+  const cancelCreate = () => {
+    if (mutating) return
+    setCreateOpen(false)
+    if (createFromPicker) {
+      setCreateFromPicker(false)
+      setPickerOpen(true)
+      return
+    }
+    setPendingTrackId(null)
+  }
+
   if (loading) {
     return (
       <EdgeBackGesture>
         <Screen padBottom={false}>
           <View style={styles.topBar}>
-            <BackChip onPress={goBack} />
+            <BackButton onPress={goBack} />
           </View>
           <LoadingState />
         </Screen>
@@ -250,7 +416,7 @@ export const CollectionScreen = ({
       <EdgeBackGesture>
         <Screen padBottom={false}>
           <View style={styles.topBar}>
-            <BackChip onPress={goBack} />
+            <BackButton onPress={goBack} />
           </View>
           <ErrorState message={error} onRetry={() => void load()} />
         </Screen>
@@ -286,23 +452,63 @@ export const CollectionScreen = ({
   const playAll = () => {
     if (queueTracks.length === 0) return
     if (isActiveQueue) {
-      setPlaying(!isPlaying)
+      togglePlaying()
       return
     }
-    replaceQueue(queueTracks, 0, source)
-    setPlaying(true)
+    playQueue(queueTracks, 0, source)
   }
 
   const downloadAll = () => {
-    if (Platform.OS === 'web' || !context || !session || downloading) return
+    if (!context || !session || downloading) return
+    if (Platform.OS === 'web') return
     setDownloading(true)
     void Promise.all(
       queueTracks.map((track) => downloadTrack(context, session.userId, track, 'user')),
-    ).then(async (results) => {
-      const last = results.find((result) => result.ok)
-      if (last?.ok) await setOfflineIndex(last.value)
-      setDownloading(false)
-    })
+    )
+      .then(async (results) => {
+        const last = results.find((result) => result.ok)
+        if (last?.ok) await setOfflineIndex(last.value)
+      })
+      .finally(() => {
+        setDownloading(false)
+      })
+  }
+
+  const onTrackLongPress = (item: LibraryItem, index: number) => {
+    const queueTrack = queueTracks[index]
+    if (!queueTrack) return
+    const addAction = {
+      text: 'Add to playlist…',
+      onPress: () => {
+        if (!requireSession()) return
+        setPendingTrackId(item.id)
+        setCreateFromPicker(false)
+        setPickerOpen(true)
+      },
+    }
+    if (kind === 'playlist') {
+      const entryId = item.playlistEntryId
+      presentTrackActions(item.name, [
+        { text: 'Add to queue', onPress: () => enqueueTracks([queueTrack]) },
+        addAction,
+        ...(entryId
+          ? ([
+              {
+                text: 'Remove from playlist',
+                style: 'destructive' as const,
+                onPress: () => {
+                  void removeTrack(entryId)
+                },
+              },
+            ] as const)
+          : []),
+      ])
+      return
+    }
+    presentTrackActions(item.name, [
+      { text: 'Add to queue', onPress: () => enqueueTracks([queueTrack]) },
+      addAction,
+    ])
   }
 
   const numbered = kind === 'album'
@@ -319,13 +525,16 @@ export const CollectionScreen = ({
   return (
     <EdgeBackGesture>
       <Screen padBottom={false}>
-        <Animated.View entering={settleEntering(enabled)} style={styles.body}>
+        <View style={styles.body}>
           <View style={styles.topBar}>
-            <BackChip onPress={goBack} />
+            <BackButton onPress={goBack} />
+            {kind === 'playlist' ? (
+              <MoreButton label="Playlist options" onPress={openPlaylistMenu} />
+            ) : null}
           </View>
           <FlatList
             data={tracks}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.playlistEntryId ?? item.id}
             showsVerticalScrollIndicator={false}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{
@@ -372,14 +581,55 @@ export const CollectionScreen = ({
                       )
                 }
                 onPress={() => {
-                  replaceQueue(queueTracks, index, source)
-                  setPlaying(true)
+                  playQueue(queueTracks, index, source)
                 }}
-                onLongPress={() => enqueueTracks([queueTracks[index]!])}
+                onLongPress={() => onTrackLongPress(item, index)}
+                accessibilityHint="Long press for track actions"
               />
             )}
           />
-        </Animated.View>
+        </View>
+        <PlaylistNameModal
+          visible={renameOpen}
+          title="Rename playlist"
+          initialName={collection?.name ?? ''}
+          busy={mutating}
+          onCancel={() => {
+            if (mutating) return
+            setRenameOpen(false)
+          }}
+          onSubmit={(name) => {
+            void runRename(name)
+          }}
+        />
+        <PlaylistNameModal
+          visible={createOpen}
+          title="New playlist"
+          busy={mutating}
+          onCancel={cancelCreate}
+          onSubmit={(name) => {
+            void createWithPending(name)
+          }}
+        />
+        <PlaylistPickerModal
+          visible={pickerOpen}
+          playlists={playlists}
+          busy={mutating}
+          onCancel={() => {
+            if (mutating) return
+            setPickerOpen(false)
+            setCreateFromPicker(false)
+            setPendingTrackId(null)
+          }}
+          onPick={(playlistId) => {
+            void addPendingToPlaylist(playlistId)
+          }}
+          onCreateNew={() => {
+            setCreateFromPicker(true)
+            setPickerOpen(false)
+            setCreateOpen(true)
+          }}
+        />
       </Screen>
     </EdgeBackGesture>
   )
@@ -392,22 +642,9 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.xs,
-  },
-  backPress: {
-    width: 40,
-    height: 40,
-  },
-  backGlass: {
-    borderRadius: radii.pill,
-    width: 40,
-    height: 40,
-  },
-  backInner: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   hero: {
     alignItems: 'center',

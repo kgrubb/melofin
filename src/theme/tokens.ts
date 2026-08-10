@@ -1,12 +1,11 @@
 export const colors = {
   background: '#08040F',
-  surface: 'rgba(255, 255, 255, 0.06)',
+  /** Content-layer standard material (not Liquid Glass). */
+  surface: 'rgba(255, 255, 255, 0.07)',
   elevated: 'rgba(255, 255, 255, 0.10)',
   text: '#F8F4FF',
   textSecondary: 'rgba(232, 220, 255, 0.62)',
   accent: '#D946EF',
-  accentSecondary: '#A855F7',
-  accentDeep: '#7C3AED',
   danger: '#FB7185',
   border: 'rgba(255, 255, 255, 0.10)',
   glassBorder: 'rgba(255, 255, 255, 0.18)',
@@ -86,22 +85,24 @@ export const typography = {
 /** Shared motion language — Melio liquid glass. */
 export const motion = {
   spring: {
-    press: { damping: 28, stiffness: 420, mass: 0.55 },
-    selection: { damping: 24, stiffness: 280, mass: 0.7 },
-    sheet: { damping: 26, stiffness: 220, mass: 0.85 },
+    // Soft press — stiff springs thrash Blur/Liquid Glass composites.
+    press: { damping: 22, stiffness: 260, mass: 0.6 },
+    selection: { damping: 24, stiffness: 240, mass: 0.7 },
+    sheet: { damping: 26, stiffness: 220, mass: 0.9 },
   },
   duration: {
-    fast: 140,
-    ui: 280,
-    sheet: 380,
-    settle: 180,
+    fast: 120,
+    ui: 240,
+    sheet: 360,
+    settle: 160,
   },
   scale: {
-    button: 0.96,
-    card: 0.98,
+    button: 0.97,
+    card: 0.985,
   },
   sheet: {
-    dismissDistance: 140,
+    dismissProgress: 0.82,
     dismissVelocity: 900,
+    dismissDistance: 280,
   },
 } as const

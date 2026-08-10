@@ -1,23 +1,10 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import {
-  PanResponder,
-  Platform,
-  StyleSheet,
-  View,
-  useWindowDimensions,
-} from 'react-native'
+import { useMemo, type ReactNode } from 'react'
+import { Platform, StyleSheet, View } from 'react-native'
 import { useRouter } from 'expo-router'
 
-const EDGE_WIDTH = 32
-const DISMISS_RATIO = 0.28
-const DISMISS_VELOCITY = 0.85
-
-const useCustomEdgeBack = Platform.OS !== 'ios'
-
 /**
- * Left-edge swipe back for web/Android.
- * Uses RN PanResponder only — Gesture Handler pan tracking throws
- * "Invalid pointer id" on web when lists unmount mid-gesture.
+ * Web-only left-edge back. Android/iOS use the native stack gesture
+ * (custom PanResponder was fighting it and snapping before the pop).
  */
 export const EdgeBackGesture = ({
   children,
@@ -27,68 +14,36 @@ export const EdgeBackGesture = ({
   readonly enabled?: boolean
 }) => {
   const router = useRouter()
-  const { width } = useWindowDimensions()
-  const [dragX, setDragX] = useState(0)
-  const active = useCustomEdgeBack && enabled
+  const active = Platform.OS === 'web' && enabled
 
-  const panResponder = useMemo(() => {
+  const handlers = useMemo(() => {
     if (!active) return null
-
-    const pop = () => {
-      setDragX(0)
-      if (router.canGoBack()) router.back()
-    }
-
-    return PanResponder.create({
-      onMoveShouldSetPanResponder: (event, gesture) => {
-        const startX = event.nativeEvent.pageX - gesture.dx
-        return (
-          startX <= EDGE_WIDTH &&
-          gesture.dx > 10 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4
-        )
+    const gesture = { startX: 0, dragging: false }
+    return {
+      onTouchStart: (e: { nativeEvent: { pageX: number } }) => {
+        gesture.startX = e.nativeEvent.pageX
+        gesture.dragging = gesture.startX <= 28
       },
-      onMoveShouldSetPanResponderCapture: (event, gesture) => {
-        const startX = event.nativeEvent.pageX - gesture.dx
-        return (
-          startX <= EDGE_WIDTH &&
-          gesture.dx > 10 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4
-        )
-      },
-      onPanResponderMove: (_event, gesture) => {
-        setDragX(Math.max(0, gesture.dx))
-      },
-      onPanResponderRelease: (_event, gesture) => {
-        if (gesture.dx > width * DISMISS_RATIO || gesture.vx > DISMISS_VELOCITY) {
-          pop()
-          return
+      onTouchEnd: (e: { nativeEvent: { pageX: number } }) => {
+        if (!gesture.dragging) return
+        gesture.dragging = false
+        if (e.nativeEvent.pageX - gesture.startX > 72 && router.canGoBack()) {
+          router.back()
         }
-        setDragX(0)
       },
-      onPanResponderTerminate: () => {
-        setDragX(0)
+      onTouchCancel: () => {
+        gesture.dragging = false
       },
-      onPanResponderTerminationRequest: () => false,
-    })
-  }, [active, router, width])
+    }
+  }, [active, router])
 
-  if (!active || !panResponder) {
+  if (!active || !handlers) {
     return <View style={styles.fill}>{children}</View>
   }
 
   return (
-    <View style={styles.fill} {...panResponder.panHandlers}>
-      <View style={[styles.fill, { transform: [{ translateX: dragX }] }]}>
-        <View
-          style={[
-            styles.shade,
-            styles.passThrough,
-            { opacity: Math.min(dragX / Math.max(width, 1), 1) * 0.28 },
-          ]}
-        />
-        {children}
-      </View>
+    <View style={styles.fill} {...handlers}>
+      {children}
     </View>
   )
 }
@@ -96,12 +51,5 @@ export const EdgeBackGesture = ({
 const styles = StyleSheet.create({
   fill: {
     flex: 1,
-  },
-  shade: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: '#000',
-  },
-  passThrough: {
-    pointerEvents: 'none',
   },
 })

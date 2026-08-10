@@ -22,3 +22,18 @@ export const dedupeLibraryItems = <T extends { readonly id: string }>(
     return true
   })
 }
+
+/** Keep duplicate media ids when playlist entry ids differ. */
+export const dedupePlaylistTracks = <
+  T extends { readonly id: string; readonly playlistEntryId?: string },
+>(
+  items: readonly T[],
+): readonly T[] => {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    const key = item.playlistEntryId || item.id
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}

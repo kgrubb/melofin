@@ -1,0 +1,309 @@
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
+index 320062e..2a0ef5d 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
+@@ -32,6 +32,8 @@ import java.util.UUID
+ 
+ private const val PLAYBACK_STATUS_UPDATE = "playbackStatusUpdate"
+ private const val AUDIO_SAMPLE_UPDATE = "audioSampleUpdate"
++private const val REMOTE_NEXT_TRACK = "remoteNextTrack"
++private const val REMOTE_PREVIOUS_TRACK = "remotePreviousTrack"
+ private const val SEEK_JUMP_INTERVAL_MS: Long = 10_000
+ 
+ @UnstableApi
+@@ -122,6 +124,14 @@ class AudioPlayer(
+     }
+   }
+ 
++  fun emitRemoteNextTrack() {
++    emit(REMOTE_NEXT_TRACK, emptyMap<String, Any>())
++  }
++
++  fun emitRemotePreviousTrack() {
++    emit(REMOTE_PREVIOUS_TRACK, emptyMap<String, Any>())
++  }
++
+   private fun startUpdating() {
+     updateJob?.cancel()
+     updateJob = flow {
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
+index 092af43..10aae70 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
+@@ -93,8 +93,10 @@ enum class LockScreenButtons(val value: Int) : Enumerable {
+ }
+ 
+ class AudioLockScreenOptions(
+-  @Field val showSeekForward: Boolean,
+-  @Field val showSeekBackward: Boolean
++  @Field val showSeekForward: Boolean = false,
++  @Field val showSeekBackward: Boolean = false,
++  @Field val showNextTrack: Boolean = false,
++  @Field val showPreviousTrack: Boolean = false
+ ) : Record
+ 
+ enum class InterruptionMode(val value: String) : Enumerable {
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
+index 04486e2..d6ee780 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
+@@ -68,6 +68,10 @@ class AudioControlsService : MediaSessionService() {
+       ACTION_SEEK_BACKWARD -> withPlayerOnAppThread { player ->
+         player.seekTo(player.currentPosition - SEEK_INTERVAL_MS)
+       }
++
++      ACTION_NEXT_TRACK -> currentPlayer?.emitRemoteNextTrack()
++
++      ACTION_PREVIOUS_TRACK -> currentPlayer?.emitRemotePreviousTrack()
+     }
+ 
+     // Ensure channel exists and update current notification
+@@ -135,9 +139,20 @@ class AudioControlsService : MediaSessionService() {
+   private fun updateSessionCustomLayout(isPlaying: Boolean) {
+     val session = mediaSession ?: return
+     val customLayout = mutableListOf<CommandButton>()
++    val showPrevious = currentOptions?.showPreviousTrack == true
++    val showNext = currentOptions?.showNextTrack == true
++    val showSeekBack = currentOptions?.showSeekBackward == true && !showPrevious
++    val showSeekForward = currentOptions?.showSeekForward == true && !showNext
+ 
+-    // Add seek backward button if enabled
+-    if (currentOptions?.showSeekBackward == true) {
++    if (showPrevious) {
++      customLayout.add(
++        CommandButton.Builder(CommandButton.ICON_PREVIOUS)
++          .setDisplayName("Previous")
++          .setEnabled(true)
++          .setSessionCommand(SessionCommand(ACTION_PREVIOUS_TRACK, Bundle.EMPTY))
++          .build()
++      )
++    } else if (showSeekBack) {
+       customLayout.add(
+         CommandButton.Builder(CommandButton.ICON_SKIP_BACK)
+           .setDisplayName("Seek Backward")
+@@ -147,7 +162,6 @@ class AudioControlsService : MediaSessionService() {
+       )
+     }
+ 
+-    // Add play/pause button (always present)
+     customLayout.add(
+       CommandButton.Builder(if (isPlaying) CommandButton.ICON_PAUSE else CommandButton.ICON_PLAY)
+         .setDisplayName(if (isPlaying) "Pause" else "Play")
+@@ -156,8 +170,15 @@ class AudioControlsService : MediaSessionService() {
+         .build()
+     )
+ 
+-    // Add seek forward button if enabled
+-    if (currentOptions?.showSeekForward == true) {
++    if (showNext) {
++      customLayout.add(
++        CommandButton.Builder(CommandButton.ICON_NEXT)
++          .setDisplayName("Next")
++          .setEnabled(true)
++          .setSessionCommand(SessionCommand(ACTION_NEXT_TRACK, Bundle.EMPTY))
++          .build()
++      )
++    } else if (showSeekForward) {
+       customLayout.add(
+         CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD)
+           .setDisplayName("Seek Forward")
+@@ -331,6 +352,14 @@ class AudioControlsService : MediaSessionService() {
+     currentPlayer = null
+   }
+ 
++  fun notifyNextTrack() {
++    currentPlayer?.emitRemoteNextTrack()
++  }
++
++  fun notifyPreviousTrack() {
++    currentPlayer?.emitRemotePreviousTrack()
++  }
++
+   companion object {
+     private const val CHANNEL_ID = "expo_audio_channel"
+     private const val ACTION_PLAY = "expo.modules.audio.action.PLAY"
+@@ -339,6 +368,8 @@ class AudioControlsService : MediaSessionService() {
+ 
+     const val ACTION_SEEK_FORWARD = "expo.modules.audio.action.SEEK_FORWARD"
+     const val ACTION_SEEK_BACKWARD = "expo.modules.audio.action.SEEK_REWIND"
++    const val ACTION_NEXT_TRACK = "expo.modules.audio.action.NEXT_TRACK"
++    const val ACTION_PREVIOUS_TRACK = "expo.modules.audio.action.PREVIOUS_TRACK"
+ 
+     const val SEEK_INTERVAL_MS = 10000L
+ 
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
+index 839aaef..a63a4c4 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
+@@ -35,6 +35,8 @@ class AudioMediaSessionCallback : MediaSession.Callback {
+           MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+             .add(SessionCommand(AudioControlsService.ACTION_SEEK_BACKWARD, Bundle.EMPTY))
+             .add(SessionCommand(AudioControlsService.ACTION_SEEK_FORWARD, Bundle.EMPTY))
++            .add(SessionCommand(AudioControlsService.ACTION_NEXT_TRACK, Bundle.EMPTY))
++            .add(SessionCommand(AudioControlsService.ACTION_PREVIOUS_TRACK, Bundle.EMPTY))
+             .build()
+         )
+         .build()
+@@ -56,6 +58,12 @@ class AudioMediaSessionCallback : MediaSession.Callback {
+       AudioControlsService.ACTION_SEEK_BACKWARD -> {
+         session.player.seekTo(session.player.currentPosition - AudioControlsService.SEEK_INTERVAL_MS)
+       }
++      AudioControlsService.ACTION_NEXT_TRACK -> {
++        AudioControlsService.getInstance()?.notifyNextTrack()
++      }
++      AudioControlsService.ACTION_PREVIOUS_TRACK -> {
++        AudioControlsService.getInstance()?.notifyPreviousTrack()
++      }
+     }
+     return super.onCustomCommand(session, controller, command, args)
+   }
+diff --git a/node_modules/expo-audio/build/AudioConstants.d.ts b/node_modules/expo-audio/build/AudioConstants.d.ts
+index a290f9a..b5fdc1f 100644
+--- a/node_modules/expo-audio/build/AudioConstants.d.ts
++++ b/node_modules/expo-audio/build/AudioConstants.d.ts
+@@ -10,5 +10,13 @@ export type AudioLockScreenOptions = {
+      * Whether the seek backward button should be displayed on the lock screen.
+      */
+     showSeekBackward?: boolean;
++    /**
++     * Whether the next track button should be displayed on the lock screen.
++     */
++    showNextTrack?: boolean;
++    /**
++     * Whether the previous track button should be displayed on the lock screen.
++     */
++    showPreviousTrack?: boolean;
+ };
+ //# sourceMappingURL=AudioConstants.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/expo-audio/build/AudioModule.types.d.ts b/node_modules/expo-audio/build/AudioModule.types.d.ts
+index b30a75a..16b66fe 100644
+--- a/node_modules/expo-audio/build/AudioModule.types.d.ts
++++ b/node_modules/expo-audio/build/AudioModule.types.d.ts
+@@ -209,6 +209,10 @@ export type AudioEvents = {
+     playbackStatusUpdate(status: AudioStatus): void;
+     /** Fired when audio sampling is enabled and new sample data is available. */
+     audioSampleUpdate(data: AudioSample): void;
++    /** Fired when the lock-screen / headset next-track command is received. */
++    remoteNextTrack(): void;
++    /** Fired when the lock-screen / headset previous-track command is received. */
++    remotePreviousTrack(): void;
+ };
+ export declare class AudioRecorder extends SharedObject<RecordingEvents> {
+     /**
+diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-audio/ios/AudioPlayer.swift
+index 1dbce09..86997ad 100644
+--- a/node_modules/expo-audio/ios/AudioPlayer.swift
++++ b/node_modules/expo-audio/ios/AudioPlayer.swift
+@@ -4,6 +4,8 @@ import Combine
+ private enum AudioConstants {
+   static let playbackStatus = "playbackStatusUpdate"
+   static let audioSample = "audioSampleUpdate"
++  static let remoteNextTrack = "remoteNextTrack"
++  static let remotePreviousTrack = "remotePreviousTrack"
+ }
+ 
+ public class AudioPlayer: SharedRef<AVPlayer> {
+@@ -117,6 +119,14 @@ public class AudioPlayer: SharedRef<AVPlayer> {
+     }
+   }
+ 
++  func emitRemoteNextTrack() {
++    self.emit(event: AudioConstants.remoteNextTrack, arguments: [:] as [String: Any])
++  }
++
++  func emitRemotePreviousTrack() {
++    self.emit(event: AudioConstants.remotePreviousTrack, arguments: [:] as [String: Any])
++  }
++
+   func updateStatus(with dict: [String: Any]) {
+     var arguments = currentStatus()
+     arguments.merge(dict) { _, new in
+diff --git a/node_modules/expo-audio/ios/AudioRecords.swift b/node_modules/expo-audio/ios/AudioRecords.swift
+index f1759cd..9709990 100644
+--- a/node_modules/expo-audio/ios/AudioRecords.swift
++++ b/node_modules/expo-audio/ios/AudioRecords.swift
+@@ -56,6 +56,8 @@ struct Metadata: Record {
+ struct LockScreenOptions: Record {
+   @Field var showSeekForward: Bool = false
+   @Field var showSeekBackward: Bool = false
++  @Field var showNextTrack: Bool = false
++  @Field var showPreviousTrack: Bool = false
+ }
+ 
+ enum BitRateStrategy: String, Enumerable {
+diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/expo-audio/ios/MediaController.swift
+index 2dd3fb2..4e1d865 100644
+--- a/node_modules/expo-audio/ios/MediaController.swift
++++ b/node_modules/expo-audio/ios/MediaController.swift
+@@ -200,13 +200,34 @@ class MediaController {
+ 
+       return .success
+     }
++
++    remoteCommandCenter.nextTrackCommand.addTarget { [weak self] _ in
++      guard let player = self?.activePlayer else {
++        return .commandFailed
++      }
++      player.emitRemoteNextTrack()
++      return .success
++    }
++
++    remoteCommandCenter.previousTrackCommand.addTarget { [weak self] _ in
++      guard let player = self?.activePlayer else {
++        return .commandFailed
++      }
++      player.emitRemotePreviousTrack()
++      return .success
++    }
+     
+     remoteCommandCenter.playCommand.isEnabled = true
+     remoteCommandCenter.pauseCommand.isEnabled = true
+     remoteCommandCenter.togglePlayPauseCommand.isEnabled = true
+     remoteCommandCenter.changePlaybackPositionCommand.isEnabled = true
+-    remoteCommandCenter.skipForwardCommand.isEnabled = options?.showSeekForward ?? false
+-    remoteCommandCenter.skipBackwardCommand.isEnabled = options?.showSeekBackward ?? false
++    let showNext = options?.showNextTrack ?? false
++    let showPrevious = options?.showPreviousTrack ?? false
++    remoteCommandCenter.nextTrackCommand.isEnabled = showNext
++    remoteCommandCenter.previousTrackCommand.isEnabled = showPrevious
++    // Prefer track skip over ±10s when both are requested.
++    remoteCommandCenter.skipForwardCommand.isEnabled = (options?.showSeekForward ?? false) && !showNext
++    remoteCommandCenter.skipBackwardCommand.isEnabled = (options?.showSeekBackward ?? false) && !showPrevious
+   }
+ 
+   private func disableRemoteCommands() {
+@@ -216,6 +237,8 @@ class MediaController {
+     remoteCommandCenter.changePlaybackPositionCommand.isEnabled = false
+     remoteCommandCenter.skipForwardCommand.isEnabled = false
+     remoteCommandCenter.skipBackwardCommand.isEnabled = false
++    remoteCommandCenter.nextTrackCommand.isEnabled = false
++    remoteCommandCenter.previousTrackCommand.isEnabled = false
+     
+     // Remove event targets
+     remoteCommandCenter.playCommand.removeTarget(self);
+@@ -224,5 +247,7 @@ class MediaController {
+     remoteCommandCenter.changePlaybackPositionCommand.removeTarget(self);
+     remoteCommandCenter.skipForwardCommand.removeTarget(self);
+     remoteCommandCenter.skipBackwardCommand.removeTarget(self);
++    remoteCommandCenter.nextTrackCommand.removeTarget(self);
++    remoteCommandCenter.previousTrackCommand.removeTarget(self);
+   }
+ }
+diff --git a/node_modules/expo-audio/src/AudioConstants.ts b/node_modules/expo-audio/src/AudioConstants.ts
+index 72a157c..faf2819 100644
+--- a/node_modules/expo-audio/src/AudioConstants.ts
++++ b/node_modules/expo-audio/src/AudioConstants.ts
+@@ -11,4 +11,12 @@ export type AudioLockScreenOptions = {
+    * Whether the seek backward button should be displayed on the lock screen.
+    */
+   showSeekBackward?: boolean;
++  /**
++   * Whether the next track button should be displayed on the lock screen.
++   */
++  showNextTrack?: boolean;
++  /**
++   * Whether the previous track button should be displayed on the lock screen.
++   */
++  showPreviousTrack?: boolean;
+ };

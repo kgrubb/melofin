@@ -1,59 +1,111 @@
 import { Image } from 'expo-image'
-import { StyleSheet, Text, View } from 'react-native'
+import { useCallback, useRef } from 'react'
+import { StyleSheet, Text, View, type View as RNView } from 'react-native'
 import { usePathname, useRouter } from 'expo-router'
-import Animated from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { usePlayerStore } from '@/src/store/player'
 import { AccentGradient } from '@/src/theme/Atmosphere'
 import { Glass } from '@/src/theme/Glass'
-import {
-  miniEntering,
-  miniExiting,
-  PressableScale,
-  useMotionEnabled,
-} from '@/src/theme/motion'
+import { PressableScale } from '@/src/theme/motion'
 import { Icon } from '@/src/ui/Icon'
 import { ProgressLine } from '@/src/ui/ProgressBar'
 import { chrome, colors, motion, radii, spacing } from '@/src/theme/tokens'
 
 const ART = 44
-const PLAY = 40
+const PLAY = 44
+
+/** Isolated so Glass chrome doesn't re-render on every position tick. */
+const MiniProgress = ({
+  durationMs,
+  isPlaying,
+}: {
+  readonly durationMs: number
+  readonly isPlaying: boolean
+}) => {
+  const positionMs = usePlayerStore((s) => s.positionMs)
+  return (
+    <ProgressLine
+      positionMs={positionMs}
+      durationMs={durationMs}
+      isPlaying={isPlaying}
+    />
+  )
+}
 
 export const MiniPlayer = () => {
   const router = useRouter()
   const pathname = usePathname()
   const insets = useSafeAreaInsets()
-  const enabled = useMotionEnabled()
+  const ref = useRef<RNView>(null)
   const track = usePlayerStore((s) => s.tracks[s.currentIndex])
   const isPlaying = usePlayerStore((s) => s.isPlaying)
-  const setPlaying = usePlayerStore((s) => s.setPlaying)
+  const togglePlaying = usePlayerStore((s) => s.togglePlaying)
   const nowPlayingOpen = usePlayerStore((s) => s.nowPlayingOpen)
-  const positionMs = usePlayerStore((s) => s.positionMs)
+  const setNowPlayingOpen = usePlayerStore((s) => s.setNowPlayingOpen)
+  const setMiniPlayerFrame = usePlayerStore((s) => s.setMiniPlayerFrame)
   const onSheet =
     pathname.includes('/settings') || pathname.includes('/queue')
+  const covered = nowPlayingOpen || onSheet
 
-  if (!track || onSheet || nowPlayingOpen) return null
+  const measure = useCallback(() => {
+    ref.current?.measureInWindow((x, y, width, height) => {
+      if (width > 0 && height > 0) setMiniPlayerFrame({ x, y, width, height })
+    })
+  }, [setMiniPlayerFrame])
 
-  const bottom =
-    Math.max(insets.bottom, spacing.sm) + chrome.miniBottomOffset
+  const measureAsync = useCallback(
+    () =>
+      new Promise<void>((resolve) => {
+        const node = ref.current
+        if (!node) {
+          resolve()
+          return
+        }
+        node.measureInWindow((x, y, width, height) => {
+          if (width > 0 && height > 0) setMiniPlayerFrame({ x, y, width, height })
+          resolve()
+        })
+      }),
+    [setMiniPlayerFrame],
+  )
+
+  if (!track) return null
+
+  const bottom = Math.max(insets.bottom, spacing.sm) + chrome.miniBottomOffset
 
   return (
-    <Animated.View
-      entering={miniEntering(enabled)}
-      exiting={miniExiting(enabled)}
+    <View
+      ref={ref}
+      collapsable={false}
+      onLayout={() => {
+        if (covered) return
+        measure()
+      }}
+      pointerEvents={covered ? 'none' : 'box-none'}
       style={[styles.wrap, { bottom }]}
-      pointerEvents="box-none"
+      accessibilityElementsHidden={covered}
+      importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}
     >
-      <Glass style={styles.glass} contentStyle={styles.row} intensity={32}>
+      <Glass style={styles.glass} contentStyle={styles.row} intensity={18}>
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel={`Now playing ${track.title}`}
           scaleTo={motion.scale.card}
-          onPress={() => router.navigate('/(app)/player')}
+          onPress={() => {
+            void (async () => {
+              await measureAsync()
+              setNowPlayingOpen(true)
+              router.navigate('/(app)/player')
+            })()
+          }}
           style={styles.mainHit}
         >
           {track.artworkUrl ? (
-            <Image source={{ uri: track.artworkUrl }} style={styles.art} />
+            <Image
+              source={{ uri: track.artworkUrl }}
+              style={styles.art}
+              cachePolicy="memory-disk"
+            />
           ) : (
             <View style={styles.art} />
           )}
@@ -69,10 +121,9 @@ export const MiniPlayer = () => {
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
-          haptic="medium"
-          onPress={() => setPlaying(!isPlaying)}
+          onPress={togglePlaying}
           style={styles.playHit}
-          hitSlop={8}
+          hitSlop={12}
         >
           <AccentGradient style={styles.playButton}>
             <Icon
@@ -83,14 +134,10 @@ export const MiniPlayer = () => {
           </AccentGradient>
         </PressableScale>
         <View style={styles.progress} pointerEvents="none">
-          <ProgressLine
-            positionMs={positionMs}
-            durationMs={track.durationMs}
-            isPlaying={isPlaying}
-          />
+          <MiniProgress durationMs={track.durationMs} isPlaying={isPlaying} />
         </View>
       </Glass>
-    </Animated.View>
+    </View>
   )
 }
 

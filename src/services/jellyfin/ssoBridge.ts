@@ -10,53 +10,7 @@ export type SsoBridgeResult =
       readonly userName: string
     }
 
-/** Injected into the Jellyfin SSO callback page to relay tokens back to Melio. */
-export const SSO_BRIDGE_SCRIPT = `
-(function() {
-  function relay(payload) {
-    try {
-      var msg = typeof payload === 'string' ? payload : JSON.stringify(payload);
-      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-        window.ReactNativeWebView.postMessage(msg);
-      }
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage({ type: 'melio-sso', payload: payload }, '*');
-      }
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'melio-sso', payload: payload }, '*');
-      }
-    } catch (e) {}
-  }
-
-  var send = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.send = function(body) {
-    this.addEventListener('load', function() {
-      try {
-        var json = JSON.parse(this.responseText);
-        if (json && json.AccessToken && json.User) {
-          relay({
-            type: 'auth',
-            AccessToken: json.AccessToken,
-            User: json.User
-          });
-        }
-      } catch (e) {}
-    });
-    try {
-      if (typeof body === 'string') {
-        var req = JSON.parse(body);
-        if (req && req.data) {
-          relay({ type: 'state', data: req.data });
-        }
-      }
-    } catch (e) {}
-    return send.apply(this, arguments);
-  };
-})();
-true;
-`
-
-export const parseSsoBridgeMessage = (raw: string): SsoBridgeResult | null => {
+const parseSsoBridgeMessage = (raw: string): SsoBridgeResult | null => {
   try {
     const parsed = JSON.parse(raw) as {
       type?: string

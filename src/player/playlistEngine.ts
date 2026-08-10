@@ -5,12 +5,29 @@ import {
   type AudioStatus,
 } from 'expo-audio'
 import { AppState, Platform } from 'react-native'
+import {
+  KEEP_AUDIO_SESSION_ACTIVE,
+  PLAY_OUTPUT,
+  shouldPauseBeforeReplace,
+} from '@/src/domain/audioSession'
 import { msToTicks } from '@/src/domain/jellyfin'
+import {
+  planTransport,
+  shouldFlushProgress,
+  type TransportPlan,
+} from '@/src/domain/playbackReport'
+import { newPlaySessionId } from '@/src/domain/playSessionId'
 import { currentTrack, prefetchTargets } from '@/src/domain/queue'
-import { shouldFlushProgress } from '@/src/domain/playbackReport'
+import { logger } from '@/src/logging/logger'
 import { downloadTrack } from '@/src/offline/downloader'
 import { mediaReachedEnd } from '@/src/player/playbackEnd'
 import { resolveTrackSource } from '@/src/player/trackResolver'
+import {
+  acceptReportedPosition,
+  beginSeekGuard,
+  idleSeekGuard,
+  type SeekGuard,
+} from '@/src/domain/seekPosition'
 import {
   postCapabilities,
   reportProgress,
@@ -26,22 +43,65 @@ type Engine = {
   readonly dispose: () => void
 }
 
+type ScrobbleAnchor = {
+  readonly itemId: string
+  readonly mediaSourceId?: string
+  readonly playSessionId: string
+  readonly playMethod: 'DirectPlay' | 'Transcode'
+}
+
+const GLOBAL_ENGINE_KEY = '__melioPlaybackEngine'
+
+type GlobalEngineSlot = {
+  readonly dispose: () => void
+}
+
+const getGlobalSlot = (): GlobalEngineSlot | null => {
+  const slot = (globalThis as Record<string, unknown>)[GLOBAL_ENGINE_KEY]
+  if (!slot || typeof slot !== 'object') return null
+  if (!('dispose' in slot) || typeof (slot as GlobalEngineSlot).dispose !== 'function') {
+    return null
+  }
+  return slot as GlobalEngineSlot
+}
+
+const setGlobalSlot = (slot: GlobalEngineSlot | null) => {
+  if (slot) {
+    ;(globalThis as Record<string, unknown>)[GLOBAL_ENGINE_KEY] = slot
+    return
+  }
+  delete (globalThis as Record<string, unknown>)[GLOBAL_ENGINE_KEY]
+}
+
 const stateRef: {
   engine: Engine | null
+  startPromise: Promise<Engine> | null
   lastProgressAt: number
   loadedUri: string | null
   loadEpoch: number
+  /** Bumped on pause / superseding play so in-flight play never wins a race. */
+  transportGen: number
   queue: Promise<void>
+  /** Serializes Jellyfin playstate so Progress never races ahead of Start. */
+  reportQueue: Promise<void>
   advancing: boolean
+  scrobble: ScrobbleAnchor | null
+  lastPositionMs: number
+  seekGuard: SeekGuard
 } = {
   engine: null,
+  startPromise: null,
   lastProgressAt: 0,
   loadedUri: null,
   loadEpoch: 0,
+  transportGen: 0,
   queue: Promise.resolve(),
+  reportQueue: Promise.resolve(),
   advancing: false,
+  scrobble: null,
+  lastPositionMs: 0,
+  seekGuard: idleSeekGuard(),
 }
-
 
 const enqueue = (task: () => Promise<void>) => {
   stateRef.queue = stateRef.queue.then(task, task).then(
@@ -51,20 +111,73 @@ const enqueue = (task: () => Promise<void>) => {
   return stateRef.queue
 }
 
-const waitForLoaded = (player: AudioPlayer, epoch: number): Promise<boolean> =>
+const enqueueReport = (task: () => Promise<unknown>) => {
+  stateRef.reportQueue = stateRef.reportQueue.then(task, task).then(
+    () => undefined,
+    () => undefined,
+  )
+  return stateRef.reportQueue
+}
+
+const hostOf = (uri: string): string => {
+  try {
+    return new URL(uri).host || 'unknown'
+  } catch {
+    return 'invalid'
+  }
+}
+
+const isLoopbackHost = (uri: string): boolean => {
+  try {
+    const host = new URL(uri).hostname.toLowerCase()
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+  } catch {
+    return false
+  }
+}
+
+const sourceLooksReady = (player: AudioPlayer, status?: AudioStatus): boolean => {
+  if (status) {
+    if (status.isLoaded || status.duration > 0 || status.playing) return true
+    if (status.currentTime > 0.05) return true
+  }
+  return (
+    player.isLoaded ||
+    player.duration > 0 ||
+    player.playing ||
+    player.currentTime > 0.05
+  )
+}
+
+const waitForLoaded = (
+  player: AudioPlayer,
+  epoch: number,
+  timeoutMs = 10_000,
+): Promise<boolean> =>
   new Promise((resolve) => {
-    if (player.isLoaded) {
+    if (sourceLooksReady(player)) {
       resolve(true)
       return
     }
 
+    const settled = { current: false }
     const finish = (ok: boolean) => {
+      if (settled.current) return
+      settled.current = true
       clearTimeout(timeout)
+      clearInterval(poll)
       subscription.remove()
       resolve(ok)
     }
 
-    const timeout = setTimeout(() => finish(player.isLoaded), 12_000)
+    const timeout = setTimeout(() => finish(sourceLooksReady(player)), timeoutMs)
+    const poll = setInterval(() => {
+      if (epoch !== stateRef.loadEpoch) {
+        finish(false)
+        return
+      }
+      if (sourceLooksReady(player)) finish(true)
+    }, 200)
     const subscription = player.addListener(
       'playbackStatusUpdate',
       (status: AudioStatus) => {
@@ -72,16 +185,48 @@ const waitForLoaded = (player: AudioPlayer, epoch: number): Promise<boolean> =>
           finish(false)
           return
         }
-        if (status.isLoaded) {
-          finish(true)
-          return
-        }
-        if (status.error) {
-          finish(false)
-        }
+        if (sourceLooksReady(player, status)) finish(true)
       },
     )
   })
+
+const safePlay = (player: AudioPlayer) => {
+  try {
+    player.volume = PLAY_OUTPUT.volume
+    player.muted = PLAY_OUTPUT.muted
+    player.play()
+  } catch {
+    // Web HTMLMediaElement can throw synchronously if the element is mid-replace.
+  }
+}
+
+const tryLoadUri = async (
+  player: AudioPlayer,
+  uri: string,
+  epoch: number,
+): Promise<boolean> => {
+  stateRef.loadedUri = uri
+  if (shouldPauseBeforeReplace(Platform.OS) && player.playing) {
+    player.pause()
+  }
+  try {
+    player.replace({ uri })
+  } catch (cause) {
+    logger.warn('audio.replace_failed', {
+      host: hostOf(uri),
+      cause: String(cause),
+    })
+    stateRef.loadedUri = null
+    return false
+  }
+  safePlay(player)
+  const loaded = await waitForLoaded(player, epoch)
+  if (!loaded) {
+    logger.warn('audio.load_timeout', { host: hostOf(uri) })
+    stateRef.loadedUri = null
+  }
+  return loaded
+}
 
 const loadCurrent = async (player: AudioPlayer): Promise<boolean> => {
   stateRef.advancing = false
@@ -89,39 +234,52 @@ const loadCurrent = async (player: AudioPlayer): Promise<boolean> => {
   const session = useSessionStore.getState()
   const settings = useSettingsStore.getState()
   const track = currentTrack(queue)
-  if (!track || !session.session || !session.context) return false
+  if (!track || !session.session || !session.context) {
+    logger.warn('audio.load_skipped', {
+      reason: !track ? 'no_track' : !session.session ? 'no_session' : 'no_context',
+    })
+    return false
+  }
   const resolved = resolveTrackSource(
     track,
     settings.offlineIndex,
     session.context,
     session.session.userId,
   )
-  if (!resolved) return false
+  if (!resolved) {
+    logger.warn('audio.load_skipped', { reason: 'unresolved_source' })
+    return false
+  }
 
-  if (stateRef.loadedUri === resolved.uri && player.isLoaded) {
+  if (
+    Platform.OS !== 'web' &&
+    !resolved.fromCache &&
+    isLoopbackHost(resolved.uri)
+  ) {
+    logger.warn('audio.loopback_unreachable', {
+      host: hostOf(resolved.uri),
+      hint: 'Use your Jellyfin LAN IP (e.g. http://192.168.x.x:8096), not localhost',
+    })
+    return false
+  }
+
+  if (stateRef.loadedUri === resolved.uri && sourceLooksReady(player)) {
     return true
   }
 
   const epoch = ++stateRef.loadEpoch
-  stateRef.loadedUri = resolved.uri
-  // expo-audio's web replace() immediately play()s if wasPlaying, before the new
-  // media element has a loaded source — that throws NotSupportedError.
-  if (player.playing) {
-    player.pause()
-  }
-  player.replace({
-    uri: resolved.uri,
-    name: track.title,
-  })
-  return waitForLoaded(player, epoch)
-}
+  const uris = resolved.fromCache
+    ? [resolved.uri]
+    : [resolved.uri, ...(resolved.fallbackUris ?? [])]
 
-const safePlay = (player: AudioPlayer) => {
-  try {
-    player.play()
-  } catch {
-    // Web HTMLMediaElement can throw synchronously if the element is mid-replace.
+  const loadNext = async (index: number): Promise<boolean> => {
+    if (index >= uris.length) return false
+    if (epoch !== stateRef.loadEpoch) return false
+    const loaded = await tryLoadUri(player, uris[index]!, epoch)
+    if (loaded) return true
+    return loadNext(index + 1)
   }
+  return loadNext(0)
 }
 
 const reportForCurrent = async (phase: 'start' | 'progress' | 'stop') => {
@@ -147,9 +305,38 @@ const reportForCurrent = async (phase: 'start' | 'progress' | 'stop') => {
     playMethod: resolved?.playMethod ?? 'DirectPlay',
   }
 
-  if (phase === 'start') await reportStart(session.context, payload)
-  if (phase === 'progress') await reportProgress(session.context, payload)
-  if (phase === 'stop') await reportStop(session.context, payload)
+  if (phase === 'start') {
+    await reportStart(session.context, payload)
+    stateRef.scrobble = {
+      itemId: track.id,
+      mediaSourceId: track.mediaSourceId,
+      playSessionId: queue.playSessionId,
+      playMethod: payload.playMethod,
+    }
+    return
+  }
+  if (phase === 'progress') {
+    await reportProgress(session.context, payload)
+    return
+  }
+  await reportStop(session.context, payload)
+  stateRef.scrobble = null
+}
+
+const stopAnchoredScrobble = async () => {
+  const anchor = stateRef.scrobble
+  const session = useSessionStore.getState()
+  if (!anchor || !session.context) return
+  await reportStop(session.context, {
+    itemId: anchor.itemId,
+    mediaSourceId: anchor.mediaSourceId,
+    playSessionId: anchor.playSessionId,
+    positionTicks: msToTicks(stateRef.lastPositionMs),
+    isPaused: true,
+    canSeek: true,
+    playMethod: anchor.playMethod,
+  })
+  stateRef.scrobble = null
 }
 
 const maybePrefetch = async () => {
@@ -187,16 +374,19 @@ const advanceFromEnd = (player: AudioPlayer) => {
     }
     if (store.repeat === 'one') {
       usePlayerStore.getState().setPositionMs(0)
+      stateRef.lastPositionMs = 0
       try {
         await player.seekTo(0)
       } catch {
         // Seek can fail mid-replace on web.
       }
-      safePlay(player)
+      if (usePlayerStore.getState().isPlaying) {
+        safePlay(player)
+      }
       stateRef.advancing = false
       return
     }
-    await reportForCurrent('stop')
+    await enqueueReport(() => reportForCurrent('stop'))
     usePlayerStore.getState().goNext()
     if (!usePlayerStore.getState().isPlaying) {
       stateRef.advancing = false
@@ -204,146 +394,280 @@ const advanceFromEnd = (player: AudioPlayer) => {
   })
 }
 
-export const startPlaybackEngine = async (): Promise<Engine> => {
-  if (stateRef.engine) return stateRef.engine
-
-  await setAudioModeAsync({
-    playsInSilentMode: true,
-    shouldPlayInBackground: true,
-    interruptionMode: 'doNotMix',
-  })
-
-  const player = createAudioPlayer(null)
-  const session = useSessionStore.getState()
-  if (session.context) {
-    await postCapabilities(session.context)
+const applyPause = (player: AudioPlayer) => {
+  // Immediate — never wait behind load / network work.
+  stateRef.transportGen += 1
+  try {
+    player.pause()
+  } catch {
+    // Ignore mid-replace pause failures.
   }
+  void enqueueReport(() => reportForCurrent('progress'))
+}
 
-  const unsubPlayer = usePlayerStore.subscribe((state, prev) => {
-    const trackChanged =
-      state.currentIndex !== prev.currentIndex || state.tracks !== prev.tracks
-    const started = state.isPlaying && !prev.isPlaying
-    const paused = !state.isPlaying && prev.isPlaying
+const applyPlayPlan = (player: AudioPlayer, plan: TransportPlan) => {
+  const gen = ++stateRef.transportGen
 
-    if (trackChanged || started) {
-      void enqueue(async () => {
-        if (started) {
-          usePlayerStore.getState().setPlaySessionId(crypto.randomUUID())
-        }
-        const loaded = await loadCurrent(player)
-        if (started) {
-          const track = currentTrack(usePlayerStore.getState())
-          if (Platform.OS !== 'web') {
-            player.setActiveForLockScreen(
-              true,
-              {
-                title: track?.title,
-                artist: track?.artist,
-                albumTitle: track?.album,
-                artworkUrl: track?.artworkUrl,
-              },
-              {
-                showSeekForward: true,
-                showSeekBackward: true,
-              },
-            )
-          }
-          if (loaded || Platform.OS !== 'web') {
-            safePlay(player)
-          }
-          await reportForCurrent('start')
-          await maybePrefetch()
-          return
-        }
-        if (usePlayerStore.getState().isPlaying && loaded) {
-          safePlay(player)
-        }
-      })
-    }
+  void enqueue(async () => {
+    if (gen !== stateRef.transportGen) return
 
-    if (paused) {
-      void enqueue(async () => {
-        player.pause()
-        await reportForCurrent('progress')
-      })
-    }
-  })
-
-  const statusSub = player.addListener(
-    'playbackStatusUpdate',
-    (status: AudioStatus) => {
-      if (status.didJustFinish) {
-        advanceFromEnd(player)
+    if (plan.mintSession) {
+      // UI skips change the track before the engine runs — stop the prior listen.
+      if (stateRef.scrobble) {
+        await enqueueReport(() => stopAnchoredScrobble())
       }
-    },
-  )
+      if (gen !== stateRef.transportGen) return
+      usePlayerStore.getState().setPlaySessionId(newPlaySessionId())
+    }
 
-  const progressTimer = setInterval(() => {
-    const queue = usePlayerStore.getState()
-    if (!queue.isPlaying) return
+    const loaded = await loadCurrent(player)
+    if (gen !== stateRef.transportGen) return
+    if (!usePlayerStore.getState().isPlaying) return
 
-    // Web: expo-audio often omits an explicit finish event on `ended`.
-    if (
-      mediaReachedEnd({
-        isPlayingIntent: queue.isPlaying,
-        mediaPlaying: player.playing,
-        currentTimeSec: player.currentTime,
-        durationSec: player.duration,
-      })
-    ) {
-      advanceFromEnd(player)
+    if (!loaded) {
+      logger.warn('audio.source_failed')
+      usePlayerStore.getState().setPlaying(false)
       return
     }
 
-    const reported = Math.round(player.currentTime * 1000)
-    // Skip transient 0 reports while already deep into a track.
-    if (reported === 0 && queue.positionMs > 2000) return
-    usePlayerStore.getState().setPositionMs(reported)
-    const now = Date.now()
-    if (!shouldFlushProgress(stateRef.lastProgressAt, now)) return
-    stateRef.lastProgressAt = now
-    void reportForCurrent('progress')
-  }, 1000)
+    if (plan.reportStart && Platform.OS !== 'web') {
+      const track = currentTrack(usePlayerStore.getState())
+      player.setActiveForLockScreen(
+        true,
+        {
+          title: track?.title,
+          artist: track?.artist,
+          albumTitle: track?.album,
+          artworkUrl: track?.artworkUrl,
+        },
+        {
+          showSeekForward: false,
+          showSeekBackward: false,
+          showNextTrack: true,
+          showPreviousTrack: true,
+        },
+      )
+    }
 
-  const appSub = AppState.addEventListener('change', (next) => {
-    if (next === 'background' || next === 'inactive') {
-      void reportForCurrent('progress')
+    if (gen !== stateRef.transportGen) return
+    if (!usePlayerStore.getState().isPlaying) return
+
+    if (plan.play) {
+      safePlay(player)
+    }
+
+    // Scrobble off the audio path, but serialize reports so Progress
+    // cannot beat Start (first scrub / pause after play).
+    if (plan.reportStart) {
+      void enqueueReport(() => reportForCurrent('start')).then(() => {
+        void maybePrefetch()
+      })
+    } else if (plan.reportProgress) {
+      void enqueueReport(() => reportForCurrent('progress'))
     }
   })
-
-  const engine: Engine = {
-    player,
-    dispose: () => {
-      clearInterval(progressTimer)
-      statusSub.remove()
-      unsubPlayer()
-      appSub.remove()
-      if (Platform.OS !== 'web') {
-        player.clearLockScreenControls()
-      }
-      player.remove()
-      stateRef.engine = null
-      stateRef.loadedUri = null
-      stateRef.advancing = false
-    },
-  }
-  stateRef.engine = engine
-  return engine
 }
 
+const syncFromStore = (player: AudioPlayer) => {
+  const snap = usePlayerStore.getState()
+  if (!snap.isPlaying || !currentTrack(snap)) return
 
-export const getPlaybackEngine = (): Engine | null => stateRef.engine
+  applyPlayPlan(player, {
+    kind: snap.playSessionId ? 'resume' : 'start',
+    mintSession: !snap.playSessionId,
+    reportStart: !snap.playSessionId,
+    reportProgress: Boolean(snap.playSessionId),
+    play: true,
+    pause: false,
+  })
+}
+
+export const startPlaybackEngine = async (): Promise<Engine> => {
+  if (stateRef.engine) return stateRef.engine
+  if (stateRef.startPromise) return stateRef.startPromise
+
+  // Fast Refresh can leave a prior engine's timer alive — dispose it.
+  const prior = getGlobalSlot()
+  if (prior) {
+    try {
+      prior.dispose()
+    } catch {
+      // Prior engine may already be torn down.
+    }
+    setGlobalSlot(null)
+  }
+
+  stateRef.startPromise = (async () => {
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'doNotMix',
+    })
+
+    const player = createAudioPlayer(null, {
+      keepAudioSessionActive: KEEP_AUDIO_SESSION_ACTIVE,
+      updateInterval: 500,
+    })
+    const session = useSessionStore.getState()
+    if (session.context) {
+      await postCapabilities(session.context)
+    }
+
+    const unsubPlayer = usePlayerStore.subscribe((state, prev) => {
+      const trackChanged =
+        state.currentIndex !== prev.currentIndex || state.tracks !== prev.tracks
+      const plan = planTransport({
+        wasPlaying: prev.isPlaying,
+        isPlaying: state.isPlaying,
+        trackChanged,
+        hasPlaySession: Boolean(prev.playSessionId),
+      })
+
+      if (plan.kind === 'idle') return
+
+      if (plan.kind === 'load') {
+        void enqueue(async () => {
+          // Track changed while paused — close the prior listen so the next
+          // play mints a fresh session instead of "resuming" the wrong item.
+          if (stateRef.scrobble) {
+            await enqueueReport(() => stopAnchoredScrobble())
+          }
+          if (usePlayerStore.getState().playSessionId) {
+            usePlayerStore.getState().setPlaySessionId(null)
+          }
+          await loadCurrent(player)
+        })
+        return
+      }
+
+      if (plan.pause) {
+        applyPause(player)
+        return
+      }
+
+      applyPlayPlan(player, plan)
+    })
+
+    const statusSub = player.addListener(
+      'playbackStatusUpdate',
+      (status: AudioStatus) => {
+        if (status.didJustFinish) {
+          advanceFromEnd(player)
+        }
+      },
+    )
+
+    const nextSub = player.addListener('remoteNextTrack', () => {
+      usePlayerStore.getState().goNext()
+    })
+    const prevSub = player.addListener('remotePreviousTrack', () => {
+      usePlayerStore.getState().goPrevious()
+    })
+
+    const progressTimer = setInterval(() => {
+      const queue = usePlayerStore.getState()
+      if (!queue.isPlaying) return
+
+      if (
+        mediaReachedEnd({
+          isPlayingIntent: queue.isPlaying,
+          mediaPlaying: player.playing,
+          currentTimeSec: player.currentTime,
+          durationSec: player.duration,
+        })
+      ) {
+        advanceFromEnd(player)
+        return
+      }
+
+      const reported = Math.round(player.currentTime * 1000)
+      const decision = acceptReportedPosition(
+        stateRef.seekGuard,
+        reported,
+        queue.positionMs,
+        Date.now(),
+      )
+      stateRef.seekGuard = decision.guard
+      if (decision.retrySeek) {
+        try {
+          player.seekTo(decision.positionMs / 1000)
+        } catch {
+          // Seek can fail mid-replace on web.
+        }
+      }
+      if (!decision.accept) return
+      stateRef.lastPositionMs = decision.positionMs
+      usePlayerStore.getState().setPositionMs(decision.positionMs)
+      const now = Date.now()
+      if (!shouldFlushProgress(stateRef.lastProgressAt, now)) return
+      stateRef.lastProgressAt = now
+      void enqueueReport(() => reportForCurrent('progress'))
+    }, 1000)
+
+    const appSub = AppState.addEventListener('change', (next) => {
+      if (next === 'background' || next === 'inactive') {
+        void enqueueReport(() => reportForCurrent('progress'))
+      }
+    })
+
+    const engine: Engine = {
+      player,
+      dispose: () => {
+        clearInterval(progressTimer)
+        statusSub.remove()
+        nextSub.remove()
+        prevSub.remove()
+        unsubPlayer()
+        appSub.remove()
+        if (Platform.OS !== 'web') {
+          player.clearLockScreenControls()
+        }
+        player.remove()
+        stateRef.engine = null
+        stateRef.loadedUri = null
+        stateRef.advancing = false
+        stateRef.scrobble = null
+        if (getGlobalSlot()?.dispose === engine.dispose) {
+          setGlobalSlot(null)
+        }
+      },
+    }
+    stateRef.engine = engine
+    setGlobalSlot(engine)
+
+    // Catch play intent that landed before subscribe was attached.
+    syncFromStore(player)
+
+    return engine
+  })()
+
+  try {
+    return await stateRef.startPromise
+  } finally {
+    stateRef.startPromise = null
+  }
+}
 
 export const seekPlayback = async (positionMs: number): Promise<void> => {
-  const engine = stateRef.engine
   const clamped = Math.max(0, positionMs)
+  stateRef.lastPositionMs = clamped
+  stateRef.seekGuard = beginSeekGuard(clamped, Date.now())
   usePlayerStore.getState().setPositionMs(clamped)
+
+  // First scrub often lands before the engine finishes starting — wait for it
+  // instead of updating UI position while native stays put (then snaps back).
+  const engine =
+    stateRef.engine ??
+    (await startPlaybackEngine().catch(() => null))
   if (!engine) return
+
   try {
     await engine.player.seekTo(clamped / 1000)
   } catch {
     // Seek can fail mid-replace on web.
   }
-}
 
-export const seekToMs = seekPlayback
+  // Tell Jellyfin immediately — interval flush alone misses seeks (esp. back).
+  stateRef.lastProgressAt = Date.now()
+  void enqueueReport(() => reportForCurrent('progress'))
+}

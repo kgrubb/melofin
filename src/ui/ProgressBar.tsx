@@ -1,5 +1,3 @@
-/* Reanimated shared values are intentionally mutated. */
-/* eslint-disable react-hooks/immutability */
 import { useEffect, useRef, useState } from 'react'
 import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -12,7 +10,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated'
-import { scrubRatio } from '@/src/theme/motionMath'
+import { scrubPositionFromX, scrubRatio } from '@/src/theme/motionMath'
 import { useMotionEnabled } from '@/src/theme/motion'
 import { colors, motion, radii, spacing } from '@/src/theme/tokens'
 
@@ -94,7 +92,8 @@ const useSmoothClock = (
       setSmoothMs(next)
     }
     tick()
-    const id = setInterval(tick, 250)
+    // 1Hz is enough for time labels — 250ms was thrashing React under glass.
+    const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [durationMs, isPlaying, positionMs])
 
@@ -112,7 +111,7 @@ export const ProgressLine = ({
 }) => {
   const progress = usePlaybackProgress(positionMs, durationMs, isPlaying)
   const fillStyle = useAnimatedStyle(() => ({
-    width: `${progress.value * 100}%`,
+    transform: [{ scaleX: Math.max(progress.value, 0.001) }],
   }))
 
   return (
@@ -183,6 +182,7 @@ export const ScrubBar = ({
 
   const finishScrub = (ms: number) => {
     onSeek(ms)
+    setLabelMs(ms)
     setScrubbing(false)
   }
 
@@ -191,13 +191,14 @@ export const ScrubBar = ({
   }
 
   const pan = Gesture.Pan()
-    .activeOffsetX([-2, 2])
+    .activeOffsetX([-4, 4])
+    .failOffsetY([-16, 16])
     .onBegin((event) => {
       const width = trackWidth.value
       const duration = durationSV.value
-      if (width <= 0 || duration <= 0) return
-      const ratio = Math.min(1, Math.max(0, event.x / width))
-      const ms = Math.round(ratio * duration)
+      if (duration <= 0 || width <= 0) return
+      const ms = scrubPositionFromX(event.x, width, duration)
+      const ratio = scrubRatio(ms, duration)
       scrubRatioSV.value = ratio
       draftMsSV.value = ms
       labelSecSV.value = Math.floor(ms / 1000)
@@ -206,9 +207,9 @@ export const ScrubBar = ({
     .onUpdate((event) => {
       const width = trackWidth.value
       const duration = durationSV.value
-      if (width <= 0 || duration <= 0) return
-      const ratio = Math.min(1, Math.max(0, event.x / width))
-      const ms = Math.round(ratio * duration)
+      if (duration <= 0 || width <= 0) return
+      const ms = scrubPositionFromX(event.x, width, duration)
+      const ratio = scrubRatio(ms, duration)
       scrubRatioSV.value = ratio
       draftMsSV.value = ms
       const sec = Math.floor(ms / 1000)
@@ -219,6 +220,15 @@ export const ScrubBar = ({
     })
     .onEnd(() => {
       const ms = draftMsSV.value
+      const duration = durationSV.value
+      if (duration <= 0 || scrubRatioSV.value < 0) {
+        scrubRatioSV.value = -1
+        runOnJS(cancelScrub)()
+        return
+      }
+      // Pin the running fill to the seek target BEFORE clearing the scrub
+      // overlay — otherwise we flash to the pre-scrub animated ratio.
+      progress.value = scrubRatio(ms, duration)
       scrubRatioSV.value = -1
       runOnJS(finishScrub)(ms)
     })
@@ -231,9 +241,9 @@ export const ScrubBar = ({
   const tap = Gesture.Tap().onEnd((event) => {
     const width = trackWidth.value
     const duration = durationSV.value
-    if (width <= 0 || duration <= 0) return
-    const ratio = Math.min(1, Math.max(0, event.x / width))
-    const ms = Math.round(ratio * duration)
+    const ms = scrubPositionFromX(event.x, width, duration)
+    if (duration <= 0 || width <= 0) return
+    progress.value = scrubRatio(ms, duration)
     scrubRatioSV.value = -1
     runOnJS(finishScrub)(ms)
   })
@@ -242,17 +252,20 @@ export const ScrubBar = ({
 
   const fillStyle = useAnimatedStyle(() => {
     const ratio = scrubRatioSV.value >= 0 ? scrubRatioSV.value : progress.value
-    return { width: `${ratio * 100}%` }
+    return { transform: [{ scaleX: Math.max(ratio, 0.001) }] }
   })
   const thumbStyle = useAnimatedStyle(() => {
     const ratio = scrubRatioSV.value >= 0 ? scrubRatioSV.value : progress.value
+    const width = trackWidth.value
     return {
-      left: `${ratio * 100}%`,
-      transform: [{ scale: 0.85 + expand.value * 0.15 }],
+      transform: [
+        { translateX: ratio * width },
+        { scale: 0.85 + expand.value * 0.15 },
+      ],
     }
   })
   const trackStyle = useAnimatedStyle(() => ({
-    height: 4 + expand.value * 2,
+    transform: [{ scaleY: 1 + expand.value * 0.5 }],
   }))
 
   return (
@@ -262,11 +275,27 @@ export const ScrubBar = ({
           accessible
           accessibilityRole="adjustable"
           accessibilityLabel="Seek"
+          accessibilityHint="Adjusts playback position"
           accessibilityValue={{
             min: 0,
             max: Math.max(durationMs, 1),
             now: Math.min(shownMs, durationMs),
             text: formatMs(shownMs),
+          }}
+          accessibilityActions={[
+            { name: 'increment', label: 'Skip forward' },
+            { name: 'decrement', label: 'Skip back' },
+          ]}
+          onAccessibilityAction={(event) => {
+            if (durationMs <= 0) return
+            const step = Math.max(5_000, Math.round(durationMs * 0.05))
+            if (event.nativeEvent.actionName === 'increment') {
+              onSeek(Math.min(durationMs, positionMs + step))
+              return
+            }
+            if (event.nativeEvent.actionName === 'decrement') {
+              onSeek(Math.max(0, positionMs - step))
+            }
           }}
           onLayout={(event: LayoutChangeEvent) => {
             trackWidth.value = event.nativeEvent.layout.width
@@ -296,7 +325,9 @@ const styles = StyleSheet.create({
   },
   lineFill: {
     height: '100%',
+    width: '100%',
     backgroundColor: colors.accent,
+    transformOrigin: 'left center',
   },
   scrubWrap: {
     gap: spacing.sm,
@@ -317,11 +348,14 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
+    width: '100%',
     borderRadius: radii.pill,
     backgroundColor: colors.accent,
+    transformOrigin: 'left center',
   },
   thumb: {
     position: 'absolute',
+    left: 0,
     width: 14,
     height: 14,
     marginLeft: -7,

@@ -28,7 +28,7 @@ const shouldRetry = (method: string | undefined, status?: number): boolean => {
   return status >= 500
 }
 
-export const createAxios = (baseURL: string, accessToken?: string): AxiosInstance => {
+const createAxios = (baseURL: string, accessToken?: string): AxiosInstance => {
   const instance = axios.create({
     baseURL,
     timeout: REQUEST_TIMEOUT_MS,
@@ -119,4 +119,4 @@ export const mapAuthError = (cause: unknown): Result<never> => {
   return err(appError('network', 'Auth failed', cause))
 }
 
-export { APP_NAME, APP_VERSION, REQUEST_TIMEOUT_MS }
+export { APP_NAME, APP_VERSION }
