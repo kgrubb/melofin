@@ -2,23 +2,38 @@ import { useEffect } from 'react'
 import { Stack, usePathname } from 'expo-router'
 import { View, StyleSheet } from 'react-native'
 import { CARPLAY_ENABLED } from '@/src/features'
+import { totalSizeBytes } from '@/src/domain/offline'
 import { startPlaybackEngine } from '@/src/player/playlistEngine'
+import { startCastRouter, stopCastRouter } from '@/src/cast/router'
+import { startPlaystateSync } from '@/src/services/jellyfin/playstateSync'
+import { startJellyfinReachability } from '@/src/services/jellyfin/reachability'
 import { colors } from '@/src/theme/tokens'
 import { registerCarPlay } from '@/src/carplay/register'
 import { MiniPlayer } from '@/src/ui/MiniPlayer'
+import { DevicesSheet } from '@/src/ui/DevicesSheet'
 import { FloatingTabBar } from '@/src/ui/FloatingTabBar'
 import { useLibraryStore } from '@/src/store/library'
 import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
+import type { LibraryItem } from '@/src/services/jellyfin/mappers'
+
+const EMPTY_LIBRARY_ITEMS: readonly LibraryItem[] = []
 
 export default function AppLayout() {
   const pathname = usePathname()
   const context = useSessionStore((s) => s.context)
   const session = useSessionStore((s) => s.session)
-  const offlineIndex = useSettingsStore((s) => s.offlineIndex)
-  const artists = useLibraryStore((s) => s.artists)
-  const playlists = useLibraryStore((s) => s.playlists)
+  const offlineSignature = useSettingsStore(
+    (s) =>
+      `${Object.keys(s.offlineIndex.entries).length}:${totalSizeBytes(s.offlineIndex)}`,
+  )
+  const artists = useLibraryStore((s) =>
+    CARPLAY_ENABLED ? s.artists : EMPTY_LIBRARY_ITEMS,
+  )
+  const playlists = useLibraryStore((s) =>
+    CARPLAY_ENABLED ? s.playlists : EMPTY_LIBRARY_ITEMS,
+  )
   const maybeSyncOnOpen = useLibraryStore((s) => s.maybeSyncOnOpen)
   const nowPlayingOpen = usePlayerStore((s) => s.nowPlayingOpen)
   const sheetOpen =
@@ -28,6 +43,14 @@ export default function AppLayout() {
 
   useEffect(() => {
     void startPlaybackEngine()
+    startCastRouter()
+    const stopPlaystate = startPlaystateSync()
+    const stopReachability = startJellyfinReachability()
+    return () => {
+      stopCastRouter()
+      stopPlaystate()
+      stopReachability()
+    }
   }, [])
 
   useEffect(() => {
@@ -37,12 +60,13 @@ export default function AppLayout() {
 
   useEffect(() => {
     if (!CARPLAY_ENABLED || !context || !session) return
+    const offlineIndex = useSettingsStore.getState().offlineIndex
     registerCarPlay(
       playlists,
       artists,
       Object.values(offlineIndex.entries),
     )
-  }, [context, session, offlineIndex, artists, playlists])
+  }, [context, session, offlineSignature, artists, playlists])
 
   return (
     <View style={styles.root}>
@@ -83,6 +107,7 @@ export default function AppLayout() {
       </View>
       <MiniPlayer />
       <FloatingTabBar />
+      <DevicesSheet />
     </View>
   )
 }

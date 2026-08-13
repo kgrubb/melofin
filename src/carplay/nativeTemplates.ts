@@ -1,7 +1,10 @@
 import { ListTemplate, TabBarTemplate } from 'react-native-carplay'
 import type { CarPlayListSection } from '@/src/carplay/templates'
 
-export const createBrowseTemplate = (sections: readonly CarPlayListSection[]) =>
+export const createBrowseTemplate = (
+  sections: readonly CarPlayListSection[],
+  onItemPress?: (itemId: string) => void,
+) =>
   new TabBarTemplate({
     templates: sections.map(
       (section) =>
@@ -12,6 +15,11 @@ export const createBrowseTemplate = (sections: readonly CarPlayListSection[]) =>
               items: section.items.map((item) => ({
                 text: item.text,
                 detailText: item.detailText,
+                onPress: onItemPress
+                  ? () => {
+                      onItemPress(item.id)
+                    }
+                  : undefined,
               })),
             },
           ],

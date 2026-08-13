@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { artistAlbumsQuery } from '@/src/services/jellyfin/library'
 import {
   artworkUrl,
   audioAuthHeaders,
@@ -10,6 +11,18 @@ import {
   userImageUrl,
 } from '@/src/services/jellyfin/mappers'
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
+
+describe('artistAlbumsQuery', () => {
+  it('filters MusicAlbum by albumArtistIds with year then name sort', () => {
+    expect(artistAlbumsQuery('user-1', 'artist-9')).toEqual({
+      userId: 'user-1',
+      includeItemTypes: ['MusicAlbum'],
+      albumArtistIds: ['artist-9'],
+      sortBy: ['ProductionYear', 'SortName'],
+      sortOrder: ['Ascending'],
+    })
+  })
+})
 
 describe('library mappers', () => {
   it('maps base items and queue tracks', () => {
@@ -43,6 +56,18 @@ describe('library mappers', () => {
     expect(mapBaseItem({ Id: 'p', Name: 'Mix', Type: 'Playlist' }).overview).toBeUndefined()
   })
 
+  it('maps favorite user data onto items and queue tracks', () => {
+    const item = mapBaseItem({
+      Id: '1',
+      Name: 'Song',
+      Type: 'Audio',
+      UserData: { IsFavorite: true },
+    })
+    expect(item.isFavorite).toBe(true)
+    expect(toQueueTrack(item).isFavorite).toBe(true)
+    expect(mapBaseItem({ Id: '2', Name: 'Song', Type: 'Audio' }).isFavorite).toBeUndefined()
+  })
+
   it('maps playlist entry ids', () => {
     expect(
       mapBaseItem({
@@ -73,6 +98,27 @@ describe('library mappers', () => {
     })
     expect(item.imageTag).toBe('album-tag')
     expect(item.imageItemId).toBe('album')
+    expect(item.albumId).toBe('album')
+  })
+
+  it('uses ParentId as albumId only when album primary art is present', () => {
+    expect(
+      mapBaseItem({
+        Id: 'song',
+        Name: 'Song',
+        Type: 'Audio',
+        ParentId: 'album-parent',
+        AlbumPrimaryImageTag: 'tag',
+      }).albumId,
+    ).toBe('album-parent')
+    expect(
+      mapBaseItem({
+        Id: 'song',
+        Name: 'Song',
+        Type: 'Audio',
+        ParentId: 'playlist-parent',
+      }).albumId,
+    ).toBeUndefined()
   })
 
   it('maps album and artist ids onto queue tracks', () => {
@@ -104,6 +150,33 @@ describe('library mappers', () => {
     expect(item.mediaSourceId).toBe('2')
     expect(item.imageTag).toBeUndefined()
     expect(mapBaseItem({}).name).toBe('Unknown')
+    expect(
+      mapBaseItem({
+        Id: '3',
+        Name: 'Song',
+        Type: 'Audio',
+        ArtistItems: [{ Id: 'a', Name: '' }],
+        AlbumArtists: [{ Id: 'b', Name: 'Album Artist' }],
+      }).artists,
+    ).toEqual(['Album Artist'])
+    expect(
+      mapBaseItem({
+        Id: '4',
+        Name: 'Song',
+        Type: 'Audio',
+        ArtistItems: [{ Id: 'a' }],
+        AlbumArtist: 'Solo Artist',
+      }).artists,
+    ).toEqual(['Solo Artist'])
+    expect(
+      mapBaseItem({
+        Id: '5',
+        Name: 'Song',
+        Type: 'Audio',
+        albumArtist: 'Camel Artist',
+        albumArtists: [{ id: 'c', name: 'Camel Pair' }],
+      }).artists,
+    ).toEqual(['Camel Pair'])
   })
 
   it('builds artwork and stream urls', () => {
@@ -113,16 +186,17 @@ describe('library mappers', () => {
       accessToken: 't',
     } as JellyfinContext
     expect(artworkUrl(context, '1', 'tag')).toContain('Images/Primary')
-    expect(artworkUrl(context, '1', 'tag')).toContain('maxHeight=600')
+    expect(artworkUrl(context, '1', 'tag')).toContain('maxHeight=1200')
+    expect(artworkUrl(context, '1', 'tag')).toContain('quality=90')
     expect(artworkUrl(context, '1', 'tag')).toContain('tag=tag')
-    expect(artworkUrl(context, '1', 'tag', 'thumb')).toContain('maxHeight=120')
-    expect(artworkUrl(context, '1', 'tag', 'card')).toContain('maxHeight=320')
+    expect(artworkUrl(context, '1', 'tag', 'thumb')).toContain('maxHeight=256')
+    expect(artworkUrl(context, '1', 'tag', 'card')).toContain('maxHeight=640')
     expect(artworkUrl(context, '1')).toContain('Images/Primary')
     expect(artworkUrl(context, '1')).not.toContain('tag=')
     expect(artworkUrl(context, '')).toBeUndefined()
     expect(userImageUrl(context, 'u1')).toContain('/Users/u1/Images/Primary')
     expect(userImageUrl(context, 'u1', 'ptag', 'thumb')).toContain('tag=ptag')
-    expect(userImageUrl(context, 'u1', undefined, 'thumb')).toContain('maxHeight=120')
+    expect(userImageUrl(context, 'u1', undefined, 'thumb')).toContain('maxHeight=256')
     expect(userImageUrl(context, '')).toBeUndefined()
     expect(buildUniversalStreamUrl(context, '1', 'u')).toContain('UserId=u')
     expect(buildUniversalStreamUrl(context, '1', 'u')).toContain('/universal?')
@@ -143,7 +217,7 @@ describe('library mappers', () => {
     ).not.toContain('api_key=')
     const candidates = buildPlaybackStreamCandidates(context, '1', 'u')
     expect(candidates).toHaveLength(2)
-    expect(candidates[0]).toContain('/universal?')
-    expect(candidates[1]).toContain('/stream.mp3')
+    expect(candidates[0]).toContain('/stream.mp3')
+    expect(candidates[1]).toContain('/universal?')
   })
 })

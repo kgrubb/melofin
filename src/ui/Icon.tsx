@@ -145,6 +145,9 @@ const FALLBACK_GLYPH: Record<string, string> = {
   shuffle: '⇄',
   heart: '♡',
   'heart.fill': '♥',
+  trash: '⌫',
+  'moon.zzz': '☾',
+  'quote.bubble': '❝',
   house: '⌂',
   'house.fill': '⌂',
   magnifyingglass: '⌕',
@@ -160,6 +163,13 @@ const FALLBACK_GLYPH: Record<string, string> = {
   xmark: '✕',
   ellipsis: '···',
   plus: '+',
+  'speaker.wave.2': '🔊',
+  'speaker.wave.2.fill': '🔊',
+  airplayaudio: '⇪',
+  checkmark: '✓',
+  iphone: '▢',
+  tv: '▤',
+  hifispeaker: '♪',
 }
 
 const FallbackGlyph = ({

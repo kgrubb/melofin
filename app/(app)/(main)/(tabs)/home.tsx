@@ -9,6 +9,11 @@ import {
 import { Image } from 'expo-image'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import {
+  assembleListenNow,
+  LISTEN_NOW_MIN,
+  listenNowSeed,
+} from '@/src/domain/listenNow'
 import { shuffleTracks, type QueueTrack } from '@/src/domain/queue'
 import {
   artworkUrl,
@@ -17,7 +22,9 @@ import {
   fetchLatestAlbums,
   fetchRandomSongs,
   fetchRecentPlaylists,
+  fetchRecentSongs,
   fetchResume,
+  fetchSongsByArtist,
   toQueueTrack,
   userImageUrl,
   type LibraryItem,
@@ -180,7 +187,7 @@ export default function HomeScreen() {
   const playShuffled = useCallback(
     (tracks: readonly QueueTrack[]) => {
       if (tracks.length === 0) return
-      playQueue(shuffleTracks(tracks, Date.now()), 0)
+      playQueue(shuffleTracks(tracks), 0)
     },
     [playQueue],
   )
@@ -207,13 +214,30 @@ export default function HomeScreen() {
     setResume(nextResume)
     setPlaylists(nextPlaylists)
 
-    const seed = nextResume[0] ?? nextAlbums[0] ?? nextPlaylists[0]
-    if (seed) {
-      const mix = await fetchInstantMix(context, session.userId, seed.id)
-      setListenNow(mix.ok ? mix.value : [])
-    } else {
-      setListenNow([])
+    const seed = listenNowSeed(nextResume, nextAlbums, nextPlaylists)
+    const empty = { ok: true as const, value: [] as readonly LibraryItem[] }
+    const mix = seed
+      ? await fetchInstantMix(context, session.userId, seed.id)
+      : empty
+    const mixTracks = mix.ok ? mix.value : []
+    let nextListenNow = assembleListenNow([mixTracks])
+    if (nextListenNow.length < LISTEN_NOW_MIN) {
+      const artistId = seed?.artistId
+      const [artist, recent, random] = await Promise.all([
+        artistId
+          ? fetchSongsByArtist(context, session.userId, artistId, 24)
+          : Promise.resolve(empty),
+        fetchRecentSongs(context, session.userId, 24),
+        fetchRandomSongs(context, session.userId, 24),
+      ])
+      nextListenNow = assembleListenNow([
+        mixTracks,
+        artist.ok ? artist.value : [],
+        recent.ok ? recent.value : [],
+        random.ok ? random.value : [],
+      ])
     }
+    setListenNow(nextListenNow)
     setLoading(false)
   }, [context, session])
 
@@ -232,14 +256,14 @@ export default function HomeScreen() {
       return
     }
     if (item.type === 'MusicAlbum') {
-      router.push(`/(app)/album/${item.id}`)
+      router.push(`/(app)/(main)/album/${item.id}`)
       return
     }
     if (item.type === 'MusicArtist') {
-      router.push(`/(app)/artist/${item.id}`)
+      router.push(`/(app)/(main)/artist/${item.id}`)
       return
     }
-    router.push(`/(app)/playlist/${item.id}`)
+    router.push(`/(app)/(main)/playlist/${item.id}`)
   }
 
   const shuffleAll = async () => {

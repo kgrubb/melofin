@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, FlatList, Platform, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, Platform, StyleSheet, Text, View } from 'react-native'
+import { FlashList } from '@shopify/flash-list'
 import { Image } from 'expo-image'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { formatCollectionDuration } from '@/src/domain/format'
 import { normalizePlaylistName, playlistStub } from '@/src/domain/playlists'
+import { backfillSongArtists } from '@/src/domain/songArtists'
 import {
   artworkUrl,
+  fetchAlbumsByArtist,
   fetchChildren,
   fetchItem,
   fetchPlaylistTracks,
+  fetchSongsForArtist,
   toQueueTrack,
   type LibraryItem,
 } from '@/src/services/jellyfin/library'
@@ -20,7 +24,7 @@ import {
   removeTracksFromPlaylist,
   renamePlaylist,
 } from '@/src/services/jellyfin/playlists'
-import { downloadTrack } from '@/src/offline/downloader'
+import { downloadTracks } from '@/src/offline/downloader'
 import { useLibraryStore } from '@/src/store/library'
 import { useSessionStore } from '@/src/store/session'
 import { usePlayerStore } from '@/src/store/player'
@@ -31,6 +35,7 @@ import { Icon } from '@/src/ui/Icon'
 import { BackButton, MoreButton } from '@/src/ui/NavChrome'
 import { EdgeBackGesture } from '@/src/ui/EdgeBackGesture'
 import {
+  EmptyState,
   ErrorState,
   LoadingState,
   Muted,
@@ -41,8 +46,14 @@ import {
   PlaylistPickerModal,
   presentTrackActions,
 } from '@/src/ui/PlaylistActions'
+import { buildTrackActions } from '@/src/ui/trackActions'
+import { toggleFavoriteItem } from '@/src/services/jellyfin/favoriteToggle'
+import { SegmentControl } from '@/src/ui/SegmentControl'
 import { TrackRow } from '@/src/ui/TrackRow'
 import { colors, motion, radii, scrollUnderChromePad, spacing, typography } from '@/src/theme/tokens'
+
+type ArtistSegment = 'albums' | 'songs'
+const ARTIST_SEGMENTS: readonly ArtistSegment[] = ['albums', 'songs']
 
 const kindLabel = (kind: 'album' | 'artist' | 'playlist'): string => {
   if (kind === 'album') return 'Album'
@@ -98,12 +109,12 @@ const CollectionHero = ({
   title,
   overview,
   trackCount,
+  albumCount,
   durationMs,
   heroArt,
   downloading,
   shuffle,
   isActiveQueue,
-  isPlaying,
   onPlay,
   onShuffle,
   onDownload,
@@ -111,18 +122,22 @@ const CollectionHero = ({
   readonly title: string
   readonly overview?: string
   readonly trackCount: number
+  readonly albumCount?: number
   readonly durationMs: number
   readonly heroArt?: string
   readonly downloading: boolean
   readonly shuffle: boolean
   readonly isActiveQueue: boolean
-  readonly isPlaying: boolean
   readonly onPlay: () => void
   readonly onShuffle: () => void
   readonly onDownload: () => void
 }) => {
+  const isPlaying = usePlayerStore((s) => s.isPlaying)
   const meta = [
     durationMs > 0 ? formatCollectionDuration(durationMs) : undefined,
+    albumCount !== undefined
+      ? `${albumCount} album${albumCount === 1 ? '' : 's'}`
+      : undefined,
     `${trackCount} track${trackCount === 1 ? '' : 's'}`,
   ]
     .filter(Boolean)
@@ -132,7 +147,12 @@ const CollectionHero = ({
   return (
     <View style={styles.hero}>
       {heroArt ? (
-        <Image source={{ uri: heroArt }} style={styles.heroArt} contentFit="cover" />
+        <Image
+          source={{ uri: heroArt }}
+          style={styles.heroArt}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+        />
       ) : (
         <View style={[styles.heroArt, styles.heroFallback]} />
       )}
@@ -195,14 +215,16 @@ export const CollectionScreen = ({
   const refreshPlaylists = useLibraryStore((s) => s.refreshPlaylists)
   const playQueue = usePlayerStore((s) => s.playQueue)
   const enqueueTracks = usePlayerStore((s) => s.enqueueTracks)
+  const playNextTracks = usePlayerStore((s) => s.playNextTracks)
   const togglePlaying = usePlayerStore((s) => s.togglePlaying)
-  const isPlaying = usePlayerStore((s) => s.isPlaying)
   const shuffle = usePlayerStore((s) => s.shuffle)
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle)
   const queueSource = usePlayerStore((s) => s.queueSource)
   const setOfflineIndex = useSettingsStore((s) => s.setOfflineIndex)
   const [collection, setCollection] = useState<LibraryItem | null>(null)
   const [tracks, setTracks] = useState<readonly LibraryItem[]>([])
+  const [albums, setAlbums] = useState<readonly LibraryItem[]>([])
+  const [artistSegment, setArtistSegment] = useState<ArtistSegment>('albums')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
@@ -216,7 +238,7 @@ export const CollectionScreen = ({
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back()
-    else router.replace('/(app)/(tabs)/library')
+    else router.replace('/(app)/(main)/(tabs)/library')
   }, [router])
 
   const load = useCallback(async (opts?: { readonly silent?: boolean }) => {
@@ -227,6 +249,25 @@ export const CollectionScreen = ({
       setLoading(true)
       setError(null)
     }
+
+    if (kind === 'artist') {
+      const [meta, albumResult, songResult] = await Promise.all([
+        fetchItem(context, session.userId, id),
+        fetchAlbumsByArtist(context, session.userId, id),
+        fetchSongsForArtist(context, session.userId, id),
+      ])
+      if (seq !== loadSeq.current) return
+      if (!opts?.silent) setLoading(false)
+      if (!songResult.ok) {
+        if (!opts?.silent) setError(songResult.error.message)
+        return
+      }
+      setAlbums(albumResult.ok ? albumResult.value : [])
+      setTracks(backfillSongArtists(songResult.value, albumResult.ok ? albumResult.value : []))
+      setCollection(meta.ok ? meta.value : null)
+      return
+    }
+
     const [meta, children] = await Promise.all([
       fetchItem(context, session.userId, id),
       kind === 'playlist'
@@ -240,7 +281,13 @@ export const CollectionScreen = ({
       else Alert.alert('Couldn’t refresh playlist', children.error.message)
       return
     }
-    setTracks(children.value)
+    setAlbums([])
+    setTracks(
+      backfillSongArtists(
+        children.value,
+        kind === 'album' && meta.ok ? [meta.value] : [],
+      ),
+    )
     setCollection(meta.ok ? meta.value : null)
   }, [context, session, id, kind])
 
@@ -248,11 +295,74 @@ export const CollectionScreen = ({
     void load()
   }, [load])
 
-  const requireSession = (): boolean => {
+  const buildQueueTracks = useCallback(
+    () =>
+      tracks.map((track) =>
+        toQueueTrack(
+          track,
+          context
+            ? artworkUrl(context, track.imageItemId ?? track.id, track.imageTag, 'hero')
+            : undefined,
+        ),
+      ),
+    [tracks, context],
+  )
+
+  const source = useMemo(
+    () => (id ? ({ kind, id } as const) : null),
+    [kind, id],
+  )
+  const isActiveQueue =
+    !!source &&
+    queueSource?.kind === source.kind &&
+    queueSource.id === source.id
+
+  const playAll = useCallback(() => {
+    const queueTracks = buildQueueTracks()
+    if (queueTracks.length === 0) return
+    if (isActiveQueue) {
+      togglePlaying()
+      return
+    }
+    const startIndex = shuffle
+      ? Math.floor(Math.random() * queueTracks.length)
+      : 0
+    playQueue(queueTracks, startIndex, source)
+  }, [buildQueueTracks, isActiveQueue, togglePlaying, playQueue, source, shuffle])
+
+  const shuffleCollection = useCallback(() => {
+    if (isActiveQueue) {
+      toggleShuffle()
+      return
+    }
+    const queueTracks = buildQueueTracks()
+    if (queueTracks.length === 0) return
+    if (!usePlayerStore.getState().shuffle) {
+      usePlayerStore.getState().toggleShuffle()
+    }
+    const startIndex = Math.floor(Math.random() * queueTracks.length)
+    playQueue(queueTracks, startIndex, source)
+  }, [buildQueueTracks, isActiveQueue, toggleShuffle, playQueue, source])
+
+  const downloadAll = useCallback(() => {
+    if (!context || !session || downloading) return
+    if (Platform.OS === 'web') return
+    const queueTracks = buildQueueTracks()
+    setDownloading(true)
+    void downloadTracks(context, session.userId, queueTracks, 'user')
+      .then(async (result) => {
+        if (result.ok) await setOfflineIndex(result.value)
+      })
+      .finally(() => {
+        setDownloading(false)
+      })
+  }, [context, session, downloading, buildQueueTracks, setOfflineIndex])
+
+  const requireSession = useCallback((): boolean => {
     if (context && session) return true
     Alert.alert('Sign in required', 'Sign in to manage playlists.')
     return false
-  }
+  }, [context, session])
 
   const runRename = async (name: string) => {
     if (!context || !session || !id || mutating) return
@@ -322,22 +432,25 @@ export const CollectionScreen = ({
     ])
   }
 
-  const removeTrack = async (entryId: string) => {
-    if (!context || !session || !id || mutating) return
-    setMutating(true)
-    try {
-      const result = await removeTracksFromPlaylist(context, id, [entryId])
-      if (!result.ok) {
-        Alert.alert('Couldn’t remove track', result.error.message)
-        return
+  const removeTrack = useCallback(
+    async (entryId: string) => {
+      if (!context || !session || !id || mutating) return
+      setMutating(true)
+      try {
+        const result = await removeTracksFromPlaylist(context, id, [entryId])
+        if (!result.ok) {
+          Alert.alert('Couldn’t remove track', result.error.message)
+          return
+        }
+        setTracks((prev) => prev.filter((track) => track.playlistEntryId !== entryId))
+        await load({ silent: true })
+        await refreshPlaylists()
+      } finally {
+        setMutating(false)
       }
-      setTracks((prev) => prev.filter((track) => track.playlistEntryId !== entryId))
-      await load({ silent: true })
-      await refreshPlaylists()
-    } finally {
-      setMutating(false)
-    }
-  }
+    },
+    [context, session, id, mutating, load, refreshPlaylists],
+  )
 
   const addPendingToPlaylist = async (playlistId: string) => {
     if (!context || !session || !pendingTrackId || mutating) return
@@ -382,7 +495,7 @@ export const CollectionScreen = ({
       setCreateFromPicker(false)
       setPendingTrackId(null)
       await refreshPlaylists()
-      router.push(`/(app)/playlist/${result.value}`)
+      router.push(`/(app)/(main)/playlist/${result.value}`)
     } finally {
       setMutating(false)
     }
@@ -398,6 +511,176 @@ export const CollectionScreen = ({
     }
     setPendingTrackId(null)
   }
+
+  const heroArt =
+    context && collection
+      ? artworkUrl(
+          context,
+          collection.imageItemId ?? collection.id,
+          collection.imageTag,
+          'hero',
+        )
+      : undefined
+
+  const onTrackLongPress = useCallback(
+    (item: LibraryItem, index: number) => {
+      const queueTrack = buildQueueTracks()[index]
+      if (!queueTrack) return
+      const extra =
+        kind === 'playlist' && item.playlistEntryId
+          ? ([
+              {
+                text: 'Remove from playlist',
+                style: 'destructive' as const,
+                onPress: () => {
+                  void removeTrack(item.playlistEntryId!)
+                },
+              },
+            ] as const)
+          : undefined
+      presentTrackActions(
+        item.name,
+        buildTrackActions({
+          onPlayNext: () => playNextTracks([queueTrack]),
+          onAddToQueue: () => enqueueTracks([queueTrack]),
+          onAddToPlaylist: () => {
+            if (!requireSession()) return
+            setPendingTrackId(item.id)
+            setCreateFromPicker(false)
+            setPickerOpen(true)
+          },
+          isFavorite: Boolean(item.isFavorite),
+          onToggleFavorite: () => {
+            if (!context || !session) {
+              Alert.alert('Sign in required', 'Sign in to manage favorites.')
+              return
+            }
+            void toggleFavoriteItem({
+              context,
+              userId: session.userId,
+              itemId: item.id,
+              currentlyFavorite: Boolean(item.isFavorite),
+              onLocal: (next) => {
+                setTracks((prev) =>
+                  prev.map((track) =>
+                    track.id === item.id ? { ...track, isFavorite: next } : track,
+                  ),
+                )
+              },
+            })
+          },
+          extra,
+        }),
+      )
+    },
+    [
+      buildQueueTracks,
+      kind,
+      playNextTracks,
+      enqueueTracks,
+      context,
+      session,
+      removeTrack,
+      requireSession,
+    ],
+  )
+
+  const numbered = kind === 'album'
+  const showAlbums = kind === 'artist' && artistSegment === 'albums'
+  const listItems = showAlbums ? albums : tracks
+  const totalDurationMs =
+    collection && collection.durationMs > 0
+      ? collection.durationMs
+      : tracks.reduce((sum, track) => sum + track.durationMs, 0)
+  const artists = collection?.artists.filter(Boolean).join(', ')
+  const overview =
+    collection?.overview ||
+    (kind === 'album' ? artists : undefined) ||
+    undefined
+
+  const listHeader = useMemo(
+    () => (
+      <View>
+        <CollectionHero
+          title={collection?.name ?? kindLabel(kind)}
+          overview={overview}
+          trackCount={tracks.length}
+          albumCount={kind === 'artist' ? albums.length : undefined}
+          durationMs={totalDurationMs}
+          heroArt={heroArt}
+          downloading={downloading}
+          shuffle={shuffle}
+          isActiveQueue={isActiveQueue}
+          onPlay={playAll}
+          onShuffle={shuffleCollection}
+          onDownload={downloadAll}
+        />
+        {kind === 'artist' ? (
+          <SegmentControl
+            values={ARTIST_SEGMENTS}
+            value={artistSegment}
+            onChange={setArtistSegment}
+          />
+        ) : null}
+      </View>
+    ),
+    [
+      collection?.name,
+      kind,
+      overview,
+      tracks.length,
+      albums.length,
+      totalDurationMs,
+      heroArt,
+      downloading,
+      shuffle,
+      isActiveQueue,
+      playAll,
+      shuffleCollection,
+      downloadAll,
+      artistSegment,
+    ],
+  )
+
+  const renderTrack = useCallback(
+    ({ item, index }: { item: LibraryItem; index: number }) => (
+      <TrackRow
+        item={item}
+        index={numbered ? index : undefined}
+        artworkUrl={
+          numbered || !context
+            ? undefined
+            : artworkUrl(
+                context,
+                item.imageItemId ?? item.id,
+                item.imageTag,
+                'thumb',
+              )
+        }
+        onPress={() => {
+          if (showAlbums) {
+            router.push(`/(app)/(main)/album/${item.id}`)
+            return
+          }
+          playQueue(buildQueueTracks(), index, source)
+        }}
+        onLongPress={
+          showAlbums ? undefined : () => onTrackLongPress(item, index)
+        }
+        accessibilityHint={showAlbums ? undefined : 'Long press for track actions'}
+      />
+    ),
+    [
+      numbered,
+      context,
+      showAlbums,
+      router,
+      playQueue,
+      buildQueueTracks,
+      source,
+      onTrackLongPress,
+    ],
+  )
 
   if (loading) {
     return (
@@ -424,104 +707,6 @@ export const CollectionScreen = ({
     )
   }
 
-  const queueTracks = tracks.map((track) =>
-    toQueueTrack(
-      track,
-      context
-        ? artworkUrl(context, track.imageItemId ?? track.id, track.imageTag, 'hero')
-        : undefined,
-    ),
-  )
-
-  const heroArt =
-    context && collection
-      ? artworkUrl(
-          context,
-          collection.imageItemId ?? collection.id,
-          collection.imageTag,
-          'hero',
-        )
-      : undefined
-
-  const source = id ? ({ kind, id } as const) : null
-  const isActiveQueue =
-    !!source &&
-    queueSource?.kind === source.kind &&
-    queueSource.id === source.id
-
-  const playAll = () => {
-    if (queueTracks.length === 0) return
-    if (isActiveQueue) {
-      togglePlaying()
-      return
-    }
-    playQueue(queueTracks, 0, source)
-  }
-
-  const downloadAll = () => {
-    if (!context || !session || downloading) return
-    if (Platform.OS === 'web') return
-    setDownloading(true)
-    void Promise.all(
-      queueTracks.map((track) => downloadTrack(context, session.userId, track, 'user')),
-    )
-      .then(async (results) => {
-        const last = results.find((result) => result.ok)
-        if (last?.ok) await setOfflineIndex(last.value)
-      })
-      .finally(() => {
-        setDownloading(false)
-      })
-  }
-
-  const onTrackLongPress = (item: LibraryItem, index: number) => {
-    const queueTrack = queueTracks[index]
-    if (!queueTrack) return
-    const addAction = {
-      text: 'Add to playlist…',
-      onPress: () => {
-        if (!requireSession()) return
-        setPendingTrackId(item.id)
-        setCreateFromPicker(false)
-        setPickerOpen(true)
-      },
-    }
-    if (kind === 'playlist') {
-      const entryId = item.playlistEntryId
-      presentTrackActions(item.name, [
-        { text: 'Add to queue', onPress: () => enqueueTracks([queueTrack]) },
-        addAction,
-        ...(entryId
-          ? ([
-              {
-                text: 'Remove from playlist',
-                style: 'destructive' as const,
-                onPress: () => {
-                  void removeTrack(entryId)
-                },
-              },
-            ] as const)
-          : []),
-      ])
-      return
-    }
-    presentTrackActions(item.name, [
-      { text: 'Add to queue', onPress: () => enqueueTracks([queueTrack]) },
-      addAction,
-    ])
-  }
-
-  const numbered = kind === 'album'
-  const totalDurationMs =
-    collection && collection.durationMs > 0
-      ? collection.durationMs
-      : tracks.reduce((sum, track) => sum + track.durationMs, 0)
-  const artists = collection?.artists.filter(Boolean).join(', ')
-  const overview =
-    collection?.overview ||
-    (kind === 'album' ? artists : undefined) ||
-    undefined
-
   return (
     <EdgeBackGesture>
       <Screen padBottom={false}>
@@ -532,61 +717,30 @@ export const CollectionScreen = ({
               <MoreButton label="Playlist options" onPress={openPlaylistMenu} />
             ) : null}
           </View>
-          <FlatList
-            data={tracks}
+          <FlashList
+            data={listItems}
             keyExtractor={(item) => item.playlistEntryId ?? item.id}
+            style={styles.flexList}
             showsVerticalScrollIndicator={false}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{
               paddingBottom: scrollUnderChromePad(insets.bottom),
-              gap: spacing.xs,
             }}
-            windowSize={7}
-            maxToRenderPerBatch={8}
-            initialNumToRender={8}
-            removeClippedSubviews={Platform.OS !== 'web'}
-            ListHeaderComponent={
-              <CollectionHero
-                title={collection?.name ?? kindLabel(kind)}
-                overview={overview}
-                trackCount={tracks.length}
-                durationMs={totalDurationMs}
-                heroArt={heroArt}
-                downloading={downloading}
-                shuffle={shuffle}
-                isActiveQueue={isActiveQueue}
-                isPlaying={isPlaying}
-                onPlay={playAll}
-                onShuffle={toggleShuffle}
-                onDownload={downloadAll}
-              />
-            }
+            drawDistance={250}
+            ListHeaderComponent={listHeader}
             ListEmptyComponent={
               <View style={styles.empty}>
-                <Muted>No tracks in this {kind}.</Muted>
+                {showAlbums ? (
+                  <EmptyState
+                    title="No albums"
+                    message="This artist doesn’t have any albums on your server."
+                  />
+                ) : (
+                  <Muted>No tracks in this {kind}.</Muted>
+                )}
               </View>
             }
-            renderItem={({ item, index }) => (
-              <TrackRow
-                item={item}
-                index={numbered ? index : undefined}
-                artworkUrl={
-                  numbered || !context
-                    ? undefined
-                    : artworkUrl(
-                        context,
-                        item.imageItemId ?? item.id,
-                        item.imageTag,
-                        'thumb',
-                      )
-                }
-                onPress={() => {
-                  playQueue(queueTracks, index, source)
-                }}
-                onLongPress={() => onTrackLongPress(item, index)}
-                accessibilityHint="Long press for track actions"
-              />
-            )}
+            renderItem={renderTrack}
           />
         </View>
         <PlaylistNameModal
@@ -637,6 +791,9 @@ export const CollectionScreen = ({
 
 const styles = StyleSheet.create({
   body: {
+    flex: 1,
+  },
+  flexList: {
     flex: 1,
   },
   topBar: {

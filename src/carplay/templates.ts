@@ -11,6 +11,27 @@ export type CarPlayListSection = {
   }[]
 }
 
+export type CarPlayItemAction =
+  | { readonly kind: 'playlist'; readonly id: string }
+  | { readonly kind: 'artist'; readonly id: string }
+  | { readonly kind: 'offline'; readonly id: string }
+
+export const parseCarPlayItemId = (raw: string): CarPlayItemAction | null => {
+  if (raw.startsWith('playlist:')) {
+    const id = raw.slice('playlist:'.length)
+    return id ? { kind: 'playlist', id } : null
+  }
+  if (raw.startsWith('artist:')) {
+    const id = raw.slice('artist:'.length)
+    return id ? { kind: 'artist', id } : null
+  }
+  if (raw.startsWith('offline:')) {
+    const id = raw.slice('offline:'.length)
+    return id ? { kind: 'offline', id } : null
+  }
+  return null
+}
+
 export const buildLibrarySections = (
   playlists: readonly LibraryItem[],
   artists: readonly LibraryItem[],

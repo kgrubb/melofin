@@ -48,5 +48,7 @@ describe('ticks helpers', () => {
     expect(positionTicksSatisfiesListen(msToTicks(240_000), msToTicks(300_000))).toBe(true)
     expect(positionTicksSatisfiesListen(msToTicks(90_000), msToTicks(160_000))).toBe(true)
     expect(positionTicksSatisfiesListen(msToTicks(30_000), msToTicks(300_000))).toBe(false)
+    expect(positionTicksSatisfiesListen(msToTicks(1_000), 0)).toBe(false)
+    expect(positionTicksSatisfiesListen(msToTicks(240_000), 0)).toBe(true)
   })
 })

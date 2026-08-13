@@ -19,35 +19,35 @@ const TABS: readonly {
   readonly title: string
   readonly outline: string
   readonly filled: string
-  readonly href: `/(app)/(tabs)/${TabName}`
+  readonly href: `/(app)/(main)/(tabs)/${TabName}`
 }[] = [
   {
     name: 'home',
     title: 'Home',
     outline: 'house',
     filled: 'house.fill',
-    href: '/(app)/(tabs)/home',
+    href: '/(app)/(main)/(tabs)/home',
   },
   {
     name: 'search',
     title: 'Search',
     outline: 'magnifyingglass',
     filled: 'magnifyingglass',
-    href: '/(app)/(tabs)/search',
+    href: '/(app)/(main)/(tabs)/search',
   },
   {
     name: 'library',
     title: 'Library',
     outline: 'rectangle.stack',
     filled: 'rectangle.stack.fill',
-    href: '/(app)/(tabs)/library',
+    href: '/(app)/(main)/(tabs)/library',
   },
   {
     name: 'downloads',
     title: 'Downloads',
     outline: 'arrow.down.circle',
     filled: 'arrow.down.circle.fill',
-    href: '/(app)/(tabs)/downloads',
+    href: '/(app)/(main)/(tabs)/downloads',
   },
 ]
 

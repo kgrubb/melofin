@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatLibrarySyncButton,
   formatLibrarySyncedAt,
+  formatLibrarySyncProgress,
+  idleSyncProgress,
   librarySectionsEmpty,
+  librarySyncFraction,
   librarySyncModeLabel,
   shouldSyncLibrary,
 } from '@/src/domain/librarySync'
@@ -34,5 +38,51 @@ describe('librarySync', () => {
     ).toBe(true)
     expect(formatLibrarySyncedAt(null)).toBe('Never synced')
     expect(formatLibrarySyncedAt(1_700_000_000_000)).toContain('Last synced')
+  })
+
+  it('formats sync progress for the settings control', () => {
+    expect(formatLibrarySyncButton(false, idleSyncProgress())).toBe('Sync now')
+    expect(
+      formatLibrarySyncProgress({
+        phase: 'collections',
+        songsLoaded: 0,
+        songsTotal: 0,
+      }),
+    ).toBe('Updating collections…')
+    expect(
+      formatLibrarySyncProgress({
+        phase: 'songs',
+        songsLoaded: 250,
+        songsTotal: 1000,
+      }),
+    ).toBe('Songs 250 of 1,000')
+    expect(
+      librarySyncFraction({
+        phase: 'songs',
+        songsLoaded: 250,
+        songsTotal: 1000,
+      }),
+    ).toBe(0.25)
+    expect(
+      formatLibrarySyncButton(true, {
+        phase: 'songs',
+        songsLoaded: 250,
+        songsTotal: 1000,
+      }),
+    ).toBe('Syncing 25%')
+    expect(
+      formatLibrarySyncButton(true, {
+        phase: 'saving',
+        songsLoaded: 1000,
+        songsTotal: 1000,
+      }),
+    ).toBe('Saving…')
+    expect(
+      librarySyncFraction({
+        phase: 'collections',
+        songsLoaded: 0,
+        songsTotal: 0,
+      }),
+    ).toBeNull()
   })
 })

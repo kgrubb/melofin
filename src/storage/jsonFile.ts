@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from 'expo-file-system'
+import { resolveOfflineFileUri as resolveOfflinePath } from '@/src/domain/offline'
 import { appError, err, ok, type Result } from '@/src/domain/result'
 import { logger } from '@/src/logging/logger'
 
@@ -43,9 +44,15 @@ export const writeJsonFile = async (
   const dirResult = await ensureDir()
   if (!dirResult.ok) return dirResult
   try {
-    const file = new File(Paths.document, 'melio', relativePath)
-    file.create({ intermediates: true, overwrite: true })
-    file.write(JSON.stringify(value))
+    const payload = JSON.stringify(value)
+    const temp = new File(Paths.document, 'melio', `${relativePath}.tmp`)
+    temp.create({ intermediates: true, overwrite: true })
+    temp.write(payload)
+    const target = new File(Paths.document, 'melio', relativePath)
+    if (target.exists) {
+      target.delete()
+    }
+    temp.move(target)
     return ok(undefined)
   } catch (cause) {
     logger.error('Failed to write JSON file', { cause })
@@ -67,3 +74,30 @@ export const deleteFile = async (uri: string): Promise<Result<void>> => {
 
 export const audioFilePath = (itemId: string): string =>
   new File(Paths.document, 'melio', 'audio', itemId).uri
+
+export const melioRootUri = (): string => rootDir().uri
+
+/** Sync existence check for a playable offline URI (file:// or absolute). */
+export const offlineAudioExists = (uri: string): boolean => {
+  try {
+    return new File(uri).exists
+  } catch {
+    return false
+  }
+}
+
+/** Resolve a stored offline path (relative under melio/ or legacy absolute) to a file URI. */
+export const resolveOfflineFileUri = (path: string): string =>
+  resolveOfflinePath(path, melioRootUri())
+
+export const deleteAudioCacheDir = async (): Promise<Result<void>> => {
+  try {
+    const dir = new Directory(Paths.document, 'melio', 'audio')
+    if (dir.exists) {
+      dir.delete()
+    }
+    return ok(undefined)
+  } catch (cause) {
+    return err(appError('storage', 'Unable to clear audio cache', cause))
+  }
+}

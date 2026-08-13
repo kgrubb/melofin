@@ -59,4 +59,25 @@ describe('seekPosition guard', () => {
     expect(acceptReportedPosition(idleSeekGuard(), 0, 8000, 0).accept).toBe(false)
     expect(acceptReportedPosition(idleSeekGuard(), 0, 500, 0).accept).toBe(true)
   })
+
+  it('rejects near-zero and large backward jumps without a seek', () => {
+    const nearZero = acceptReportedPosition(idleSeekGuard(), 120, 120_000, 0)
+    expect(nearZero.accept).toBe(false)
+    expect(nearZero.retrySeek).toBe(true)
+    expect(nearZero.guard.targetMs).toBe(120_000)
+
+    const jump = acceptReportedPosition(idleSeekGuard(), 1000, 120_000, 0)
+    expect(jump.accept).toBe(false)
+    expect(jump.retrySeek).toBe(true)
+    expect(jump.guard.targetMs).toBe(120_000)
+
+    expect(acceptReportedPosition(idleSeekGuard(), 118_000, 120_000, 0).accept).toBe(
+      true,
+    )
+  })
+
+  it('rejects stale EOF reports after the UI reset to the start of a track', () => {
+    expect(acceptReportedPosition(idleSeekGuard(), 180_000, 0, 0).accept).toBe(false)
+    expect(acceptReportedPosition(idleSeekGuard(), 100, 0, 0).accept).toBe(true)
+  })
 })

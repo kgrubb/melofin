@@ -2,11 +2,31 @@ export type LibrarySyncMode = 'onOpen' | 'wifiOnly' | 'manual'
 
 export type LibrarySyncTrigger = 'open' | 'manual'
 
+export type LibrarySyncPhase =
+  | 'idle'
+  | 'collections'
+  | 'songs'
+  | 'saving'
+
+export type LibrarySyncProgress = {
+  readonly phase: LibrarySyncPhase
+  readonly songsLoaded: number
+  readonly songsTotal: number
+}
+
 export const LIBRARY_SYNC_MODES: readonly LibrarySyncMode[] = [
   'onOpen',
   'wifiOnly',
   'manual',
 ]
+
+const IDLE_SYNC_PROGRESS: LibrarySyncProgress = {
+  phase: 'idle',
+  songsLoaded: 0,
+  songsTotal: 0,
+}
+
+export const idleSyncProgress = (): LibrarySyncProgress => IDLE_SYNC_PROGRESS
 
 export const librarySyncModeLabel = (mode: LibrarySyncMode): string => {
   if (mode === 'onOpen') return 'On open'
@@ -33,6 +53,44 @@ export const shouldSyncLibrary = ({
 export const formatLibrarySyncedAt = (syncedAt: number | null): string => {
   if (syncedAt === null) return 'Never synced'
   return `Last synced ${new Date(syncedAt).toLocaleString()}`
+}
+
+/** Detail line under the sync control. */
+export const formatLibrarySyncProgress = (
+  progress: LibrarySyncProgress,
+): string => {
+  if (progress.phase === 'collections') return 'Updating collections…'
+  if (progress.phase === 'saving') return 'Saving to device…'
+  if (progress.phase === 'songs') {
+    const loaded = progress.songsLoaded
+    const total = progress.songsTotal
+    if (total > 0) {
+      return `Songs ${loaded.toLocaleString()} of ${total.toLocaleString()}`
+    }
+    if (loaded > 0) return `Songs ${loaded.toLocaleString()}…`
+    return 'Fetching songs…'
+  }
+  return 'Syncing…'
+}
+
+/** 0–1 when song paging has a known total; otherwise null (indeterminate). */
+export const librarySyncFraction = (
+  progress: LibrarySyncProgress,
+): number | null => {
+  if (progress.phase === 'saving') return 1
+  if (progress.phase !== 'songs' || progress.songsTotal <= 0) return null
+  return Math.min(1, progress.songsLoaded / progress.songsTotal)
+}
+
+export const formatLibrarySyncButton = (
+  syncing: boolean,
+  progress: LibrarySyncProgress,
+): string => {
+  if (!syncing) return 'Sync now'
+  if (progress.phase === 'saving') return 'Saving…'
+  const fraction = librarySyncFraction(progress)
+  if (fraction != null) return `Syncing ${Math.round(fraction * 100)}%`
+  return 'Syncing…'
 }
 
 export const librarySectionsEmpty = ({

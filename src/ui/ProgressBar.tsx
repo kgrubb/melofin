@@ -10,7 +10,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated'
-import { scrubPositionFromX, scrubRatio } from '@/src/theme/motionMath'
+import { scrubPositionFromX, scrubRatio, isPlaybackJump } from '@/src/theme/motionMath'
 import { useMotionEnabled } from '@/src/theme/motion'
 import { colors, motion, radii, spacing } from '@/src/theme/tokens'
 
@@ -28,26 +28,34 @@ const usePlaybackProgress = (
   isPlaying: boolean,
 ) => {
   const progress = useSharedValue(scrubRatio(positionMs, durationMs))
-  const lastAnchor = useRef(positionMs)
+  const lastAnchor = useRef({ ms: positionMs, at: Date.now() })
   const wasPlaying = useRef(false)
 
   useEffect(() => {
     const ratio = scrubRatio(positionMs, durationMs)
-    // Engine syncs UI position ~1s — ignore those ticks so the linear fill
+    // Engine syncs UI position ~500ms — ignore those ticks so the linear fill
     // keeps running. Re-anchor on seeks/track jumps or play/pause edges.
-    const jumped = Math.abs(positionMs - lastAnchor.current) > 400
+    const jumped = isPlaybackJump(
+      positionMs,
+      lastAnchor.current.ms,
+      lastAnchor.current.at,
+      Date.now(),
+      wasPlaying.current && isPlaying,
+    )
     const started = isPlaying && !wasPlaying.current
+    const stopped = !isPlaying && wasPlaying.current
     wasPlaying.current = isPlaying
-    lastAnchor.current = positionMs
 
     if (!isPlaying || durationMs <= 0) {
       cancelAnimation(progress)
       progress.value = ratio
+      lastAnchor.current = { ms: positionMs, at: Date.now() }
       return
     }
 
-    if (!started && !jumped) return
+    if (!started && !stopped && !jumped) return
 
+    lastAnchor.current = { ms: positionMs, at: Date.now() }
     cancelAnimation(progress)
     progress.value = ratio
     const remaining = Math.max(0, durationMs - positionMs)
@@ -71,12 +79,20 @@ const useSmoothClock = (
   isPlaying: boolean,
 ): number => {
   const [smoothMs, setSmoothMs] = useState(positionMs)
-  const anchor = useRef({ positionMs, at: 0 })
+  const anchor = useRef({ positionMs, at: Date.now() })
 
   useEffect(() => {
+    const jumped = isPlaybackJump(
+      positionMs,
+      anchor.current.positionMs,
+      anchor.current.at,
+      Date.now(),
+      isPlaying,
+    )
+    if (!jumped && isPlaying) return
     anchor.current = { positionMs, at: Date.now() }
     setSmoothMs(positionMs)
-  }, [positionMs])
+  }, [isPlaying, positionMs])
 
   useEffect(() => {
     if (!isPlaying) {
@@ -92,10 +108,10 @@ const useSmoothClock = (
       setSmoothMs(next)
     }
     tick()
-    // 1Hz is enough for time labels — 250ms was thrashing React under glass.
+    // 1Hz is enough for time labels — do not recreate on engine position ticks.
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
-  }, [durationMs, isPlaying, positionMs])
+  }, [durationMs, isPlaying])
 
   return isPlaying ? smoothMs : positionMs
 }

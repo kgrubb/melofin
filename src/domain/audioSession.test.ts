@@ -3,6 +3,7 @@ import {
   KEEP_AUDIO_SESSION_ACTIVE,
   PLAY_OUTPUT,
   shouldPauseBeforeReplace,
+  sourceIsLoaded,
 } from '@/src/domain/audioSession'
 
 describe('audioSession', () => {
@@ -19,5 +20,11 @@ describe('audioSession', () => {
     expect(shouldPauseBeforeReplace('web')).toBe(true)
     expect(shouldPauseBeforeReplace('ios')).toBe(false)
     expect(shouldPauseBeforeReplace('android')).toBe(false)
+  })
+
+  it('treats only isLoaded as ready (not playing/duration)', () => {
+    expect(sourceIsLoaded({ isLoaded: true })).toBe(true)
+    expect(sourceIsLoaded({ isLoaded: false })).toBe(false)
+    expect(sourceIsLoaded({})).toBe(false)
   })
 })

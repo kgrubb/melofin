@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   FlatList,
@@ -8,21 +8,28 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native'
+import { FlashList, type FlashListRef } from '@shopify/flash-list'
 import Animated from 'react-native-reanimated'
 import { Image } from 'expo-image'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   artworkUrl,
+  fetchMusicGenres,
   toQueueTrack,
   type LibraryItem,
 } from '@/src/services/jellyfin/library'
 import { createPlaylist, addTracksToPlaylist } from '@/src/services/jellyfin/playlists'
+import { materializeQueueTracks, materializeQueueTracksFromPages } from '@/src/services/jellyfin/queueMaterialize'
+import { buildAlphabetIndex, type AlphabetIndexLetter } from '@/src/domain/alphabetIndex'
+import { formatLibrarySyncProgress } from '@/src/domain/librarySync'
 import { playlistStub } from '@/src/domain/playlists'
 import { useSessionStore } from '@/src/store/session'
 import { useLibraryStore } from '@/src/store/library'
 import { usePlayerStore } from '@/src/store/player'
+import { loadAllSongs, loadSongsAfter } from '@/src/storage/libraryDb'
 import { PressableScale, settleEntering, useMotionEnabled } from '@/src/theme/motion'
+import { AlphabetIndex, ALPHABET_INDEX_LIST_INSET } from '@/src/ui/AlphabetIndex'
 import { MoreButton } from '@/src/ui/NavChrome'
 import {
   EmptyState,
@@ -38,28 +45,29 @@ import {
   PlaylistPickerModal,
   presentTrackActions,
 } from '@/src/ui/PlaylistActions'
+import { buildTrackActions } from '@/src/ui/trackActions'
+import {
+  applyLibraryView,
+  LIBRARY_FILTERS,
+  LIBRARY_SORTS,
+  libraryFilterLabel,
+  librarySortLabel,
+} from '@/src/domain/libraryView'
+import { useSettingsStore } from '@/src/store/settings'
+import {
+  markPlayedItem,
+  markUnplayedItem,
+} from '@/src/services/jellyfin/playbackReport'
+import { toggleFavoriteItem } from '@/src/services/jellyfin/favoriteToggle'
 import { SegmentControl } from '@/src/ui/SegmentControl'
-import { TrackRow } from '@/src/ui/TrackRow'
+import { TRACK_ROW_HEIGHT, TrackRow } from '@/src/ui/TrackRow'
 import { colors, motion, radii, scrollUnderChromePad, spacing, typography } from '@/src/theme/tokens'
 
-type Segment = 'songs' | 'albums' | 'artists' | 'playlists'
+type Segment = 'songs' | 'albums' | 'artists' | 'genres' | 'playlists'
 
-const SEGMENTS: readonly Segment[] = ['songs', 'albums', 'artists', 'playlists']
-
-const itemsForSegment = (
-  segment: Segment,
-  cache: {
-    readonly songs: readonly LibraryItem[]
-    readonly albums: readonly LibraryItem[]
-    readonly artists: readonly LibraryItem[]
-    readonly playlists: readonly LibraryItem[]
-  },
-): readonly LibraryItem[] => {
-  if (segment === 'songs') return cache.songs
-  if (segment === 'artists') return cache.artists
-  if (segment === 'playlists') return cache.playlists
-  return cache.albums
-}
+const SEGMENTS: readonly Segment[] = ['songs', 'albums', 'artists', 'genres', 'playlists']
+/** Stable empty list — Zustand selectors must not return a fresh `[]` each call. */
+const EMPTY_LIBRARY_ITEMS: readonly LibraryItem[] = []
 
 const PlaylistCard = ({
   item,
@@ -103,25 +111,193 @@ export default function LibraryScreen() {
   const context = useSessionStore((s) => s.context)
   const session = useSessionStore((s) => s.session)
   const playQueue = usePlayerStore((s) => s.playQueue)
+  const setQueueTracksPreservingPlayback = usePlayerStore(
+    (s) => s.setQueueTracksPreservingPlayback,
+  )
   const enqueueTracks = usePlayerStore((s) => s.enqueueTracks)
-  const songs = useLibraryStore((s) => s.songs)
-  const albums = useLibraryStore((s) => s.albums)
-  const artists = useLibraryStore((s) => s.artists)
-  const playlists = useLibraryStore((s) => s.playlists)
-  const syncing = useLibraryStore((s) => s.syncing)
-  const syncError = useLibraryStore((s) => s.syncError)
-  const hydrated = useLibraryStore((s) => s.hydrated)
-  const syncLibrary = useLibraryStore((s) => s.syncLibrary)
-  const refreshPlaylists = useLibraryStore((s) => s.refreshPlaylists)
-  const upsertPlaylist = useLibraryStore((s) => s.upsertPlaylist)
+  const playNextTracks = usePlayerStore((s) => s.playNextTracks)
   const [segment, setSegment] = useState<Segment>('songs')
   const [nameOpen, setNameOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [seedTrackId, setSeedTrackId] = useState<string | null>(null)
   const [createFromPicker, setCreateFromPicker] = useState(false)
   const [busy, setBusy] = useState(false)
-  const items = itemsForSegment(segment, { songs, albums, artists, playlists })
+  const [genres, setGenres] = useState<readonly LibraryItem[]>([])
+  const [genresLoading, setGenresLoading] = useState(false)
+  const [genresError, setGenresError] = useState<string | null>(null)
+  const songs = useLibraryStore((s) => s.songs)
+  const songsCount = useLibraryStore((s) => s.songsCount)
+  const songsHasMore = useLibraryStore((s) => s.songsHasMore)
+  const loadMoreSongs = useLibraryStore((s) => s.loadMoreSongs)
+  const items = useLibraryStore((s) => {
+    if (segment === 'songs') return s.songs
+    if (segment === 'albums') return s.albums
+    if (segment === 'artists') return s.artists
+    if (segment === 'playlists') return s.playlists
+    return EMPTY_LIBRARY_ITEMS
+  })
+  const playlists = useLibraryStore((s) => s.playlists)
+  const syncing = useLibraryStore((s) => s.syncing)
+  const syncProgress = useLibraryStore((s) => s.syncProgress)
+  const syncError = useLibraryStore((s) => s.syncError)
+  const hydrated = useLibraryStore((s) => s.hydrated)
+  const syncLibrary = useLibraryStore((s) => s.syncLibrary)
+  const refreshPlaylists = useLibraryStore((s) => s.refreshPlaylists)
+  const upsertPlaylist = useLibraryStore((s) => s.upsertPlaylist)
+  const patchFavorite = useLibraryStore((s) => s.patchFavorite)
+  const patchPlayed = useLibraryStore((s) => s.patchPlayed)
+  const librarySort = useSettingsStore((s) => s.librarySort)
+  const libraryFilter = useSettingsStore((s) => s.libraryFilter)
+  const setLibrarySort = useSettingsStore((s) => s.setLibrarySort)
+  const setLibraryFilter = useSettingsStore((s) => s.setLibraryFilter)
+  const displayItems = useMemo(
+    () =>
+      applyLibraryView(
+        segment === 'genres' ? genres : items,
+        librarySort,
+        segment === 'songs' || segment === 'albums' || segment === 'artists'
+          ? libraryFilter
+          : 'all',
+      ),
+    [genres, items, libraryFilter, librarySort, segment],
+  )
   const playlistCardWidth = Math.min(168, (width - spacing.lg * 2 - spacing.md) / 2)
+  const playlistRowHeight =
+    playlistCardWidth + spacing.sm + 40 + 18 + spacing.md
+  const rowsListRef = useRef<FlatList<LibraryItem>>(null)
+  const playlistsListRef = useRef<FlatList<LibraryItem>>(null)
+  const songsListRef = useRef<FlashListRef<LibraryItem>>(null)
+  const alphabetHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [alphabetVisible, setAlphabetVisible] = useState(false)
+  const [songLetterMap, setSongLetterMap] = useState<Readonly<
+    Partial<Record<AlphabetIndexLetter, number>>
+  >>({})
+  const jumpSongsToLetter = useLibraryStore((s) => s.jumpSongsToLetter)
+  const songAlphabetLetters = useLibraryStore((s) => s.songAlphabetLetters)
+  const alphabetMap = useMemo(() => {
+    if (segment === 'songs' && librarySort === 'name' && libraryFilter === 'all') {
+      return songLetterMap
+    }
+    return buildAlphabetIndex(displayItems)
+  }, [displayItems, libraryFilter, librarySort, segment, songLetterMap])
+
+  useEffect(() => {
+    if (segment !== 'songs' || librarySort !== 'name' || libraryFilter !== 'all') {
+      return
+    }
+    let cancelled = false
+    void songAlphabetLetters().then((letters) => {
+      if (cancelled) return
+      const map: Partial<Record<AlphabetIndexLetter, number>> = {}
+      for (const letter of letters) {
+        if (letter === '#' || (letter >= 'A' && letter <= 'Z')) {
+          map[letter as AlphabetIndexLetter] = 0
+        }
+      }
+      setSongLetterMap(map)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [libraryFilter, librarySort, segment, songAlphabetLetters, songsCount])
+
+  const clearAlphabetHide = useCallback(() => {
+    if (!alphabetHideTimer.current) return
+    clearTimeout(alphabetHideTimer.current)
+    alphabetHideTimer.current = null
+  }, [])
+
+  const revealAlphabet = useCallback(() => {
+    clearAlphabetHide()
+    setAlphabetVisible(true)
+  }, [clearAlphabetHide])
+
+  const hideAlphabetSoon = useCallback(() => {
+    clearAlphabetHide()
+    alphabetHideTimer.current = setTimeout(() => {
+      alphabetHideTimer.current = null
+      setAlphabetVisible(false)
+    }, 900)
+  }, [clearAlphabetHide])
+
+  useEffect(() => {
+    clearAlphabetHide()
+    setAlphabetVisible(false)
+  }, [clearAlphabetHide, segment])
+
+  useEffect(() => () => clearAlphabetHide(), [clearAlphabetHide])
+
+  const alphabetScrollProps = {
+    scrollEventThrottle: 16,
+    onScrollBeginDrag: revealAlphabet,
+    onMomentumScrollBegin: revealAlphabet,
+    onScrollEndDrag: hideAlphabetSoon,
+    onMomentumScrollEnd: hideAlphabetSoon,
+  } as const
+
+  const jumpToAlphabetLetter = useCallback(
+    (letter: AlphabetIndexLetter) => {
+      if (alphabetMap[letter] === undefined) return
+      revealAlphabet()
+      hideAlphabetSoon()
+
+      if (segment === 'songs') {
+        if (librarySort !== 'name' || libraryFilter !== 'all') {
+          const index = alphabetMap[letter]
+          if (index === undefined || index < 0) return
+          requestAnimationFrame(() => {
+            void songsListRef.current?.scrollToIndex({
+              index,
+              animated: true,
+              viewPosition: 0,
+            })
+          })
+          return
+        }
+        void jumpSongsToLetter(letter)
+          .then((index) => {
+            if (index == null || index < 0) return
+            requestAnimationFrame(() => {
+              void songsListRef.current?.scrollToIndex({
+                index,
+                animated: true,
+                viewPosition: 0,
+              })
+            })
+          })
+          .catch(() => undefined)
+        return
+      }
+
+      const index = alphabetMap[letter]
+      if (index === undefined || index < 0) return
+
+      // 2-column playlist grid: scrollToIndex + getItemLayout is unreliable.
+      if (segment === 'playlists') {
+        playlistsListRef.current?.scrollToOffset({
+          offset: Math.floor(index / 2) * playlistRowHeight,
+          animated: true,
+        })
+        return
+      }
+
+      rowsListRef.current?.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0,
+      })
+    },
+    [
+      alphabetMap,
+      hideAlphabetSoon,
+      jumpSongsToLetter,
+      libraryFilter,
+      librarySort,
+      playlistRowHeight,
+      revealAlphabet,
+      segment,
+    ],
+  )
 
   const refresh = useCallback(() => {
     void syncLibrary('manual')
@@ -130,6 +306,110 @@ export default function LibraryScreen() {
   useEffect(() => {
     if (!hydrated) void useLibraryStore.getState().hydrate()
   }, [hydrated])
+
+  useEffect(() => {
+    if (segment !== 'genres' || !context || !session) return
+    let cancelled = false
+    const load = async () => {
+      setGenresLoading(true)
+      setGenresError(null)
+      const result = await fetchMusicGenres(context, session.userId)
+      if (cancelled) return
+      if (!result.ok) {
+        setGenresError(result.error.message)
+        setGenres([])
+      } else {
+        setGenres(result.value)
+      }
+      setGenresLoading(false)
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [segment, context, session])
+
+  const heroArtFor = useCallback(
+    (item: LibraryItem) =>
+      context
+        ? artworkUrl(context, item.imageItemId ?? item.id, item.imageTag, 'hero')
+        : undefined,
+    [context],
+  )
+
+  const playSongsFromIndex = useCallback(
+    (index: number, list: readonly LibraryItem[]) => {
+      const seed = list[index]
+      if (!seed) return
+      if (libraryFilter !== 'all') {
+        const tracks = list.map((item) => toQueueTrack(item, heroArtFor(item)))
+        playQueue(tracks, Math.max(0, index))
+        return
+      }
+      playQueue([toQueueTrack(seed, heroArtFor(seed))], 0)
+      const queueGen = usePlayerStore.getState().queueGen
+      const stillThisPlay = () => usePlayerStore.getState().queueGen === queueGen
+      const publishView = (items: readonly LibraryItem[]) => {
+        if (!stillThisPlay()) return
+        const viewed = applyLibraryView(items, librarySort, 'all')
+        setQueueTracksPreservingPlayback(
+          viewed.map((item) => toQueueTrack(item, heroArtFor(item))),
+        )
+      }
+      if (librarySort !== 'name') {
+        if (Platform.OS === 'web') {
+          publishView(songs)
+          return
+        }
+        void loadAllSongs().then(publishView)
+        return
+      }
+      if (Platform.OS === 'web') {
+        if (songs.length <= 1) return
+        const firstSeeded = { published: false }
+        void materializeQueueTracks(songs, heroArtFor, {
+          onChunk: (tracks) => {
+            if (!stillThisPlay()) return
+            if (firstSeeded.published) return
+            if (!tracks.some((track) => track.id === seed.id)) return
+            firstSeeded.published = true
+            setQueueTracksPreservingPlayback(tracks)
+          },
+        }).then((tracks) => {
+          if (!stillThisPlay()) return
+          setQueueTracksPreservingPlayback(tracks)
+        })
+        return
+      }
+      if (songsCount <= 1) return
+      const firstSeeded = { published: false }
+      void materializeQueueTracksFromPages(
+        (cursor, limit) => loadSongsAfter(cursor, limit),
+        heroArtFor,
+        {
+          onChunk: (tracks) => {
+            if (!stillThisPlay()) return
+            if (firstSeeded.published) return
+            if (!tracks.some((track) => track.id === seed.id)) return
+            firstSeeded.published = true
+            setQueueTracksPreservingPlayback(tracks)
+          },
+        },
+      ).then((tracks) => {
+        if (!stillThisPlay()) return
+        setQueueTracksPreservingPlayback(tracks)
+      })
+    },
+    [
+      heroArtFor,
+      libraryFilter,
+      librarySort,
+      playQueue,
+      setQueueTracksPreservingPlayback,
+      songs,
+      songsCount,
+    ],
+  )
 
   const artFor = (item: LibraryItem) =>
     context
@@ -185,7 +465,7 @@ export default function LibraryScreen() {
       setCreateFromPicker(false)
       setSeedTrackId(null)
       await refreshPlaylists()
-      router.push(`/(app)/playlist/${result.value}`)
+      router.push(`/(app)/(main)/playlist/${result.value}`)
     } finally {
       setBusy(false)
     }
@@ -211,29 +491,77 @@ export default function LibraryScreen() {
     }
   }
 
-  const onSongLongPress = (item: LibraryItem, index: number) => {
-    const song = items[index]
-    if (!song) return
+  const onSongLongPress = (item: LibraryItem) => {
     const queueTrack = toQueueTrack(
-      song,
+      item,
       context
-        ? artworkUrl(context, song.imageItemId ?? song.id, song.imageTag, 'hero')
+        ? artworkUrl(context, item.imageItemId ?? item.id, item.imageTag, 'hero')
         : undefined,
     )
-    presentTrackActions(item.name, [
-      {
-        text: 'Add to queue',
-        onPress: () => enqueueTracks([queueTrack]),
-      },
-      {
-        text: 'Add to playlist…',
-        onPress: () => {
+    presentTrackActions(
+      item.name,
+      buildTrackActions({
+        onPlayNext: () => playNextTracks([queueTrack]),
+        onAddToQueue: () => enqueueTracks([queueTrack]),
+        onAddToPlaylist: () => {
           if (!requireSession()) return
           setSeedTrackId(item.id)
           setCreateFromPicker(false)
           setPickerOpen(true)
         },
-      },
+        isFavorite: Boolean(item.isFavorite),
+        onToggleFavorite: () => {
+          if (!context || !session) {
+            Alert.alert('Sign in required', 'Sign in to manage favorites.')
+            return
+          }
+          void toggleFavoriteItem({
+            context,
+            userId: session.userId,
+            itemId: item.id,
+            currentlyFavorite: Boolean(item.isFavorite),
+            onLocal: (next) => patchFavorite(item.id, next),
+          })
+        },
+        isPlayed: Boolean(item.isPlayed),
+        onTogglePlayed: () => {
+          if (!context || !session) {
+            Alert.alert('Sign in required', 'Sign in to update play state.')
+            return
+          }
+          const nextPlayed = !item.isPlayed
+          patchPlayed(item.id, nextPlayed)
+          void (nextPlayed
+            ? markPlayedItem(context, {
+                itemId: item.id,
+                userId: session.userId,
+                datePlayed: new Date().toISOString(),
+              })
+            : markUnplayedItem(context, {
+                itemId: item.id,
+                userId: session.userId,
+              })
+          ).then((result) => {
+            if (!result.ok) {
+              patchPlayed(item.id, Boolean(item.isPlayed))
+              Alert.alert('Couldn’t update', result.error.message)
+            }
+          })
+        },
+      }),
+    )
+  }
+
+  const openViewMenu = () => {
+    presentTrackActions('Library view', [
+      ...LIBRARY_SORTS.map((sort) => ({
+        text: `${librarySort === sort ? '✓ ' : ''}${librarySortLabel(sort)}`,
+        onPress: () => void setLibrarySort(sort),
+      })),
+      ...LIBRARY_FILTERS.map((filter) => ({
+        text: `${libraryFilter === filter ? '✓ ' : ''}${libraryFilterLabel(filter)}`,
+        onPress: () => void setLibraryFilter(filter),
+      })),
     ])
   }
 
@@ -253,6 +581,9 @@ export default function LibraryScreen() {
         <View style={styles.titleText}>
           <Title>Library</Title>
         </View>
+        {segment === 'songs' || segment === 'albums' || segment === 'artists' ? (
+          <MoreButton label="Sort and filter" onPress={openViewMenu} />
+        ) : null}
         {segment === 'playlists' ? (
           <MoreButton
             label="Playlist options"
@@ -261,17 +592,51 @@ export default function LibraryScreen() {
         ) : null}
       </View>
       <SegmentControl values={SEGMENTS} value={segment} onChange={setSegment} />
-      {syncing && items.length === 0 ? <LoadingState label="Syncing library" /> : null}
-      {syncError && items.length === 0 ? (
+      {segment === 'songs' || segment === 'albums' || segment === 'artists' ? (
+        <Muted>
+          {librarySortLabel(librarySort)}
+          {libraryFilter !== 'all' ? ` · ${libraryFilterLabel(libraryFilter)}` : ''}
+        </Muted>
+      ) : null}
+      {syncing && displayItems.length === 0 && songsCount === 0 && segment !== 'genres' ? (
+        <LoadingState label={formatLibrarySyncProgress(syncProgress)} />
+      ) : null}
+      {segment === 'genres' && genresLoading && genres.length === 0 ? (
+        <LoadingState label="Loading genres" />
+      ) : null}
+      {syncError && displayItems.length === 0 && songsCount === 0 && segment !== 'genres' ? (
         <ErrorState message={syncError} onRetry={refresh} />
       ) : null}
-      {!syncing && !syncError && items.length === 0 && segment !== 'playlists' ? (
+      {segment === 'genres' && genresError && genres.length === 0 ? (
+        <ErrorState
+          message={genresError}
+          onRetry={() => {
+            setSegment('genres')
+            setGenresError(null)
+            if (context && session) {
+              void fetchMusicGenres(context, session.userId).then((result) => {
+                if (!result.ok) setGenresError(result.error.message)
+                else setGenres(result.value)
+              })
+            }
+          }}
+        />
+      ) : null}
+      {!syncing &&
+      !syncError &&
+      displayItems.length === 0 &&
+      songsCount === 0 &&
+      segment !== 'playlists' &&
+      segment !== 'genres' ? (
         <EmptyState
           title="Library empty"
           message="Tap Sync library to pull from your Jellyfin server."
         />
       ) : null}
-      {!syncing && !syncError && items.length === 0 && segment === 'playlists' ? (
+      {!genresLoading && !genresError && genres.length === 0 && segment === 'genres' ? (
+        <EmptyState title="No genres" message="Your server didn’t return any music genres." />
+      ) : null}
+      {!syncing && !syncError && displayItems.length === 0 && segment === 'playlists' ? (
         <View style={styles.emptyPlaylists}>
           <EmptyState
             title="No playlists yet"
@@ -280,21 +645,27 @@ export default function LibraryScreen() {
           <GlassButton label="Sync library" onPress={refresh} />
         </View>
       ) : null}
-      {items.length === 0 && !syncing && !syncError && segment !== 'playlists' ? (
+      {displayItems.length === 0 &&
+      songsCount === 0 &&
+      !syncing &&
+      !syncError &&
+      segment !== 'playlists' &&
+      segment !== 'genres' ? (
         <GlassButton label="Sync library" onPress={refresh} />
       ) : null}
-      {items.length > 0 ? (
+      {displayItems.length > 0 || (segment === 'songs' && songsCount > 0) ? (
         <Animated.View
           key={segment}
           entering={settleEntering(enabled)}
           style={styles.listWrap}
         >
-          {syncError ? (
+          {syncError && segment !== 'genres' ? (
             <GlassButton label="Retry sync" onPress={refresh} />
           ) : null}
           {segment === 'playlists' ? (
             <FlatList
-              data={items}
+              ref={playlistsListRef}
+              data={displayItems}
               keyExtractor={(item) => item.id}
               numColumns={2}
               showsVerticalScrollIndicator={false}
@@ -302,70 +673,107 @@ export default function LibraryScreen() {
               columnWrapperStyle={styles.playlistRow}
               contentContainerStyle={[
                 styles.playlistList,
-                { paddingBottom: scrollUnderChromePad(insets.bottom) },
+                {
+                  paddingBottom: scrollUnderChromePad(insets.bottom),
+                  paddingRight: ALPHABET_INDEX_LIST_INSET,
+                },
               ]}
               windowSize={7}
               maxToRenderPerBatch={8}
               initialNumToRender={6}
               removeClippedSubviews={Platform.OS !== 'web'}
+              {...alphabetScrollProps}
               renderItem={({ item }) => (
                 <PlaylistCard
                   item={item}
                   art={artFor(item)}
                   width={playlistCardWidth}
-                  onPress={() => router.push(`/(app)/playlist/${item.id}`)}
+                  onPress={() => router.push(`/(app)/(main)/playlist/${item.id}`)}
                 />
               )}
             />
-          ) : (
-            <FlatList
-              data={items}
+          ) : segment === 'songs' ? (
+            <FlashList
+              ref={songsListRef}
+              data={displayItems}
               keyExtractor={(item) => item.id}
+              style={styles.flex}
               showsVerticalScrollIndicator={false}
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[
-                styles.list,
-                { paddingBottom: scrollUnderChromePad(insets.bottom) },
-              ]}
-              windowSize={7}
-              maxToRenderPerBatch={8}
-              initialNumToRender={6}
-              removeClippedSubviews={Platform.OS !== 'web'}
+              contentContainerStyle={{
+                ...styles.list,
+                paddingBottom: scrollUnderChromePad(insets.bottom),
+                paddingRight: ALPHABET_INDEX_LIST_INSET,
+              }}
+              drawDistance={250}
+              {...alphabetScrollProps}
+              onEndReached={() => {
+                if (songsHasMore) void loadMoreSongs()
+              }}
+              onEndReachedThreshold={0.4}
               renderItem={({ item, index }) => (
                 <TrackRow
                   item={item}
                   artworkUrl={artFor(item)}
                   onPress={() => {
-                    if (segment === 'songs') {
-                      const queue = items.map((song) =>
-                        toQueueTrack(
-                          song,
-                          context
-                            ? artworkUrl(
-                                context,
-                                song.imageItemId ?? song.id,
-                                song.imageTag,
-                                'hero',
-                              )
-                            : undefined,
-                        ),
-                      )
-                      playQueue(queue, index)
-                      return
-                    }
-                    if (segment === 'albums') router.push(`/(app)/album/${item.id}`)
-                    if (segment === 'artists') router.push(`/(app)/artist/${item.id}`)
+                    playSongsFromIndex(index, displayItems)
                   }}
-                  onLongPress={
-                    segment === 'songs' ? () => onSongLongPress(item, index) : undefined
-                  }
-                  accessibilityHint={
-                    segment === 'songs' ? 'Long press for playlist actions' : undefined
-                  }
+                  onLongPress={() => onSongLongPress(item)}
+                  accessibilityHint="Long press for playlist actions"
+                />
+              )}
+            />
+          ) : (
+            <FlatList
+              ref={rowsListRef}
+              data={displayItems}
+              keyExtractor={(item) => item.id}
+              showsVerticalScrollIndicator={false}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.list,
+                {
+                  paddingBottom: scrollUnderChromePad(insets.bottom),
+                  paddingRight: ALPHABET_INDEX_LIST_INSET,
+                },
+              ]}
+              windowSize={7}
+              maxToRenderPerBatch={8}
+              initialNumToRender={6}
+              removeClippedSubviews={Platform.OS !== 'web'}
+              {...alphabetScrollProps}
+              getItemLayout={(_, index) => ({
+                length: TRACK_ROW_HEIGHT,
+                offset: TRACK_ROW_HEIGHT * index,
+                index,
+              })}
+              onScrollToIndexFailed={(info) => {
+                rowsListRef.current?.scrollToOffset({
+                  offset: Math.max(0, info.index * TRACK_ROW_HEIGHT),
+                  animated: true,
+                })
+              }}
+              renderItem={({ item }) => (
+                <TrackRow
+                  item={item}
+                  artworkUrl={artFor(item)}
+                  onPress={() => {
+                    if (segment === 'albums') router.push(`/(app)/(main)/album/${item.id}`)
+                    if (segment === 'artists') router.push(`/(app)/(main)/artist/${item.id}`)
+                    if (segment === 'genres') router.push(`/(app)/(main)/genre/${item.id}`)
+                  }}
                 />
               )}
             />
           )}
+          {displayItems.length > 0 ? (
+            <AlphabetIndex
+              indexMap={alphabetMap}
+              onSelectLetter={jumpToAlphabetLetter}
+              visible={alphabetVisible}
+              safeBottom={insets.bottom}
+            />
+          ) : null}
         </Animated.View>
       ) : null}
       <PlaylistNameModal
@@ -416,6 +824,10 @@ const styles = StyleSheet.create({
   listWrap: {
     flex: 1,
     gap: spacing.sm,
+    position: 'relative',
+  },
+  flex: {
+    flex: 1,
   },
   list: {},
   playlistList: {

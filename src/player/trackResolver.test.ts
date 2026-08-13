@@ -4,7 +4,7 @@ import { resolveTrackSource } from '@/src/player/trackResolver'
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
 
 describe('trackResolver', () => {
-  it('prefers cached files', () => {
+  it('uses cached files when offline', () => {
     const index = upsertEntry(emptyOfflineIndex(), {
       itemId: '1',
       title: 't',
@@ -28,7 +28,130 @@ describe('trackResolver', () => {
     expect(resolved?.uri).toContain('file://')
   })
 
-  it('builds remote urls when online', () => {
+  it('prefers complete cached files when online, with remote fallbacks', () => {
+    const context = {
+      serverUrl: 'https://jf.example',
+      deviceId: 'dev',
+      accessToken: 'token',
+    } as JellyfinContext
+    const index = upsertEntry(emptyOfflineIndex(), {
+      itemId: '42',
+      title: 't',
+      artist: 'a',
+      album: 'b',
+      durationMs: 1,
+      path: 'file:///data/42',
+      sizeBytes: 1,
+      downloadedAt: 1,
+      lastAccessedAt: 1,
+      kind: 'prefetch',
+      complete: true,
+    })
+    const resolved = resolveTrackSource(
+      { id: '42', title: 't', artist: 'a', album: 'b', durationMs: 1 },
+      index,
+      context,
+      'user-1',
+      { fileExists: () => true },
+    )
+    expect(resolved?.fromCache).toBe(true)
+    expect(resolved?.uri).toBe('file:///data/42')
+    expect(resolved?.fallbackUris?.[0]).toContain('/Audio/42/stream.mp3')
+    expect(resolved?.headers?.['X-Emby-Token']).toBe('token')
+    expect(resolved?.timeoutMsByUri[resolved.uri]).toBeGreaterThan(0)
+  })
+
+  it('skips missing cache files and uses remotes immediately', () => {
+    const context = {
+      serverUrl: 'https://jf.example',
+      deviceId: 'dev',
+      accessToken: 'token',
+    } as JellyfinContext
+    const index = upsertEntry(emptyOfflineIndex(), {
+      itemId: '42',
+      title: 't',
+      artist: 'a',
+      album: 'b',
+      durationMs: 1,
+      path: 'file:///data/42',
+      sizeBytes: 1,
+      downloadedAt: 1,
+      lastAccessedAt: 1,
+      kind: 'prefetch',
+      complete: true,
+    })
+    const resolved = resolveTrackSource(
+      { id: '42', title: 't', artist: 'a', album: 'b', durationMs: 1 },
+      index,
+      context,
+      'user-1',
+      { fileExists: () => false },
+    )
+    expect(resolved?.fromCache).toBe(false)
+    expect(resolved?.uri).toContain('/Audio/42/stream.mp3')
+  })
+
+  it('drops remotes when Jellyfin is marked unreachable', () => {
+    const context = {
+      serverUrl: 'https://jf.example',
+      deviceId: 'dev',
+      accessToken: 'token',
+    } as JellyfinContext
+    const index = upsertEntry(emptyOfflineIndex(), {
+      itemId: '42',
+      title: 't',
+      artist: 'a',
+      album: 'b',
+      durationMs: 1,
+      path: 'file:///data/42',
+      sizeBytes: 1,
+      downloadedAt: 1,
+      lastAccessedAt: 1,
+      kind: 'prefetch',
+      complete: true,
+    })
+    const resolved = resolveTrackSource(
+      { id: '42', title: 't', artist: 'a', album: 'b', durationMs: 1 },
+      index,
+      context,
+      'user-1',
+      { jfReachable: false, network: 'cellular', platform: 'ios' },
+    )
+    expect(resolved?.uri).toBe('file:///data/42')
+    expect(resolved?.fallbackUris).toBeUndefined()
+  })
+
+  it('stream-first on web even when a file exists', () => {
+    const context = {
+      serverUrl: 'https://jf.example',
+      deviceId: 'dev',
+      accessToken: 'token',
+    } as JellyfinContext
+    const index = upsertEntry(emptyOfflineIndex(), {
+      itemId: '42',
+      title: 't',
+      artist: 'a',
+      album: 'b',
+      durationMs: 1,
+      path: 'file:///data/42',
+      sizeBytes: 1,
+      downloadedAt: 1,
+      lastAccessedAt: 1,
+      kind: 'user',
+      complete: true,
+    })
+    const resolved = resolveTrackSource(
+      { id: '42', title: 't', artist: 'a', album: 'b', durationMs: 1 },
+      index,
+      context,
+      'user-1',
+      { platform: 'web', jfReachable: true, network: 'wifiLike' },
+    )
+    expect(resolved?.fromCache).toBe(false)
+    expect(resolved?.uri).toContain('/Audio/42/stream.mp3')
+  })
+
+  it('streams remotely when online without a complete cache entry', () => {
     const context = {
       serverUrl: 'https://jf.example',
       deviceId: 'dev',
@@ -41,12 +164,9 @@ describe('trackResolver', () => {
       'user-1',
     )
     expect(resolved?.fromCache).toBe(false)
-    expect(resolved?.uri).toContain('/Audio/42/universal?')
-    expect(resolved?.uri).toContain('api_key=token')
-    expect(resolved?.uri).toContain('flac')
-    expect(resolved?.fallbackUris?.[0]).toContain('/stream.mp3')
+    expect(resolved?.uri).toContain('/Audio/42/stream.mp3')
+    expect(resolved?.fallbackUris?.[0]).toContain('/Audio/42/universal?')
     expect(resolved?.headers?.['X-Emby-Token']).toBe('token')
-    expect(resolved?.playMethod).toBe('DirectPlay')
   })
 
   it('returns null without context and ignores incomplete cache', () => {

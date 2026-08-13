@@ -11,7 +11,12 @@ export const PLAY_OUTPUT = {
 
 /**
  * Web replace() auto-plays if wasPlaying before the element has a source.
- * Native pause()-before-replace races session teardown with the next play().
+ * On native, leave wasPlaying true so replaceCurrentSource resumes after the swap.
  */
 export const shouldPauseBeforeReplace = (platform: string): boolean =>
   platform === 'web'
+
+/** Only `isLoaded` means the current source is ready — never trust playing/duration. */
+export const sourceIsLoaded = (snapshot: {
+  readonly isLoaded?: boolean
+}): boolean => Boolean(snapshot.isLoaded)

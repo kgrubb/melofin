@@ -1,4 +1,5 @@
 import { CarPlay } from 'react-native-carplay'
+import { handleCarPlayItemPress } from '@/src/carplay/actions'
 import { logger } from '@/src/logging/logger'
 import { buildLibrarySections } from '@/src/carplay/templates'
 import { createBrowseTemplate } from '@/src/carplay/nativeTemplates'
@@ -13,6 +14,9 @@ export const registerCarPlay = (
   try {
     const template = createBrowseTemplate(
       buildLibrarySections(playlists, artists, offline),
+      (itemId) => {
+        void handleCarPlayItemPress(itemId)
+      },
     )
     const api = CarPlay as typeof CarPlay & {
       enable?: () => void

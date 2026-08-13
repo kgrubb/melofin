@@ -1,8 +1,12 @@
+import { Platform } from 'react-native'
 import { create } from 'zustand'
 import {
+  idleSyncProgress,
   shouldSyncLibrary,
+  type LibrarySyncProgress,
   type LibrarySyncTrigger,
 } from '@/src/domain/librarySync'
+import { backfillSongArtists } from '@/src/domain/songArtists'
 import {
   removePlaylistItem,
   upsertPlaylistItem,
@@ -12,15 +16,47 @@ import {
   fetchAlbums,
   fetchArtists,
   fetchPlaylists,
-  fetchSongs,
+  fetchSongsCount,
+  fetchSongsSince,
   type LibraryItem,
 } from '@/src/services/jellyfin/library'
+import { fetchSongsProgressive } from '@/src/services/jellyfin/songsSync'
 import { isWifiLikeConnection } from '@/src/services/network'
 import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
 import { readJsonFile, writeJsonFile } from '@/src/storage/jsonFile'
+import {
+  clearLibraryDb,
+  countSongs,
+  loadSongsAfter,
+  loadSongsFromLetter,
+  loadSongAlphabetLetters,
+  loadAllSongs,
+  patchSongUserData,
+  replaceSongs,
+  songCursorOf,
+  upsertSongs,
+  type SongCursor,
+} from '@/src/storage/libraryDb'
 
-const LIBRARY_CACHE_FILE = 'library-cache.json'
+const META_FILE = 'library-meta.json'
+const ALBUMS_FILE = 'library-albums.json'
+const ARTISTS_FILE = 'library-artists.json'
+const PLAYLISTS_FILE = 'library-playlists.json'
+const SONGS_FILE = 'library-songs.json'
+const LEGACY_FILE = 'library-cache.json'
+
+const SONGS_PAGE = 80
+/** Bump when song row mapping changes so delta sync cannot keep stale rows. */
+const SONGS_SCHEMA = 4
+
+type LibraryMeta = {
+  readonly syncedAt: number | null
+  readonly serverUrl: string | null
+  readonly songsCount: number
+  readonly songsSyncedAt: number | null
+  readonly songsSchema?: number
+}
 
 export type LibraryCache = {
   readonly songs: readonly LibraryItem[]
@@ -30,6 +66,13 @@ export type LibraryCache = {
   readonly syncedAt: number | null
   readonly serverUrl: string | null
 }
+
+const emptyMeta = (): LibraryMeta => ({
+  syncedAt: null,
+  serverUrl: null,
+  songsCount: 0,
+  songsSyncedAt: null,
+})
 
 const emptyLibraryCache = (): LibraryCache => ({
   songs: [],
@@ -64,52 +107,216 @@ const fromCacheEntry = (entry: PlaylistCacheEntry): LibraryItem => ({
   overview: entry.overview,
 })
 
-const persistPlaylists = async (
-  state: LibraryCache,
-  playlists: readonly LibraryItem[],
-): Promise<LibraryCache> => {
-  const next: LibraryCache = { ...state, playlists }
-  await writeJsonFile(LIBRARY_CACHE_FILE, next)
+const readSection = async (file: string): Promise<readonly LibraryItem[]> => {
+  const result = await readJsonFile<readonly LibraryItem[]>(file)
+  return result.ok && result.value ? result.value : []
+}
+
+const writeSection = (file: string, items: readonly LibraryItem[]) =>
+  writeJsonFile(file, items)
+
+const readMeta = async (): Promise<LibraryMeta> => {
+  const result = await readJsonFile<LibraryMeta>(META_FILE)
+  return result.ok && result.value ? { ...emptyMeta(), ...result.value } : emptyMeta()
+}
+
+const writeMeta = (meta: LibraryMeta) => writeJsonFile(META_FILE, meta)
+
+const finishMeta = async (
+  serverUrl: string,
+  songsCount: number,
+  songsSyncedAt: number | null,
+  songsSchema = SONGS_SCHEMA,
+): Promise<LibraryMeta> => {
+  const next: LibraryMeta = {
+    syncedAt: Date.now(),
+    serverUrl,
+    songsCount,
+    songsSyncedAt,
+    songsSchema,
+  }
+  await writeMeta(next)
   return next
 }
 
 type LibraryState = LibraryCache & {
   readonly hydrated: boolean
   readonly syncing: boolean
+  readonly syncProgress: LibrarySyncProgress
   readonly syncError: string | null
+  readonly songsCount: number
+  readonly songsCursor: SongCursor | null
+  readonly songsHasMore: boolean
   readonly hydrate: () => Promise<void>
   readonly clearCache: () => Promise<void>
   readonly syncLibrary: (trigger: LibrarySyncTrigger) => Promise<boolean>
   readonly maybeSyncOnOpen: () => Promise<void>
+  readonly loadMoreSongs: () => Promise<void>
+  readonly jumpSongsToLetter: (letter: string) => Promise<number | null>
+  readonly songAlphabetLetters: () => Promise<readonly string[]>
+  readonly refreshSongsWindow: () => Promise<void>
   readonly upsertPlaylist: (item: LibraryItem) => Promise<void>
   readonly removePlaylist: (id: string) => Promise<void>
   readonly refreshPlaylists: () => Promise<boolean>
+  readonly patchFavorite: (itemId: string, isFavorite: boolean) => void
+  readonly patchPlayed: (itemId: string, isPlayed: boolean) => void
+}
+
+const refreshNativeWindow = async (): Promise<{
+  songs: readonly LibraryItem[]
+  songsCount: number
+  songsCursor: SongCursor | null
+  songsHasMore: boolean
+}> => {
+  const songsCount = await countSongs()
+  const songs = await loadSongsAfter(null, SONGS_PAGE)
+  const last = songs[songs.length - 1]
+  return {
+    songs,
+    songsCount,
+    songsCursor: last ? songCursorOf(last) : null,
+    songsHasMore: songs.length < songsCount,
+  }
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   ...emptyLibraryCache(),
   hydrated: false,
   syncing: false,
+  syncProgress: idleSyncProgress(),
   syncError: null,
+  songsCount: 0,
+  songsCursor: null,
+  songsHasMore: false,
   hydrate: async () => {
-    const cached = await readJsonFile<LibraryCache>(LIBRARY_CACHE_FILE)
-    const next =
-      cached.ok && cached.value
-        ? {
-            ...emptyLibraryCache(),
-            ...cached.value,
-            songs: cached.value.songs ?? [],
-            albums: cached.value.albums ?? [],
-            artists: cached.value.artists ?? [],
-            playlists: cached.value.playlists ?? [],
-          }
-        : emptyLibraryCache()
-    set({ ...next, hydrated: true })
+    const legacy = await readJsonFile<LibraryCache>(LEGACY_FILE)
+    if (legacy.ok && legacy.value?.songs?.length) {
+      const cache = legacy.value
+      await Promise.all([
+        writeSection(ALBUMS_FILE, cache.albums ?? []),
+        writeSection(ARTISTS_FILE, cache.artists ?? []),
+        writeSection(PLAYLISTS_FILE, cache.playlists ?? []),
+        writeSection(SONGS_FILE, cache.songs),
+        writeMeta({
+          syncedAt: cache.syncedAt,
+          serverUrl: cache.serverUrl,
+          songsCount: cache.songs.length,
+          songsSyncedAt: cache.syncedAt,
+        }),
+      ])
+      if (Platform.OS !== 'web') await replaceSongs(cache.songs)
+      await writeJsonFile(LEGACY_FILE, emptyLibraryCache())
+    }
+
+    const meta = await readMeta()
+    const [albums, artists, playlists] = await Promise.all([
+      readSection(ALBUMS_FILE),
+      readSection(ARTISTS_FILE),
+      readSection(PLAYLISTS_FILE),
+    ])
+
+    if (Platform.OS === 'web') {
+      const songs = await readSection(SONGS_FILE)
+      set({
+        songs,
+        albums,
+        artists,
+        playlists,
+        syncedAt: meta.syncedAt,
+        serverUrl: meta.serverUrl,
+        songsCount: songs.length,
+        songsCursor: null,
+        songsHasMore: false,
+        hydrated: true,
+      })
+      return
+    }
+
+    const window = await refreshNativeWindow()
+    set({
+      ...window,
+      albums,
+      artists,
+      playlists,
+      syncedAt: meta.syncedAt,
+      serverUrl: meta.serverUrl,
+      hydrated: true,
+    })
   },
   clearCache: async () => {
-    const empty = emptyLibraryCache()
-    await writeJsonFile(LIBRARY_CACHE_FILE, empty)
-    set({ ...empty, syncError: null })
+    await Promise.all([
+      writeSection(ALBUMS_FILE, []),
+      writeSection(ARTISTS_FILE, []),
+      writeSection(PLAYLISTS_FILE, []),
+      writeSection(SONGS_FILE, []),
+      writeMeta(emptyMeta()),
+      clearLibraryDb(),
+    ])
+    set({
+      ...emptyLibraryCache(),
+      songsCount: 0,
+      songsCursor: null,
+      songsHasMore: false,
+      syncing: false,
+      syncProgress: idleSyncProgress(),
+      syncError: null,
+    })
+  },
+  refreshSongsWindow: async () => {
+    if (Platform.OS === 'web') return
+    const window = await refreshNativeWindow()
+    set(window)
+  },
+  loadMoreSongs: async () => {
+    if (Platform.OS === 'web') return
+    const { songsHasMore, songsCursor, songs } = get()
+    if (!songsHasMore || !songsCursor) return
+    const page = await loadSongsAfter(songsCursor, SONGS_PAGE)
+    if (page.length === 0) {
+      set({ songsHasMore: false })
+      return
+    }
+    const last = page[page.length - 1]!
+    const nextSongs = [...songs, ...page]
+    set({
+      songs: nextSongs,
+      songsCursor: songCursorOf(last),
+      songsHasMore: nextSongs.length < get().songsCount,
+    })
+  },
+  songAlphabetLetters: async () => {
+    if (Platform.OS === 'web') {
+      const letters = new Set<string>()
+      for (const song of get().songs) {
+        const ch = song.name.trim().charAt(0).toLocaleUpperCase()
+        letters.add(ch >= 'A' && ch <= 'Z' ? ch : '#')
+      }
+      return [...letters]
+    }
+    return loadSongAlphabetLetters()
+  },
+  jumpSongsToLetter: async (letter) => {
+    const { songs } = get()
+    const inWindow = songs.findIndex((song) => {
+      const ch = song.name.trim().charAt(0).toLocaleUpperCase()
+      const songLetter = ch >= 'A' && ch <= 'Z' ? ch : '#'
+      return songLetter === letter
+    })
+    if (inWindow >= 0) return inWindow
+
+    if (Platform.OS === 'web') return null
+
+    const page = await loadSongsFromLetter(letter, SONGS_PAGE)
+    if (page.length === 0) return null
+    const last = page[page.length - 1]!
+    const cursor = songCursorOf(last)
+    const more = await loadSongsAfter(cursor, 1)
+    set({
+      songs: page,
+      songsCursor: cursor,
+      songsHasMore: more.length > 0,
+    })
+    return 0
   },
   syncLibrary: async (trigger) => {
     if (get().syncing) return false
@@ -131,32 +338,232 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       return false
     }
 
-    set({ syncing: true, syncError: null })
-    const context = session.context
-    const userId = session.session.userId
-    const [songs, albums, artists, playlists] = await Promise.all([
-      fetchSongs(context, userId),
+    const finish = (patch: {
+      readonly syncError?: string | null
+      readonly syncedAt?: number | null
+      readonly serverUrl?: string | null
+      readonly songsCount?: number
+      readonly songs?: readonly LibraryItem[]
+      readonly songsCursor?: SongCursor | null
+      readonly songsHasMore?: boolean
+      readonly albums?: readonly LibraryItem[]
+      readonly artists?: readonly LibraryItem[]
+      readonly playlists?: readonly LibraryItem[]
+    } = {}) =>
+      set({
+        syncing: false,
+        syncProgress: idleSyncProgress(),
+        ...patch,
+      })
+
+    set({
+      syncing: true,
+      syncError: null,
+      syncProgress: { phase: 'collections', songsLoaded: 0, songsTotal: 0 },
+    })
+    const { context } = session
+    const { userId, serverUrl } = session.session
+
+    const [albums, artists, playlists] = await Promise.all([
       fetchAlbums(context, userId),
       fetchArtists(context, userId),
       fetchPlaylists(context, userId),
     ])
-
-    const failed = [songs, albums, artists, playlists].find((result) => !result.ok)
+    const failed = [albums, artists, playlists].find((result) => !result.ok)
     if (failed && !failed.ok) {
-      set({ syncing: false, syncError: failed.error.message })
+      finish({ syncError: failed.error.message })
       return false
     }
 
-    const next: LibraryCache = {
-      songs: songs.ok ? songs.value : [],
-      albums: albums.ok ? albums.value : [],
-      artists: artists.ok ? artists.value : [],
-      playlists: playlists.ok ? playlists.value : [],
-      syncedAt: Date.now(),
-      serverUrl: session.session.serverUrl,
+    const nextAlbums = albums.ok ? albums.value : []
+    const nextArtists = artists.ok ? artists.value : []
+    const nextPlaylists = playlists.ok ? playlists.value : []
+    await Promise.all([
+      writeSection(ALBUMS_FILE, nextAlbums),
+      writeSection(ARTISTS_FILE, nextArtists),
+      writeSection(PLAYLISTS_FILE, nextPlaylists),
+    ])
+    set({ albums: nextAlbums, artists: nextArtists, playlists: nextPlaylists })
+
+    const meta = await readMeta()
+    const countProbe = await fetchSongsCount(context, userId)
+    if (!countProbe.ok) {
+      finish({ syncError: countProbe.error.message })
+      return false
     }
-    await writeJsonFile(LIBRARY_CACHE_FILE, next)
-    set({ ...next, syncing: false, syncError: null })
+
+    const remoteCount = countProbe.value
+    const localCount =
+      Platform.OS === 'web' ? get().songs.length : await countSongs()
+    const { songsSyncedAt } = meta
+    const songsSchemaStale = (meta.songsSchema ?? 0) < SONGS_SCHEMA
+
+    // Delta only when counts match after upsert (strict); else full replace.
+    // Schema bumps always full-replace so mapper fixes rewrite SQLite rows.
+    if (
+      trigger !== 'manual' &&
+      !songsSchemaStale &&
+      songsSyncedAt != null &&
+      localCount > 0
+    ) {
+      set({
+        syncProgress: {
+          phase: 'songs',
+          songsLoaded: 0,
+          songsTotal: remoteCount,
+        },
+      })
+      const delta = await fetchSongsSince(
+        context,
+        userId,
+        new Date(songsSyncedAt).toISOString(),
+      )
+      if (delta.ok) {
+        if (delta.value.length === 0 && remoteCount === localCount) {
+          const nextMeta = await finishMeta(serverUrl, remoteCount, Date.now())
+          finish({
+            syncedAt: nextMeta.syncedAt,
+            serverUrl,
+            songsCount: remoteCount,
+            syncError: null,
+          })
+          return true
+        }
+        if (delta.value.length > 0) {
+          set({
+            syncProgress: {
+              phase: 'saving',
+              songsLoaded: delta.value.length,
+              songsTotal: remoteCount,
+            },
+          })
+          const deltaSongs = backfillSongArtists(delta.value, nextAlbums)
+          if (Platform.OS === 'web') {
+            const byId = new Map(get().songs.map((song) => [song.id, song]))
+            for (const song of deltaSongs) byId.set(song.id, song)
+            const merged = [...byId.values()]
+            await writeSection(SONGS_FILE, merged)
+            if (merged.length === remoteCount) {
+              const nextMeta = await finishMeta(serverUrl, remoteCount, Date.now())
+              finish({
+                songs: merged,
+                songsCount: merged.length,
+                songsCursor: null,
+                songsHasMore: false,
+                syncedAt: nextMeta.syncedAt,
+                serverUrl,
+                syncError: null,
+              })
+              return true
+            }
+          } else {
+            await upsertSongs(deltaSongs)
+            const nextCount = await countSongs()
+            if (nextCount === remoteCount) {
+              const nextMeta = await finishMeta(serverUrl, remoteCount, Date.now())
+              const window = await refreshNativeWindow()
+              finish({
+                ...window,
+                syncedAt: nextMeta.syncedAt,
+                serverUrl,
+                syncError: null,
+              })
+              return true
+            }
+          }
+        }
+      }
+    }
+
+    const songProgress = { lastPct: -1 }
+    const onSongPage = (
+      _page: readonly LibraryItem[],
+      accumulated: number,
+      total: number,
+    ) => {
+      const songsTotal = total > 0 ? total : remoteCount
+      const pct =
+        songsTotal > 0 ? Math.min(100, Math.floor((accumulated / songsTotal) * 100)) : 0
+      // Avoid re-rendering Settings on every page when the percent is unchanged.
+      if (pct === songProgress.lastPct && accumulated < songsTotal) return
+      songProgress.lastPct = pct
+      set({
+        syncProgress: {
+          phase: 'songs',
+          songsLoaded: accumulated,
+          songsTotal,
+        },
+      })
+    }
+
+    if (Platform.OS === 'web') {
+      set({
+        syncProgress: { phase: 'songs', songsLoaded: 0, songsTotal: remoteCount },
+      })
+      const progressive = await fetchSongsProgressive(context, userId, onSongPage)
+      if (!progressive.ok) {
+        finish({ syncError: progressive.error.message })
+        return false
+      }
+      set({
+        syncProgress: {
+          phase: 'saving',
+          songsLoaded: progressive.value.length,
+          songsTotal: progressive.value.length,
+        },
+      })
+      const webSongs = backfillSongArtists(progressive.value, nextAlbums)
+      await writeSection(SONGS_FILE, webSongs)
+      const nextMeta = await finishMeta(serverUrl, webSongs.length, Date.now())
+      finish({
+        songs: webSongs,
+        songsCount: webSongs.length,
+        songsCursor: null,
+        songsHasMore: false,
+        albums: nextAlbums,
+        artists: nextArtists,
+        playlists: nextPlaylists,
+        syncedAt: nextMeta.syncedAt,
+        serverUrl,
+        syncError: null,
+      })
+      return true
+    }
+
+    // Native: replace SQLite only after a successful full pull (rural-safe).
+    set({
+      syncProgress: { phase: 'songs', songsLoaded: 0, songsTotal: remoteCount },
+    })
+    const progressive = await fetchSongsProgressive(context, userId, onSongPage)
+    if (!progressive.ok) {
+      const window = await refreshNativeWindow()
+      finish({
+        ...window,
+        syncError: progressive.error.message,
+      })
+      return false
+    }
+
+    set({
+      syncProgress: {
+        phase: 'saving',
+        songsLoaded: progressive.value.length,
+        songsTotal: progressive.value.length,
+      },
+    })
+    const nativeSongs = backfillSongArtists(progressive.value, nextAlbums)
+    await replaceSongs(nativeSongs)
+    const nextMeta = await finishMeta(serverUrl, nativeSongs.length, Date.now())
+    const window = await refreshNativeWindow()
+    finish({
+      ...window,
+      albums: nextAlbums,
+      artists: nextArtists,
+      playlists: nextPlaylists,
+      syncedAt: nextMeta.syncedAt,
+      serverUrl,
+      syncError: null,
+    })
     return true
   },
   maybeSyncOnOpen: async () => {
@@ -165,6 +572,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const cache = get()
     if (session && cache.serverUrl && cache.serverUrl !== session.serverUrl) {
       await get().clearCache()
+      await useSettingsStore.getState().clearOfflineCache({
+        serverUrl: session.serverUrl,
+        userId: session.userId,
+      })
+    } else if (session) {
+      const { stampOfflineScope } = await import('@/src/offline/downloader')
+      const stamped = await stampOfflineScope(session.serverUrl, session.userId)
+      if (stamped.ok) {
+        await useSettingsStore.getState().setOfflineIndex(stamped.value)
+      }
     }
     await get().syncLibrary('open')
   },
@@ -173,25 +590,51 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       get().playlists.map(asCacheEntry),
       asCacheEntry(item),
     ).map(fromCacheEntry)
-    const next = await persistPlaylists(get(), playlists)
-    set(next)
+    await writeSection(PLAYLISTS_FILE, playlists)
+    set({ playlists })
   },
   removePlaylist: async (id) => {
-    const playlists = removePlaylistItem(get().playlists.map(asCacheEntry), id).map(
-      fromCacheEntry,
-    )
-    const next = await persistPlaylists(get(), playlists)
-    set(next)
+    const playlists = removePlaylistItem(
+      get().playlists.map(asCacheEntry),
+      id,
+    ).map(fromCacheEntry)
+    await writeSection(PLAYLISTS_FILE, playlists)
+    set({ playlists })
   },
   refreshPlaylists: async () => {
     const session = useSessionStore.getState()
-    if (!session.context || !session.session) {
-      return false
-    }
+    if (!session.context || !session.session) return false
     const result = await fetchPlaylists(session.context, session.session.userId)
     if (!result.ok) return false
-    const next = await persistPlaylists(get(), result.value)
-    set({ ...next, syncError: null })
+    await writeSection(PLAYLISTS_FILE, result.value)
+    set({ playlists: result.value, syncError: null })
     return true
+  },
+  patchFavorite: (itemId, isFavorite) => {
+    set((state) => ({
+      songs: state.songs.map((song) =>
+        song.id === itemId ? { ...song, isFavorite } : song,
+      ),
+    }))
+    if (Platform.OS !== 'web') {
+      void patchSongUserData(itemId, { isFavorite })
+    }
+  },
+  patchPlayed: (itemId, isPlayed) => {
+    const lastPlayedMs = isPlayed ? Date.now() : null
+    set((state) => ({
+      songs: state.songs.map((song) =>
+        song.id === itemId
+          ? {
+              ...song,
+              isPlayed,
+              lastPlayedMs: lastPlayedMs ?? undefined,
+            }
+          : song,
+      ),
+    }))
+    if (Platform.OS !== 'web') {
+      void patchSongUserData(itemId, { isPlayed, lastPlayedMs })
+    }
   },
 }))

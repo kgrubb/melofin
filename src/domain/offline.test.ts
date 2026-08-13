@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   applyEvictions,
   emptyOfflineIndex,
+  indexMatchesServer,
+  offlineRelativePath,
   removeEntry,
   selectPrefetchEvictions,
   totalSizeBytes,
@@ -69,5 +71,16 @@ describe('offline index', () => {
       entry('b', 40, 'prefetch', 2),
     )
     expect(selectPrefetchEvictions(index, 10)).toEqual(['a'])
+  })
+
+  it('scopes offline index to server and user', () => {
+    const scoped = emptyOfflineIndex(100, {
+      serverUrl: 'https://a',
+      userId: 'u1',
+    })
+    expect(indexMatchesServer(scoped, 'https://a', 'u1')).toBe(true)
+    expect(indexMatchesServer(scoped, 'https://b', 'u1')).toBe(false)
+    expect(indexMatchesServer(scoped, 'https://a', 'u2')).toBe(false)
+    expect(offlineRelativePath('song-1')).toBe('audio/song-1')
   })
 })

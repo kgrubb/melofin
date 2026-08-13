@@ -9,16 +9,28 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { BlurView } from 'expo-blur'
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect'
+import {
+  GlassContainer,
+  GlassView,
+  isGlassEffectAPIAvailable,
+  isLiquidGlassAvailable,
+  type GlassColorScheme,
+  type GlassStyle,
+  type GlassEffectStyleConfig,
+} from 'expo-glass-effect'
 import { useEffect, useState, type ReactNode } from 'react'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { PressableScale, useMotionEnabled } from '@/src/theme/motion'
-import { colors, gradients, motion, radii } from '@/src/theme/tokens'
+import { colors, gradients, motion, radii, spacing } from '@/src/theme/tokens'
 
-type Props = ViewProps & {
+type GlassProps = ViewProps & {
   readonly children?: ReactNode
   readonly intensity?: number
   readonly contentStyle?: StyleProp<ViewStyle>
+  readonly glassEffectStyle?: GlassStyle | GlassEffectStyleConfig
+  readonly tintColor?: string
+  readonly isInteractive?: boolean
+  readonly colorScheme?: GlassColorScheme
 }
 
 const webGlassStyle = {
@@ -27,17 +39,7 @@ const webGlassStyle = {
   backgroundColor: 'rgba(28, 14, 48, 0.28)',
 } as ViewStyle
 
-/**
- * Floating chrome material (tab bar, mini player, sheet controls).
- * Do not use in the content layer — use `Surface` for cards/rows/forms.
- */
-export const Glass = ({
-  children,
-  style,
-  contentStyle,
-  intensity = Platform.OS === 'web' ? 36 : 18,
-  ...rest
-}: Props) => {
+const useReduceTransparency = (): boolean => {
   const [reduceTransparency, setReduceTransparency] = useState(false)
 
   useEffect(() => {
@@ -53,9 +55,29 @@ export const Glass = ({
     return () => sub?.remove()
   }, [])
 
-  const frame = (
-    <View style={[styles.inner, contentStyle]}>{children}</View>
-  )
+  return reduceTransparency
+}
+
+const nativeLiquidGlass = (): boolean =>
+  Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable()
+
+/**
+ * Floating chrome material (tab bar, mini player, sheet controls).
+ * Do not use in the content layer — use `Surface` for cards/rows/forms.
+ */
+export const Glass = ({
+  children,
+  style,
+  contentStyle,
+  intensity = Platform.OS === 'web' ? 36 : 18,
+  glassEffectStyle = 'regular',
+  tintColor,
+  isInteractive = false,
+  colorScheme = 'dark',
+  ...rest
+}: GlassProps) => {
+  const reduceTransparency = useReduceTransparency()
+  const frame = <View style={[styles.inner, contentStyle]}>{children}</View>
 
   if (reduceTransparency) {
     return (
@@ -79,10 +101,16 @@ export const Glass = ({
     )
   }
 
-  if (isLiquidGlassAvailable()) {
-    // Let system Liquid Glass sample content — avoid paint that mutes the material.
+  if (nativeLiquidGlass()) {
     return (
-      <GlassView style={[styles.shell, style]} {...rest}>
+      <GlassView
+        style={[styles.shell, style]}
+        glassEffectStyle={glassEffectStyle}
+        tintColor={tintColor}
+        isInteractive={isInteractive}
+        colorScheme={colorScheme}
+        {...rest}
+      >
         <View style={[styles.inner, contentStyle]} pointerEvents="box-none">
           {children}
         </View>
@@ -106,6 +134,33 @@ export const Glass = ({
       />
       {frame}
     </View>
+  )
+}
+
+/** Group adjacent glass controls so Liquid Glass morphs as one material. */
+export const GlassCluster = ({
+  children,
+  style,
+  spacing: mergeSpacing = 10,
+  ...rest
+}: ViewProps & {
+  readonly children?: ReactNode
+  readonly spacing?: number
+}) => {
+  const reduceTransparency = useReduceTransparency()
+
+  if (reduceTransparency || !nativeLiquidGlass()) {
+    return (
+      <View style={[styles.clusterFallback, { gap: mergeSpacing }, style]} {...rest}>
+        {children}
+      </View>
+    )
+  }
+
+  return (
+    <GlassContainer spacing={mergeSpacing} style={style} {...rest}>
+      {children}
+    </GlassContainer>
   )
 }
 
@@ -200,6 +255,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(36, 20, 58, 0.94)',
+  },
+  clusterFallback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   inner: {
     pointerEvents: 'box-none',

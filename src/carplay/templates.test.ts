@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildLibrarySections,
+  parseCarPlayItemId,
   tracksFromOffline,
 } from '@/src/carplay/templates'
 
@@ -61,5 +62,18 @@ describe('carplay templates', () => {
         },
       ])[0]?.title,
     ).toBe('Song')
+  })
+
+  it('parses carplay item ids', () => {
+    expect(parseCarPlayItemId('playlist:p1')).toEqual({
+      kind: 'playlist',
+      id: 'p1',
+    })
+    expect(parseCarPlayItemId('artist:a1')).toEqual({ kind: 'artist', id: 'a1' })
+    expect(parseCarPlayItemId('offline:t1')).toEqual({
+      kind: 'offline',
+      id: 't1',
+    })
+    expect(parseCarPlayItemId('nope')).toBeNull()
   })
 })

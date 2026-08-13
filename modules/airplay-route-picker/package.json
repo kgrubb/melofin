@@ -1,0 +1,13 @@
+{
+  "name": "airplay-route-picker",
+  "version": "1.0.0",
+  "description": "AVRoutePickerView Expo module for Melio",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {},
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

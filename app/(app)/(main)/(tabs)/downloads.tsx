@@ -1,22 +1,44 @@
-import { FlatList, Platform, StyleSheet, View } from 'react-native'
+import { Alert, FlatList, Platform, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { toQueueTrack } from '@/src/services/jellyfin/library'
+import { removeDownloadedTrack } from '@/src/offline/downloader'
 import { useSettingsStore } from '@/src/store/settings'
 import { usePlayerStore } from '@/src/store/player'
 import { Body, EmptyState, Muted, Screen, Title } from '@/src/ui/primitives'
 import { Surface } from '@/src/theme/Glass'
 import { PressableScale } from '@/src/theme/motion'
 import { Icon } from '@/src/ui/Icon'
+import { presentTrackActions } from '@/src/ui/PlaylistActions'
 import { colors, motion, radii, scrollUnderChromePad, spacing } from '@/src/theme/tokens'
 import { totalSizeBytes } from '@/src/domain/offline'
 
 export default function DownloadsScreen() {
   const insets = useSafeAreaInsets()
   const offlineIndex = useSettingsStore((s) => s.offlineIndex)
+  const setOfflineIndex = useSettingsStore((s) => s.setOfflineIndex)
   const playQueue = usePlayerStore((s) => s.playQueue)
   const entries = Object.values(offlineIndex.entries).filter((e) => e.complete)
   const used = totalSizeBytes(offlineIndex) / (1024 * 1024 * 1024)
   const budget = offlineIndex.budgetBytes / (1024 * 1024 * 1024)
+
+  const deleteEntry = (itemId: string, title: string) => {
+    Alert.alert('Delete download?', `Remove “${title}” from this device.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          void removeDownloadedTrack(itemId).then((result) => {
+            if (!result.ok) {
+              Alert.alert('Couldn’t delete download', result.error.message)
+              return
+            }
+            void setOfflineIndex(result.value)
+          })
+        },
+      },
+    ])
+  }
 
   return (
     <Screen padBottom={false}>
@@ -46,6 +68,7 @@ export default function DownloadsScreen() {
             <PressableScale
               accessibilityRole="button"
               accessibilityLabel={`Play ${item.title}`}
+              accessibilityHint="Long press to delete download"
               scaleTo={motion.scale.card}
               onPress={() => {
                 playQueue(
@@ -64,6 +87,15 @@ export default function DownloadsScreen() {
                   ],
                   0,
                 )
+              }}
+              onLongPress={() => {
+                presentTrackActions(item.title, [
+                  {
+                    text: 'Delete download',
+                    style: 'destructive',
+                    onPress: () => deleteEntry(item.itemId, item.title),
+                  },
+                ])
               }}
               style={styles.rowPress}
             >
@@ -87,7 +119,6 @@ export default function DownloadsScreen() {
 const styles = StyleSheet.create({
   meter: {
     marginBottom: spacing.md,
-    borderRadius: radii.md,
   },
   meterInner: {
     paddingHorizontal: spacing.md,
@@ -97,20 +128,18 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   rowPress: {
-    marginBottom: spacing.sm,
-  },
-  row: {
     borderRadius: radii.lg,
   },
+  row: {},
   rowInner: {
-    padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
   meta: {
     flex: 1,
-    minWidth: 0,
     gap: 2,
   },
 })

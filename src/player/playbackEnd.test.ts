@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mediaReachedEnd } from '@/src/player/playbackEnd'
+import { effectiveDurationSec, mediaReachedEnd } from '@/src/player/playbackEnd'
 
 describe('mediaReachedEnd', () => {
   it('detects intentional end-of-track', () => {
@@ -38,5 +38,83 @@ describe('mediaReachedEnd', () => {
         durationSec: 120,
       }),
     ).toBe(false)
+  })
+
+  it('uses Jellyfin fallback when native duration is unknown', () => {
+    expect(
+      mediaReachedEnd({
+        isPlayingIntent: true,
+        mediaPlaying: false,
+        currentTimeSec: 179.8,
+        durationSec: 0,
+        fallbackDurationSec: 180,
+        uiPositionMs: 179_500,
+      }),
+    ).toBe(true)
+    expect(
+      mediaReachedEnd({
+        isPlayingIntent: true,
+        mediaPlaying: false,
+        currentTimeSec: 179.8,
+        durationSec: Number.NaN,
+        fallbackDurationSec: 180,
+        uiPositionMs: 179_500,
+      }),
+    ).toBe(true)
+    expect(
+      mediaReachedEnd({
+        isPlayingIntent: true,
+        mediaPlaying: false,
+        currentTimeSec: 90,
+        durationSec: 0,
+        fallbackDurationSec: 180,
+        uiPositionMs: 90_000,
+      }),
+    ).toBe(false)
+  })
+
+  it('rejects stale previous-item time after a skip to a shorter track', () => {
+    expect(
+      mediaReachedEnd({
+        isPlayingIntent: true,
+        mediaPlaying: false,
+        currentTimeSec: 180,
+        durationSec: 0,
+        fallbackDurationSec: 60,
+        uiPositionMs: 0,
+      }),
+    ).toBe(false)
+  })
+
+  it('rejects native EOF while the store was reset for the next track', () => {
+    expect(
+      mediaReachedEnd({
+        isPlayingIntent: true,
+        mediaPlaying: false,
+        currentTimeSec: 180,
+        durationSec: 180,
+        uiPositionMs: 0,
+      }),
+    ).toBe(false)
+  })
+
+  it('does not treat missing durations as end', () => {
+    expect(
+      mediaReachedEnd({
+        isPlayingIntent: true,
+        mediaPlaying: false,
+        currentTimeSec: 10,
+        durationSec: 0,
+      }),
+    ).toBe(false)
+  })
+})
+
+describe('effectiveDurationSec', () => {
+  it('prefers native then fallback', () => {
+    expect(effectiveDurationSec(120, 180)).toBe(120)
+    expect(effectiveDurationSec(0, 180)).toBe(180)
+    expect(effectiveDurationSec(Number.NaN, 180)).toBe(180)
+    expect(effectiveDurationSec(0, 0)).toBe(0)
   })
 })

@@ -1,5 +1,4 @@
 import { Stack } from 'expo-router'
-import { StyleSheet, View } from 'react-native'
 import { colors } from '@/src/theme/tokens'
 
 const collectionOptions = {
@@ -24,6 +23,7 @@ export default function MainLayout() {
       <Stack.Screen name="album/[id]" options={collectionOptions} />
       <Stack.Screen name="artist/[id]" options={collectionOptions} />
       <Stack.Screen name="playlist/[id]" options={collectionOptions} />
+      <Stack.Screen name="genre/[id]" options={collectionOptions} />
     </Stack>
   )
 }

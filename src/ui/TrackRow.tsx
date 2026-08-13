@@ -1,10 +1,13 @@
+import { memo } from 'react'
 import { Image } from 'expo-image'
 import { StyleSheet, Text, View } from 'react-native'
 import type { LibraryItem } from '@/src/services/jellyfin/library'
 import { PressableHighlight } from '@/src/theme/motion'
 import { colors, radii, spacing, typography } from '@/src/theme/tokens'
 
-export const TrackRow = ({
+export const TRACK_ROW_HEIGHT = 64
+
+export const TrackRow = memo(function TrackRow({
   item,
   artworkUrl,
   onPress,
@@ -20,7 +23,7 @@ export const TrackRow = ({
   readonly accessoryLabel?: string
   readonly index?: number
   readonly accessibilityHint?: string
-}) => {
+}) {
   const subtitle =
     item.artists.filter(Boolean).join(', ') || item.album || undefined
   const a11y =
@@ -41,7 +44,13 @@ export const TrackRow = ({
       {index !== undefined ? (
         <Text style={styles.index}>{index + 1}</Text>
       ) : artworkUrl ? (
-        <Image source={{ uri: artworkUrl }} style={styles.art} contentFit="cover" />
+        <Image
+          source={{ uri: artworkUrl }}
+          style={styles.art}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          recyclingKey={item.id}
+        />
       ) : (
         <View style={[styles.art, styles.artFallback]} />
       )}
@@ -58,14 +67,14 @@ export const TrackRow = ({
       {accessoryLabel ? <Text style={styles.accessory}>{accessoryLabel}</Text> : null}
     </PressableHighlight>
   )
-}
+})
 
 const styles = StyleSheet.create({
   row: {
     marginHorizontal: -spacing.xs,
   },
   rowInner: {
-    minHeight: 64,
+    minHeight: TRACK_ROW_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,

@@ -32,7 +32,7 @@ const AuthGate = ({ children }: { readonly children: React.ReactNode }) => {
       return
     }
     if (session && inAuth) {
-      router.replace('/(app)/(tabs)/home')
+      router.replace('/(app)/(main)/(tabs)/home')
     }
   }, [hydrated, session, segments, router])
 

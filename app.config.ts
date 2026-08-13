@@ -20,9 +20,16 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     infoPlist: {
       UIBackgroundModes: ['audio'],
       NSLocalNetworkUsageDescription:
-        'Melio uses the local network to reach your Jellyfin server.',
+        'Melio uses the local network to reach your Jellyfin server and find Cast or AirPlay speakers.',
       // Triggers the Local Network permission prompt on device.
-      NSBonjourServices: ['_http._tcp.', '_jellyfin._tcp.'],
+      NSBonjourServices: [
+        '_expo._tcp',
+        '_http._tcp.',
+        '_jellyfin._tcp.',
+        '_googlecast._tcp.',
+        '_CC1AD845._googlecast._tcp.',
+      ],
+      AVInitialRouteSharingPolicy: 'LongFormAudio',
       // Jellyfin is user-hosted and often plain HTTP on LAN.
       NSAppTransportSecurity: {
         NSAllowsArbitraryLoads: true,
@@ -50,8 +57,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     favicon: './assets/images/favicon.png',
   },
   plugins: [
+    'expo-sqlite',
     'expo-router',
     'expo-secure-store',
+    'react-native-google-cast',
+    './plugins/withPinnedGoogleCast.js',
     [
       'expo-audio',
       {

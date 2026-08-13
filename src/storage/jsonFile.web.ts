@@ -1,3 +1,4 @@
+import { resolveOfflineFileUri as resolveOfflinePath } from '@/src/domain/offline'
 import { appError, err, ok, type Result } from '@/src/domain/result'
 
 const key = (relativePath: string) => `melio.fs.${relativePath}`
@@ -38,3 +39,10 @@ export const deleteFile = async (_uri: string): Promise<Result<void>> =>
   ok(undefined)
 
 export const audioFilePath = (itemId: string): string => `web://melio/audio/${itemId}`
+
+export const melioRootUri = (): string => 'web://melio'
+
+export const resolveOfflineFileUri = (path: string): string =>
+  resolveOfflinePath(path, melioRootUri())
+
+export const deleteAudioCacheDir = async (): Promise<Result<void>> => ok(undefined)

@@ -21,6 +21,8 @@ import {
   PlaylistPickerModal,
   presentTrackActions,
 } from '@/src/ui/PlaylistActions'
+import { buildTrackActions } from '@/src/ui/trackActions'
+import { toggleFavoriteItem } from '@/src/services/jellyfin/favoriteToggle'
 import { TrackRow } from '@/src/ui/TrackRow'
 import { scrollUnderChromePad, spacing } from '@/src/theme/tokens'
 
@@ -43,6 +45,7 @@ export default function SearchScreen() {
   const upsertPlaylist = useLibraryStore((s) => s.upsertPlaylist)
   const playQueue = usePlayerStore((s) => s.playQueue)
   const enqueueTracks = usePlayerStore((s) => s.enqueueTracks)
+  const playNextTracks = usePlayerStore((s) => s.playNextTracks)
   const [term, setTerm] = useState('')
   const [settledTerm, setSettledTerm] = useState('')
   const [results, setResults] = useState<readonly LibraryItem[]>([])
@@ -116,7 +119,7 @@ export default function SearchScreen() {
       setCreateFromPicker(false)
       setPendingTrackId(null)
       await refreshPlaylists()
-      router.push(`/(app)/playlist/${result.value}`)
+      router.push(`/(app)/(main)/playlist/${result.value}`)
     } finally {
       setBusy(false)
     }
@@ -137,20 +140,39 @@ export default function SearchScreen() {
     const hero = context
       ? artworkUrl(context, item.imageItemId ?? item.id, item.imageTag, 'hero')
       : undefined
-    presentTrackActions(item.name, [
-      {
-        text: 'Add to queue',
-        onPress: () => enqueueTracks([toQueueTrack(item, hero)]),
-      },
-      {
-        text: 'Add to playlist…',
-        onPress: () => {
+    const queueTrack = toQueueTrack(item, hero)
+    presentTrackActions(
+      item.name,
+      buildTrackActions({
+        onPlayNext: () => playNextTracks([queueTrack]),
+        onAddToQueue: () => enqueueTracks([queueTrack]),
+        onAddToPlaylist: () => {
           if (!requireSession()) return
           setPendingTrackId(item.id)
           setPickerOpen(true)
         },
-      },
-    ])
+        isFavorite: Boolean(item.isFavorite),
+        onToggleFavorite: () => {
+          if (!context || !session) {
+            Alert.alert('Sign in required', 'Sign in to manage favorites.')
+            return
+          }
+          void toggleFavoriteItem({
+            context,
+            userId: session.userId,
+            itemId: item.id,
+            currentlyFavorite: Boolean(item.isFavorite),
+            onLocal: (next) => {
+              setResults((prev) =>
+                prev.map((row) =>
+                  row.id === item.id ? { ...row, isFavorite: next } : row,
+                ),
+              )
+            },
+          })
+        },
+      }),
+    )
   }
 
   return (
@@ -221,10 +243,10 @@ export default function SearchScreen() {
                       playQueue([toQueueTrack(item, hero)], 0)
                       return
                     }
-                    if (item.type === 'MusicAlbum') router.push(`/(app)/album/${item.id}`)
+                    if (item.type === 'MusicAlbum') router.push(`/(app)/(main)/album/${item.id}`)
                     else if (item.type === 'MusicArtist')
-                      router.push(`/(app)/artist/${item.id}`)
-                    else router.push(`/(app)/playlist/${item.id}`)
+                      router.push(`/(app)/(main)/artist/${item.id}`)
+                    else router.push(`/(app)/(main)/playlist/${item.id}`)
                   }}
                   onLongPress={
                     item.type === 'Audio' ? () => onAudioLongPress(item) : undefined

@@ -51,6 +51,7 @@ export const positionTicksSatisfiesListen = (
   runtimeTicks: number,
 ): boolean => {
   const fourMinutes = msToTicks(4 * 60 * 1000)
-  const halfRuntime = Math.floor(runtimeTicks / 2)
-  return positionTicks >= fourMinutes || positionTicks >= halfRuntime
+  if (positionTicks >= fourMinutes) return true
+  if (runtimeTicks <= 0) return false
+  return positionTicks >= Math.floor(runtimeTicks / 2)
 }

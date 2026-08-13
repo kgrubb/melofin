@@ -4,6 +4,7 @@ import { StyleSheet, Text, View, type View as RNView } from 'react-native'
 import { usePathname, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { usePlayerStore } from '@/src/store/player'
+import { useCastStore } from '@/src/cast/castStore'
 import { AccentGradient } from '@/src/theme/Atmosphere'
 import { Glass } from '@/src/theme/Glass'
 import { PressableScale } from '@/src/theme/motion'
@@ -43,6 +44,7 @@ export const MiniPlayer = () => {
   const nowPlayingOpen = usePlayerStore((s) => s.nowPlayingOpen)
   const setNowPlayingOpen = usePlayerStore((s) => s.setNowPlayingOpen)
   const setMiniPlayerFrame = usePlayerStore((s) => s.setMiniPlayerFrame)
+  const castActive = useCastStore((s) => s.transfer.active.kind !== 'local')
   const onSheet =
     pathname.includes('/settings') || pathname.includes('/queue')
   const covered = nowPlayingOpen || onSheet
@@ -113,9 +115,14 @@ export const MiniPlayer = () => {
             <Text style={styles.title} numberOfLines={1}>
               {track.title}
             </Text>
-            <Text style={styles.artist} numberOfLines={1}>
-              {track.artist}
-            </Text>
+            <View style={styles.artistRow}>
+              <Text style={styles.artist} numberOfLines={1}>
+                {track.artist}
+              </Text>
+              {castActive ? (
+                <Icon name="speaker.wave.2.fill" size={12} tintColor={colors.accent} />
+              ) : null}
+            </View>
           </View>
         </PressableScale>
         <PressableScale
@@ -179,6 +186,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
     justifyContent: 'center',
     gap: 2,
+  },
+  artistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   title: {
     color: colors.text,

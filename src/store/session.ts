@@ -50,6 +50,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   logout: async () => {
     await clearSession()
     set({ session: null, context: null, hydrated: true })
+    void import('@/src/store/player').then(({ usePlayerStore }) => {
+      usePlayerStore.getState().reset()
+    })
   },
   markUnauthorized: async () => {
     logger.warn('401 — clearing session')

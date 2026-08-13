@@ -28,20 +28,8 @@ module.exports = defineConfig([
       'no-restricted-syntax': [
         'error',
         {
-          selector: "VariableDeclaration[kind='let']",
-          message: 'Use const.',
-        },
-        {
-          selector: 'ForStatement',
-          message: 'No for loops.',
-        },
-        {
           selector: 'ForInStatement',
-          message: 'No for...in.',
-        },
-        {
-          selector: 'ForOfStatement',
-          message: 'No for...of.',
+          message: 'No for...in (use Object.keys / entries).',
         },
       ],
     },
@@ -72,6 +60,51 @@ module.exports = defineConfig([
                 'expo-*',
               ],
               message: 'domain must stay pure.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/cast/**/*.{ts,tsx}'],
+    ignores: ['src/cast/**/*.test.ts', 'src/cast/providers/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@/src/player/playlistEngine',
+              message: 'Cast must use outputPolicy, not playlistEngine.',
+            },
+            {
+              name: '@/src/store/library',
+              message: 'Cast must not import library store.',
+            },
+            {
+              name: '@/src/store/session',
+              message: 'Cast must not import session store.',
+            },
+            {
+              name: '@/src/store/settings',
+              message: 'Cast must not import settings store.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/cast/providers/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@/src/player/playlistEngine',
+              message: 'Cast must use outputPolicy, not playlistEngine.',
             },
           ],
         },

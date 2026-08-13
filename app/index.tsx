@@ -3,6 +3,6 @@ import { useSessionStore } from '@/src/store/session'
 
 export default function Index() {
   const session = useSessionStore((s) => s.session)
-  if (session) return <Redirect href="/(app)/(tabs)/home" />
+  if (session) return <Redirect href="/(app)/(main)/(tabs)/home" />
   return <Redirect href="/(auth)/server" />
 }

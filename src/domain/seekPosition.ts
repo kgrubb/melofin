@@ -33,6 +33,12 @@ export const beginSeekGuard = (
 
 const MAX_SEEK_RETRIES = 3
 
+/** Near-start reports that should not wipe a mid-track UI position. */
+const SPURIOUS_START_MS = 500
+const MID_TRACK_MS = 2000
+/** Drop this far toward the start without a seek → likely replace/reset glitch. */
+const BACKWARD_JUMP_MS = 2000
+
 /**
  * Progress polls often keep reporting the pre-seek time (or 0) until the
  * native player settles — accepting those makes the scrubber flash/snap back.
@@ -44,14 +50,44 @@ export const acceptReportedPosition = (
   now: number,
   toleranceMs = 1250,
 ): SeekDecision => {
+  if (!Number.isFinite(reported) || reported < 0) {
+    return {
+      accept: false,
+      positionMs: uiPositionMs,
+      guard,
+      retrySeek: false,
+    }
+  }
+
   if (guard.targetMs == null) {
-    // expo-audio sometimes reports 0 across a replace/seek boundary.
-    if (reported === 0 && uiPositionMs > 2000) {
+    // After goNext the store is at 0 while the prior item may still be at EOF.
+    if (uiPositionMs < SPURIOUS_START_MS && reported > MID_TRACK_MS) {
       return {
         accept: false,
         positionMs: uiPositionMs,
         guard,
         retrySeek: false,
+      }
+    }
+    // Native reset near 0 mid-track — hold UI and re-seek to the known position.
+    if (reported < SPURIOUS_START_MS && uiPositionMs > MID_TRACK_MS) {
+      return {
+        accept: false,
+        positionMs: uiPositionMs,
+        guard: beginSeekGuard(uiPositionMs, now),
+        retrySeek: true,
+      }
+    }
+    // Large unexplained backward jumps (network blip reload that landed near 0).
+    if (
+      uiPositionMs - reported > BACKWARD_JUMP_MS &&
+      reported < uiPositionMs * 0.5
+    ) {
+      return {
+        accept: false,
+        positionMs: uiPositionMs,
+        guard: beginSeekGuard(uiPositionMs, now),
+        retrySeek: true,
       }
     }
     return { accept: true, positionMs: reported, guard, retrySeek: false }

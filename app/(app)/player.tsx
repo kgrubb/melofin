@@ -1,6 +1,7 @@
 import { Image } from 'expo-image'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  Alert,
   BackHandler,
   Pressable,
   StyleSheet,
@@ -8,7 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native'
-import { useNavigation, useRouter } from 'expo-router'
+import { useNavigation, useRouter, type Href } from 'expo-router'
 import {
   Gesture,
   GestureDetector,
@@ -29,6 +30,9 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLibraryStore } from '@/src/store/library'
 import { usePlayerStore } from '@/src/store/player'
+import { useSessionStore } from '@/src/store/session'
+import { useCastStore } from '@/src/cast/castStore'
+import { setActiveVolume, startDiscovery } from '@/src/cast/router'
 import {
   DOCK_REVEAL_PROGRESS,
   EXPANDED_CONTENT_FADE,
@@ -37,12 +41,25 @@ import {
   expandedPlayerFrame,
   fallbackMiniFrame,
 } from '@/src/player/nowPlayingGeometry'
+import { isSleepArmed, remainingMs, SLEEP_PRESETS_MINUTES } from '@/src/domain/sleepTimer'
+import {
+  offlineLyricsRelativePath,
+  sanitizeLyricsPayload,
+  type LyricsPayload,
+} from '@/src/domain/lyrics'
+import { toggleFavoriteItem } from '@/src/services/jellyfin/favoriteToggle'
+import { fetchLyrics } from '@/src/services/jellyfin/library'
 import { AccentGradient } from '@/src/theme/Atmosphere'
+import { Glass, GlassCluster } from '@/src/theme/Glass'
 import { IconButton, PressableScale } from '@/src/theme/motion'
 import { AppErrorBoundary } from '@/src/ui/AppErrorBoundary'
 import { Icon } from '@/src/ui/Icon'
+import { LyricsPanel } from '@/src/ui/LyricsPanel'
+import { presentTrackActions } from '@/src/ui/PlaylistActions'
 import { ScrubBar } from '@/src/ui/ProgressBar'
 import { colors, motion, radii, spacing, typography } from '@/src/theme/tokens'
+import { useSettingsStore } from '@/src/store/settings'
+import { readJsonFile } from '@/src/storage/jsonFile'
 
 const DISMISS_DISTANCE = motion.sheet.dismissDistance
 const DISMISS_PROGRESS = motion.sheet.dismissProgress
@@ -96,10 +113,90 @@ export default function PlayerScreen() {
   const goNext = usePlayerStore((s) => s.goNext)
   const togglePlaying = usePlayerStore((s) => s.togglePlaying)
   const setNowPlayingOpen = usePlayerStore((s) => s.setNowPlayingOpen)
+  const sleep = usePlayerStore((s) => s.sleep)
+  const setSleepMinutes = usePlayerStore((s) => s.setSleepMinutes)
+  const setSleepEndOfTrack = usePlayerStore((s) => s.setSleepEndOfTrack)
+  const clearSleep = usePlayerStore((s) => s.clearSleep)
   const measuredMini = usePlayerStore((s) => s.miniPlayerFrame)
+  const activeOutput = useCastStore((s) => s.transfer.active)
+  const volumeSupported = useCastStore((s) => s.volumeSupported)
+  const volume = useCastStore((s) => s.volume)
+  const setSheetOpen = useCastStore((s) => s.setSheetOpen)
   const libraryArtists = useLibraryStore((s) => s.artists)
   const libraryAlbums = useLibraryStore((s) => s.albums)
-  const pendingHref = useRef<string | null>(null)
+  const context = useSessionStore((s) => s.context)
+  const session = useSessionStore((s) => s.session)
+  const offlineLyricsPath = useSettingsStore(
+    (s) => (track ? s.offlineIndex.entries[track.id]?.lyricsPath : undefined),
+  )
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  const pendingHref = useRef<Href | null>(null)
+  const [lyricsOpen, setLyricsOpen] = useState(false)
+  const [lyrics, setLyrics] = useState<LyricsPayload | null>(null)
+  const [lyricsStatus, setLyricsStatus] = useState<
+    'idle' | 'loading' | 'ready' | 'empty' | 'error'
+  >('idle')
+  /** Square art sized to the smaller of the hero slot’s width/height. */
+  const [artSide, setArtSide] = useState(0)
+
+  useEffect(() => {
+    if (!isSleepArmed(sleep) || sleep.deadlineMs === null) return
+    const id = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [sleep])
+
+  useEffect(() => {
+    setLyricsOpen(false)
+    setLyrics(null)
+    setLyricsStatus('idle')
+  }, [track?.id])
+
+  useEffect(() => {
+    if (!lyricsOpen || !track) return
+    let cancelled = false
+    const load = async () => {
+      setLyricsStatus('loading')
+      if (offlineLyricsPath) {
+        const relative = offlineLyricsPath.startsWith('lyrics/')
+          ? offlineLyricsPath
+          : offlineLyricsRelativePath(track.id)
+        const cached = await readJsonFile<LyricsPayload>(relative)
+        if (cancelled) return
+        if (cached.ok && cached.value && cached.value.lines.length > 0) {
+          const cleaned = sanitizeLyricsPayload(cached.value)
+          if (cleaned.lines.length > 0) {
+            setLyrics(cleaned)
+            setLyricsStatus('ready')
+            return
+          }
+        }
+      }
+      if (!context) {
+        setLyrics(null)
+        setLyricsStatus('empty')
+        return
+      }
+      const result = await fetchLyrics(context, track.id)
+      if (cancelled) return
+      if (!result.ok) {
+        setLyrics(null)
+        setLyricsStatus('error')
+        return
+      }
+      const cleaned = sanitizeLyricsPayload(result.value)
+      if (cleaned.lines.length === 0) {
+        setLyrics(cleaned)
+        setLyricsStatus('empty')
+        return
+      }
+      setLyrics(cleaned)
+      setLyricsStatus('ready')
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [lyricsOpen, track, context, offlineLyricsPath])
 
   const from = measuredMini ?? fallbackMiniFrame(width, height, insets.bottom)
   const to = expandedPlayerFrame(width, height, insets.top, insets.bottom)
@@ -181,7 +278,7 @@ export default function PlayerScreen() {
       const href = pendingHref.current
       pendingHref.current = null
       if (router.canGoBack()) router.back()
-      else router.replace('/(app)/(tabs)/home')
+      else router.replace('/(app)/(main)/(tabs)/home')
       if (href) {
         // Push after the modal finishes leaving so collection opens under chrome.
         setTimeout(() => {
@@ -210,7 +307,7 @@ export default function PlayerScreen() {
   }, [finishDismiss, reduceMotion])
 
   const openAfterDismiss = useCallback(
-    (href: string) => {
+    (href: Href) => {
       pendingHref.current = href
       animateClosed()
     },
@@ -226,7 +323,7 @@ export default function PlayerScreen() {
         return primary != null && artist.name === primary
       })?.id
     if (!artistId) return
-    openAfterDismiss(`/(app)/artist/${artistId}`)
+    openAfterDismiss(`/(app)/(main)/artist/${artistId}`)
   }, [libraryArtists, openAfterDismiss, track])
 
   const openAlbum = useCallback(() => {
@@ -235,7 +332,7 @@ export default function PlayerScreen() {
       track.albumId ??
       libraryAlbums.find((album) => album.name === track.album)?.id
     if (!albumId) return
-    openAfterDismiss(`/(app)/album/${albumId}`)
+    openAfterDismiss(`/(app)/(main)/album/${albumId}`)
   }, [libraryAlbums, openAfterDismiss, track])
 
   useAnimatedReaction(
@@ -407,7 +504,42 @@ export default function PlayerScreen() {
       ? libraryAlbums.find((album) => album.name === track.album)?.id
       : undefined)
 
+  const sleepArmed = isSleepArmed(sleep)
+  const sleepRemaining = remainingMs(sleep, nowTick)
+  const sleepLabel = sleep.endOfTrack
+    ? 'End'
+    : sleepArmed
+      ? `${Math.max(1, Math.ceil(sleepRemaining / 60_000))}m`
+      : null
+
+  const openSleepMenu = () => {
+    presentTrackActions('Sleep timer', [
+      ...SLEEP_PRESETS_MINUTES.map((minutes) => ({
+        text: `${minutes} minutes`,
+        onPress: () => setSleepMinutes(minutes),
+      })),
+      { text: 'End of track', onPress: () => setSleepEndOfTrack() },
+      ...(sleepArmed
+        ? [{ text: 'Turn off timer', style: 'destructive' as const, onPress: () => clearSleep() }]
+        : []),
+    ])
+  }
+
+  const onToggleFavorite = () => {
+    if (!context || !session || !track) {
+      Alert.alert('Sign in required', 'Sign in to manage favorites.')
+      return
+    }
+    void toggleFavoriteItem({
+      context,
+      userId: session.userId,
+      itemId: track.id,
+      currentlyFavorite: Boolean(track.isFavorite),
+    })
+  }
+
   return (
+    <>
     <GestureHandlerRootView
       style={styles.root}
       accessibilityViewIsModal
@@ -470,118 +602,261 @@ export default function PlayerScreen() {
                   <View style={styles.handle} />
                 </View>
 
-                <View style={styles.artWrap}>
-                  {track.artworkUrl ? (
-                    <Image
-                      source={{ uri: track.artworkUrl }}
-                      style={styles.art}
-                      contentFit="cover"
-                      cachePolicy="memory-disk"
-                      priority="high"
-                    />
-                  ) : (
-                    <View style={[styles.art, styles.artFallback]} />
-                  )}
-                </View>
-
-                <View style={styles.meta}>
-                  <Text style={styles.title} numberOfLines={2}>
-                    {track.title}
-                  </Text>
-                  <PressableScale
-                    accessibilityRole="link"
-                    accessibilityLabel={`Open artist ${track.artist}`}
-                    disabled={!resolvedArtistId}
-                    onPress={openArtist}
-                    scaleTo={0.98}
-                    style={styles.metaLink}
-                  >
-                    <Text style={styles.artist} numberOfLines={1}>
-                      {track.artist}
-                    </Text>
-                  </PressableScale>
-                  {track.album ? (
-                    <PressableScale
-                      accessibilityRole="link"
-                      accessibilityLabel={`Open album ${track.album}`}
-                      disabled={!resolvedAlbumId}
-                      onPress={openAlbum}
-                      scaleTo={0.98}
-                      style={styles.metaLink}
+                <View style={styles.body}>
+                  <View style={styles.hero}>
+                    <View
+                      style={styles.artSlot}
+                      onLayout={(event) => {
+                        const { width: slotW, height: slotH } = event.nativeEvent.layout
+                        const next = Math.floor(Math.max(0, Math.min(slotW, slotH)))
+                        setArtSide((prev) => (prev === next ? prev : next))
+                      }}
                     >
-                      <Text style={styles.album} numberOfLines={1}>
-                        {track.album}
-                      </Text>
-                    </PressableScale>
-                  ) : null}
-                </View>
-
-                <View style={styles.stage}>
-                  <PlayerProgress durationMs={track.durationMs} />
-
-                  <View style={styles.dock}>
-                    <View style={styles.secondaryRow}>
-                      <IconButton accessibilityLabel="Shuffle" onPress={toggleShuffle}>
-                        <Icon
-                          name="shuffle"
-                          tintColor={shuffle ? colors.accent : colors.textSecondary}
-                          size={20}
-                        />
-                      </IconButton>
-                      <IconButton accessibilityLabel="Repeat" onPress={cycleRepeat}>
-                        <Icon
-                          name={repeat === 'one' ? 'repeat.1' : 'repeat'}
-                          tintColor={
-                            repeat === 'off' ? colors.textSecondary : colors.accent
-                          }
-                          size={20}
-                        />
-                      </IconButton>
-                      <IconButton
-                        accessibilityLabel="Open queue"
-                        onPress={() => router.push('/(app)/queue')}
+                      <View
+                        style={[
+                          styles.artWrap,
+                          artSide > 0 ? { width: artSide, height: artSide } : null,
+                        ]}
                       >
-                        <Icon
-                          name="rectangle.stack.fill"
-                          tintColor={colors.textSecondary}
-                          size={20}
-                        />
-                      </IconButton>
+                        {lyricsOpen ? (
+                          <LyricsPanel
+                            lyrics={lyrics}
+                            status={
+                              lyricsStatus === 'idle' || lyricsStatus === 'loading'
+                                ? 'loading'
+                                : lyricsStatus === 'ready'
+                                  ? 'ready'
+                                  : lyricsStatus === 'error'
+                                    ? 'error'
+                                    : 'empty'
+                            }
+                            reduceMotion={Boolean(reduceMotion)}
+                          />
+                        ) : track.artworkUrl ? (
+                          <Image
+                            source={{ uri: track.artworkUrl }}
+                            style={styles.art}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
+                            priority="high"
+                          />
+                        ) : (
+                          <View style={[styles.art, styles.artFallback]} />
+                        )}
+                      </View>
                     </View>
 
-                    <View style={styles.transport}>
-                      <IconButton
-                        accessibilityLabel="Previous"
-                        onPress={goPrevious}
-                        size={56}
-                        hitSlop={12}
+                    <View style={styles.meta}>
+                      <Text style={styles.title} numberOfLines={2}>
+                        {track.title}
+                      </Text>
+                      <PressableScale
+                        accessibilityRole="link"
+                        accessibilityLabel={`Open artist ${track.artist}`}
+                        disabled={!resolvedArtistId}
+                        onPress={openArtist}
+                        scaleTo={0.98}
+                        style={styles.metaLink}
                       >
-                        <Icon name="backward.fill" tintColor={colors.text} size={30} />
-                      </IconButton>
+                        <Text style={styles.artist} numberOfLines={1}>
+                          {track.artist}
+                        </Text>
+                      </PressableScale>
+                      {track.album ? (
+                        <PressableScale
+                          accessibilityRole="link"
+                          accessibilityLabel={`Open album ${track.album}`}
+                          disabled={!resolvedAlbumId}
+                          onPress={openAlbum}
+                          scaleTo={0.98}
+                          style={styles.metaLink}
+                        >
+                          <Text style={styles.album} numberOfLines={1}>
+                            {track.album}
+                          </Text>
+                        </PressableScale>
+                      ) : null}
+                      {activeOutput.kind !== 'local' ? (
+                        <Text
+                          style={styles.playingOn}
+                          accessibilityLabel={`Playing on ${activeOutput.name}`}
+                          numberOfLines={1}
+                        >
+                          Playing on {activeOutput.name}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  <View style={styles.stage}>
+                    <PlayerProgress durationMs={track.durationMs} />
+                    <GlassCluster style={styles.accessoryRow} spacing={8}>
                       <PressableScale
                         accessibilityRole="button"
-                        accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
-                        onPress={togglePlaying}
-                        style={styles.playPress}
-                        hitSlop={8}
+                        accessibilityLabel={
+                          track.isFavorite ? 'Unfavorite' : 'Favorite'
+                        }
+                        scaleTo={motion.scale.button}
+                        onPress={onToggleFavorite}
                       >
-                        <AccentGradient style={styles.playButton}>
+                        <Glass
+                          style={styles.accessoryChip}
+                          contentStyle={styles.accessoryInner}
+                          isInteractive
+                        >
                           <Icon
-                            name={isPlaying ? 'pause.fill' : 'play.fill'}
-                            tintColor={colors.onAccent}
-                            size={28}
-                            weight="semibold"
+                            name={track.isFavorite ? 'heart.fill' : 'heart'}
+                            tintColor={track.isFavorite ? colors.accent : colors.text}
+                            size={20}
                           />
-                        </AccentGradient>
+                        </Glass>
                       </PressableScale>
-                      <IconButton
-                        accessibilityLabel="Next"
-                        onPress={goNext}
-                        size={56}
-                        hitSlop={12}
+                      {track.hasLyrics !== false ? (
+                        <PressableScale
+                          accessibilityRole="button"
+                          accessibilityLabel={lyricsOpen ? 'Hide lyrics' : 'Show lyrics'}
+                          scaleTo={motion.scale.button}
+                          onPress={() => setLyricsOpen((open) => !open)}
+                        >
+                          <Glass
+                            style={styles.accessoryChip}
+                            contentStyle={styles.accessoryInner}
+                            isInteractive
+                          >
+                            <Icon
+                              name="quote.bubble"
+                              tintColor={lyricsOpen ? colors.accent : colors.text}
+                              size={20}
+                            />
+                          </Glass>
+                        </PressableScale>
+                      ) : null}
+                      <PressableScale
+                        accessibilityRole="button"
+                        accessibilityLabel="Sleep timer"
+                        scaleTo={motion.scale.button}
+                        onPress={openSleepMenu}
                       >
-                        <Icon name="forward.fill" tintColor={colors.text} size={30} />
-                      </IconButton>
+                        <Glass
+                          style={styles.accessoryChip}
+                          contentStyle={styles.accessoryInner}
+                          isInteractive
+                        >
+                          <Icon
+                            name="moon.zzz"
+                            tintColor={sleepArmed ? colors.accent : colors.text}
+                            size={20}
+                          />
+                          {sleepLabel ? (
+                            <Text style={styles.accessoryLabel}>{sleepLabel}</Text>
+                          ) : null}
+                        </Glass>
+                      </PressableScale>
+                    </GlassCluster>
+                    {volumeSupported ? (
+                      <View style={styles.volumeRow}>
+                        <Icon name="speaker.wave.2" size={16} tintColor={colors.textSecondary} />
+                        <Pressable
+                          accessibilityRole="adjustable"
+                          accessibilityLabel="Volume"
+                          style={styles.volumeTrack}
+                          onPress={(event) => {
+                            const width = event.nativeEvent.locationX
+                            const next = Math.max(0, Math.min(1, width / 200))
+                            void setActiveVolume(next)
+                          }}
+                        >
+                          <View
+                            style={[
+                              styles.volumeFill,
+                              { width: `${Math.round((volume ?? 0.7) * 100)}%` },
+                            ]}
+                          />
+                        </Pressable>
+                      </View>
+                    ) : null}
+
+                    <View style={styles.dock}>
+                      <View style={styles.secondaryRow}>
+                        <IconButton accessibilityLabel="Shuffle" onPress={toggleShuffle}>
+                          <Icon
+                            name="shuffle"
+                            tintColor={shuffle ? colors.accent : colors.textSecondary}
+                            size={20}
+                          />
+                        </IconButton>
+                        <IconButton accessibilityLabel="Repeat" onPress={cycleRepeat}>
+                          <Icon
+                            name={repeat === 'one' ? 'repeat.1' : 'repeat'}
+                            tintColor={
+                              repeat === 'off' ? colors.textSecondary : colors.accent
+                            }
+                            size={20}
+                          />
+                        </IconButton>
+                        <IconButton
+                          accessibilityLabel="Devices"
+                          onPress={() => {
+                            startDiscovery()
+                            setSheetOpen(true)
+                          }}
+                        >
+                          <Icon
+                            name="speaker.wave.2.fill"
+                            tintColor={
+                              activeOutput.kind !== 'local'
+                                ? colors.accent
+                                : colors.textSecondary
+                            }
+                            size={20}
+                          />
+                        </IconButton>
+                        <IconButton
+                          accessibilityLabel="Open queue"
+                          onPress={() => router.push('/(app)/queue')}
+                        >
+                          <Icon
+                            name="rectangle.stack.fill"
+                            tintColor={colors.textSecondary}
+                            size={20}
+                          />
+                        </IconButton>
+                      </View>
+
+                      <View style={styles.transport}>
+                        <IconButton
+                          accessibilityLabel="Previous"
+                          onPress={goPrevious}
+                          size={56}
+                          hitSlop={12}
+                        >
+                          <Icon name="backward.fill" tintColor={colors.text} size={30} />
+                        </IconButton>
+                        <PressableScale
+                          accessibilityRole="button"
+                          accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+                          onPress={togglePlaying}
+                          style={styles.playPress}
+                          hitSlop={8}
+                        >
+                          <AccentGradient style={styles.playButton}>
+                            <Icon
+                              name={isPlaying ? 'pause.fill' : 'play.fill'}
+                              tintColor={colors.onAccent}
+                              size={28}
+                              weight="semibold"
+                            />
+                          </AccentGradient>
+                        </PressableScale>
+                        <IconButton
+                          accessibilityLabel="Next"
+                          onPress={goNext}
+                          size={56}
+                          hitSlop={12}
+                        >
+                          <Icon name="forward.fill" tintColor={colors.text} size={30} />
+                        </IconButton>
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -591,6 +866,7 @@ export default function PlayerScreen() {
         </View>
       </AppErrorBoundary>
     </GestureHandlerRootView>
+    </>
   )
 }
 
@@ -661,8 +937,9 @@ const styles = StyleSheet.create({
   handleRow: {
     alignItems: 'center',
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
     width: '100%',
+    flexShrink: 0,
   },
   handle: {
     width: 42,
@@ -670,22 +947,37 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: 'rgba(255,255,255,0.28)',
   },
-  stage: {
+  /** Art + meta shrink; controls stay pinned and never cover metadata. */
+  body: {
     flex: 1,
     width: '100%',
     maxWidth: 420,
-    justifyContent: 'flex-end',
-    gap: spacing.lg,
-    paddingTop: spacing.lg,
+    minHeight: 0,
+    alignSelf: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  hero: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minHeight: 0,
+    width: '100%',
+    gap: spacing.md,
+  },
+  artSlot: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minHeight: 0,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   artWrap: {
     borderRadius: radii.xl,
     overflow: 'hidden',
     width: '100%',
-    maxWidth: 420,
     aspectRatio: 1,
-    maxHeight: '48%',
-    alignSelf: 'center',
+    backgroundColor: colors.elevated,
   },
   art: {
     width: '100%',
@@ -696,11 +988,10 @@ const styles = StyleSheet.create({
   },
   meta: {
     gap: spacing.xs,
-    marginTop: spacing.xl,
     paddingHorizontal: spacing.xs,
     width: '100%',
-    maxWidth: 420,
     alignItems: 'center',
+    flexShrink: 0,
   },
   metaLink: {
     maxWidth: '100%',
@@ -708,6 +999,7 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     fontSize: 26,
+    lineHeight: 32,
     color: colors.text,
     textAlign: 'center',
   },
@@ -715,16 +1007,72 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: '600',
     fontSize: 17,
+    lineHeight: 22,
     textAlign: 'center',
   },
   album: {
     color: colors.textSecondary,
     fontSize: 14,
+    lineHeight: 18,
     textAlign: 'center',
+  },
+  playingOn: {
+    ...typography.caption,
+    color: colors.accent,
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  stage: {
+    width: '100%',
+    flexGrow: 0,
+    flexShrink: 0,
+    gap: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  accessoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  accessoryChip: {
+    borderRadius: radii.pill,
+  },
+  accessoryInner: {
+    minHeight: 40,
+    minWidth: 40,
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  accessoryLabel: {
+    ...typography.caption,
+    color: colors.accent,
+    fontWeight: '700',
+  },
+  volumeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    width: '100%',
+  },
+  volumeTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    overflow: 'hidden',
+  },
+  volumeFill: {
+    height: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: radii.pill,
   },
   dock: {
     gap: spacing.md,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.xs,
   },
   secondaryRow: {
     flexDirection: 'row',

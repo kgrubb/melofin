@@ -10,6 +10,25 @@ export const scrubRatio = (positionMs: number, durationMs: number): number => {
   return durationMs > 0 ? clamp01(positionMs / durationMs) : 0
 }
 
+/**
+ * True when a store position tick is a real seek/skip rather than the engine's
+ * periodic sync (~500ms). Compare against the interpolated expectation from the
+ * last anchor so consecutive sync ticks (~500ms apart) are not treated as jumps.
+ */
+export const isPlaybackJump = (
+  positionMs: number,
+  lastAnchorMs: number,
+  lastAnchorAt: number,
+  now: number,
+  isPlaying: boolean,
+  thresholdMs = 750,
+): boolean => {
+  const expected = isPlaying
+    ? lastAnchorMs + Math.max(0, now - lastAnchorAt)
+    : lastAnchorMs
+  return Math.abs(positionMs - expected) > thresholdMs
+}
+
 /** Map a touch X within a track width to a seek position in ms. */
 export const scrubPositionFromX = (
   x: number,

@@ -1,4 +1,4 @@
-import type { QueueTrack } from '@/src/domain/queue'
+import { newQueueEntryId, type QueueTrack } from '@/src/domain/queue'
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
 
 export type LibraryItem = {
@@ -18,6 +18,14 @@ export type LibraryItem = {
   readonly childCount?: number
   /** Jellyfin playlist entry id (PlaylistItemId); required for remove/reorder. */
   readonly playlistEntryId?: string
+  readonly isFavorite?: boolean
+  readonly hasLyrics?: boolean
+  /** Jellyfin UserData.Played */
+  readonly isPlayed?: boolean
+  readonly dateCreatedMs?: number
+  readonly lastPlayedMs?: number
+  /** Jellyfin LUFS / ReplayGain track gain in dB when present. */
+  readonly normalizationGain?: number
 }
 
 type NameIdPair = {
@@ -29,24 +37,47 @@ const nameIdPairs = (value: unknown): readonly NameIdPair[] => {
   if (!Array.isArray(value)) return []
   return value
     .map((entry) => {
-      const id = String((entry as { Id?: string }).Id ?? '').trim()
-      const name = String((entry as { Name?: string }).Name ?? '').trim()
+      const row = entry as { Id?: string; id?: string; Name?: string; name?: string }
+      const id = String(row.Id ?? row.id ?? '').trim()
+      const name = String(row.Name ?? row.name ?? '').trim()
       return { id, name }
     })
     .filter((entry) => entry.id.length > 0 || entry.name.length > 0)
 }
 
+const stringList = (value: unknown): readonly string[] => {
+  if (Array.isArray(value)) {
+    return value.map(String).filter((name) => name.trim().length > 0)
+  }
+  if (typeof value === 'string' && value.trim()) return [value.trim()]
+  return []
+}
+
+const fieldString = (
+  item: Record<string, unknown>,
+  pascal: string,
+  camel: string,
+): string => {
+  const raw = item[pascal] ?? item[camel]
+  return raw == null ? '' : String(raw).trim()
+}
+
 export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
   const runTimeTicks = Number(item.RunTimeTicks ?? 0)
-  const artistsValue = item.Artists
-  const artistPairs = nameIdPairs(item.ArtistItems)
-  const albumArtistPairs = nameIdPairs(item.AlbumArtists)
-  const artistsFromNames = Array.isArray(artistsValue)
-    ? artistsValue.map(String).filter((name) => name.trim().length > 0)
-    : []
-  const artistsFromPairs = (artistPairs.length > 0 ? artistPairs : albumArtistPairs)
-    .map((entry) => entry.name)
-    .filter((name) => name.length > 0)
+  const artistPairs = nameIdPairs(item.ArtistItems ?? item.artistItems)
+  const albumArtistPairs = nameIdPairs(item.AlbumArtists ?? item.albumArtists)
+  let artists = stringList(item.Artists ?? item.artists)
+  if (artists.length === 0) {
+    artists = artistPairs.map((entry) => entry.name).filter((name) => name.length > 0)
+  }
+  if (artists.length === 0) {
+    artists = albumArtistPairs
+      .map((entry) => entry.name)
+      .filter((name) => name.length > 0)
+  }
+  if (artists.length === 0) {
+    artists = stringList(item.AlbumArtist ?? item.albumArtist)
+  }
   const id = String(item.Id ?? '')
   const imageTags = item.ImageTags
   const mediaSources = item.MediaSources
@@ -54,20 +85,24 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
     imageTags && typeof imageTags === 'object'
       ? String((imageTags as { Primary?: string }).Primary ?? '')
       : ''
-  const albumPrimary = item.AlbumPrimaryImageTag
-    ? String(item.AlbumPrimaryImageTag)
-    : ''
-  const albumIdRaw = item.AlbumId ? String(item.AlbumId).trim() : ''
-  const albumId = albumIdRaw || undefined
+  const albumPrimary = fieldString(item, 'AlbumPrimaryImageTag', 'albumPrimaryImageTag')
+  const albumIdRaw = fieldString(item, 'AlbumId', 'albumId')
+  const parentIdRaw = fieldString(item, 'ParentId', 'parentId')
+  const isAudio = String(item.Type ?? item.type ?? '') === 'Audio'
+  // ParentId is the album for library audio; only use it when album art implies that link
+  // (playlist children can have ParentId = playlist).
+  const albumId =
+    albumIdRaw || (isAudio && albumPrimary && parentIdRaw ? parentIdRaw : '') || undefined
   const artistId =
     artistPairs.find((entry) => entry.id)?.id ??
     albumArtistPairs.find((entry) => entry.id)?.id ??
     undefined
   const imageTag = primaryTag || albumPrimary || undefined
-  const isAudio = String(item.Type ?? '') === 'Audio'
   const imageItemId = primaryTag
     ? id
-    : albumIdRaw || (imageTag || isAudio ? id : undefined)
+    : albumPrimary && albumId
+      ? albumId
+      : albumId || (isAudio ? id : undefined)
   const mediaSourceId =
     Array.isArray(mediaSources) && mediaSources[0]
       ? String((mediaSources[0] as { Id?: string }).Id ?? item.Id ?? '')
@@ -75,12 +110,36 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
 
   const overviewText = item.Overview ? String(item.Overview).trim() : ''
   const playlistEntryRaw = item.PlaylistItemId ? String(item.PlaylistItemId).trim() : ''
+  const userData = item.UserData
+  const isFavorite =
+    userData && typeof userData === 'object'
+      ? Boolean((userData as { IsFavorite?: boolean }).IsFavorite)
+      : undefined
+  const isPlayed =
+    userData && typeof userData === 'object'
+      ? Boolean((userData as { Played?: boolean }).Played)
+      : undefined
+  const lastPlayedRaw =
+    userData && typeof userData === 'object'
+      ? (userData as { LastPlayedDate?: string }).LastPlayedDate
+      : undefined
+  const lastPlayedMs = lastPlayedRaw ? Date.parse(String(lastPlayedRaw)) : Number.NaN
+  const createdRaw = item.DateCreated ? Date.parse(String(item.DateCreated)) : Number.NaN
+  const hasLyrics =
+    item.HasLyrics === undefined || item.HasLyrics === null
+      ? undefined
+      : Boolean(item.HasLyrics)
+  const gainRaw = item.NormalizationGain
+  const normalizationGain =
+    gainRaw === undefined || gainRaw === null || gainRaw === ''
+      ? undefined
+      : Number(gainRaw)
 
   return {
     id,
     name: String(item.Name ?? 'Unknown'),
     type: String(item.Type ?? 'Unknown'),
-    artists: artistsFromNames.length > 0 ? artistsFromNames : artistsFromPairs,
+    artists,
     album: item.Album ? String(item.Album) : undefined,
     albumId,
     artistId,
@@ -91,6 +150,15 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
     mediaSourceId,
     childCount: item.ChildCount !== undefined ? Number(item.ChildCount) : undefined,
     playlistEntryId: playlistEntryRaw || undefined,
+    isFavorite,
+    hasLyrics,
+    isPlayed,
+    dateCreatedMs: Number.isFinite(createdRaw) ? createdRaw : undefined,
+    lastPlayedMs: Number.isFinite(lastPlayedMs) ? lastPlayedMs : undefined,
+    normalizationGain:
+      normalizationGain !== undefined && !Number.isNaN(normalizationGain)
+        ? normalizationGain
+        : undefined,
   }
 }
 
@@ -99,6 +167,7 @@ export const toQueueTrack = (
   artworkUrlValue?: string,
 ): QueueTrack => ({
   id: item.id,
+  queueEntryId: newQueueEntryId(),
   title: item.name,
   artist: item.artists.join(', ') || 'Unknown Artist',
   album: item.album ?? '',
@@ -107,14 +176,18 @@ export const toQueueTrack = (
   mediaSourceId: item.mediaSourceId,
   albumId: item.albumId,
   artistId: item.artistId,
+  isFavorite: item.isFavorite,
+  hasLyrics: item.hasLyrics,
+  normalizationGain: item.normalizationGain,
 })
 
 type ArtworkSize = 'thumb' | 'card' | 'hero'
 
+/** Pixel caps for @3x phones — old 120/320/600 looked soft in lists + Now Playing. */
 const ARTWORK_MAX_HEIGHT: Record<ArtworkSize, number> = {
-  thumb: 120,
-  card: 320,
-  hero: 600,
+  thumb: 256,
+  card: 640,
+  hero: 1200,
 }
 
 const primaryImageUrl = (
@@ -128,7 +201,7 @@ const primaryImageUrl = (
     ? `&api_key=${encodeURIComponent(context.accessToken)}`
     : ''
   const tagParam = tag ? `&tag=${encodeURIComponent(tag)}` : ''
-  return `${context.serverUrl}${path}?maxHeight=${ARTWORK_MAX_HEIGHT[size]}${tagParam}${token}`
+  return `${context.serverUrl}${path}?maxHeight=${ARTWORK_MAX_HEIGHT[size]}&quality=90${tagParam}${token}`
 }
 
 export const artworkUrl = (
@@ -152,6 +225,7 @@ export const buildUniversalStreamUrl = (
   context: JellyfinContext,
   itemId: string,
   userId: string,
+  maxBitrate = 320_000,
 ): string => {
   const params = new URLSearchParams({
     UserId: userId,
@@ -160,7 +234,8 @@ export const buildUniversalStreamUrl = (
     TranscodingContainer: 'mp3',
     TranscodingProtocol: 'http',
     AudioCodec: 'mp3',
-    MaxStreamingBitrate: '320000',
+    MaxStreamingBitrate: String(maxBitrate),
+    audioBitRate: String(maxBitrate),
   })
   if (context.accessToken) {
     params.set('api_key', context.accessToken)
@@ -172,12 +247,15 @@ export const buildAudioStreamUrl = (
   context: JellyfinContext,
   itemId: string,
   userId: string,
+  maxBitrate = 320_000,
 ): string => {
   const params = new URLSearchParams({
     UserId: userId,
     DeviceId: context.deviceId,
     audioCodec: 'mp3',
     container: 'mp3',
+    audioBitRate: String(maxBitrate),
+    MaxStreamingBitrate: String(maxBitrate),
   })
   if (context.accessToken) {
     params.set('api_key', context.accessToken)
@@ -189,9 +267,11 @@ export const buildPlaybackStreamCandidates = (
   context: JellyfinContext,
   itemId: string,
   userId: string,
+  maxBitrate = 320_000,
 ): readonly string[] => [
-  buildUniversalStreamUrl(context, itemId, userId),
-  buildAudioStreamUrl(context, itemId, userId),
+  // Direct mp3 first — AVPlayer is most reliable with this for queue skips.
+  buildAudioStreamUrl(context, itemId, userId, maxBitrate),
+  buildUniversalStreamUrl(context, itemId, userId, maxBitrate),
 ]
 
 export const audioAuthHeaders = (

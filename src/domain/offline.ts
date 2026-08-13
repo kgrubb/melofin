@@ -4,9 +4,12 @@ export type OfflineEntry = {
   readonly artist: string
   readonly album: string
   readonly durationMs: number
+  /** Relative under melio/ (e.g. audio/<id>) or legacy absolute/file URI. */
   readonly path: string
   readonly sizeBytes: number
   readonly artworkPath?: string
+  /** Relative under melio/ (e.g. lyrics/<id>.json). */
+  readonly lyricsPath?: string
   readonly downloadedAt: number
   readonly lastAccessedAt: number
   readonly kind: 'user' | 'prefetch'
@@ -16,14 +19,48 @@ export type OfflineEntry = {
 export type OfflineIndex = {
   readonly entries: Readonly<Record<string, OfflineEntry>>
   readonly budgetBytes: number
+  readonly serverUrl?: string
+  readonly userId?: string
 }
 
 export const defaultBudgetBytes = 8 * 1024 * 1024 * 1024
 
-export const emptyOfflineIndex = (budgetBytes = defaultBudgetBytes): OfflineIndex => ({
+export const emptyOfflineIndex = (
+  budgetBytes = defaultBudgetBytes,
+  scope?: { readonly serverUrl?: string; readonly userId?: string },
+): OfflineIndex => ({
   entries: {},
   budgetBytes,
+  serverUrl: scope?.serverUrl,
+  userId: scope?.userId,
 })
+
+export const offlineRelativePath = (itemId: string): string => `audio/${itemId}`
+
+/**
+ * Resolve a stored offline path to a playable URI.
+ * Relative paths (audio/<id>) need `melioRootUri` (…/melio); absolute/file URIs pass through.
+ */
+export const resolveOfflineFileUri = (
+  path: string,
+  melioRootUri?: string,
+): string => {
+  if (path.startsWith('file://')) return path
+  if (path.startsWith('/')) return `file://${path}`
+  if (!melioRootUri) return path
+  return `${melioRootUri.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
+}
+
+export const indexMatchesServer = (
+  index: OfflineIndex,
+  serverUrl: string | null | undefined,
+  userId?: string | null,
+): boolean => {
+  if (!serverUrl) return true
+  if (index.serverUrl && index.serverUrl !== serverUrl) return false
+  if (userId && index.userId && index.userId !== userId) return false
+  return true
+}
 
 export const totalSizeBytes = (index: OfflineIndex): number =>
   Object.values(index.entries).reduce((sum, entry) => sum + entry.sizeBytes, 0)
