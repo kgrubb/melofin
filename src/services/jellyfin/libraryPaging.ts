@@ -15,7 +15,6 @@ export const shouldFetchNextPage = (
   (pageLength >= pageSize ||
     startIndex + pageLength < Math.max(totalRecordCount, 0))
 
-/** Prefer the first occurrence of each Jellyfin item id. */
 export const dedupeLibraryItems = <T extends { readonly id: string }>(
   items: readonly T[],
 ): readonly T[] => {

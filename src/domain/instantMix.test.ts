@@ -367,7 +367,7 @@ describe('instantMix', () => {
     expect(new Set(themed.map((entry) => entry.artistId)).size).toBeGreaterThanOrEqual(3)
   })
 
-  it('keeps similar Instant Mix artists via genre fit, not blacklists', () => {
+  it('keeps genre-fitting Instant Mix neighbors', () => {
     const seed = item('tame-seed', {
       artists: ['Tame Impala'],
       artistId: 'tame',

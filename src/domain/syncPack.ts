@@ -1,5 +1,3 @@
-/** Sync packs — keep albums/playlists offline. Pure membership/diff/progress. */
-
 export type SyncPackKind = 'album' | 'playlist'
 
 export type SyncPack = {
@@ -50,7 +48,6 @@ export const packTrackIdSet = (index: SyncPackIndex): ReadonlySet<string> => {
   return ids
 }
 
-/** Tracks present in desired but missing/incomplete in offline complete set. */
 export const diffPackDownloads = (
   desiredTrackIds: readonly string[],
   completeItemIds: ReadonlySet<string>,

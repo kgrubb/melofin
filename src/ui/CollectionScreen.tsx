@@ -67,7 +67,7 @@ const kindLabel = (kind: CollectionKind): string => {
   return 'Playlist'
 }
 
-/** Spotify / Apple Mix–style 2×2 artwork collage. */
+/** 2×2 artwork collage for mix cards. */
 const MixCollage = ({
   arts,
   size,

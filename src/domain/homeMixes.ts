@@ -15,7 +15,6 @@ import {
 } from '@/src/domain/instantMix'
 import type { LibraryItem } from '@/src/domain/libraryItem'
 
-/** Minimum Audio tracks before a Home mix card is worth showing. */
 export const MIX_PLAY_MIN = 4
 
 export const HOME_MIX_MAX_AGE_MS = 24 * 60 * 60 * 1000
@@ -73,7 +72,6 @@ export const emptyMixFoldState = (): MixFoldState => ({
   usedTitles: new Set(),
 })
 
-/** Prefer unused tracks; fall back to the full list if exclusion would starve the card. */
 export const pickPlayableMixTracks = (
   tracks: readonly LibraryItem[],
   usedTrackIds: ReadonlySet<string>,
@@ -161,7 +159,6 @@ export const appendHomeMixCard = (
   }
 }
 
-/** Fold artist then genre candidates into unique Home mix cards (immutable). */
 export const foldHomeMixCards = (
   artistCandidates: readonly HomeMixCandidate[],
   genreCandidates: readonly HomeMixCandidate[] = [],
@@ -179,7 +176,6 @@ export const foldHomeMixCards = (
   ).mixes
 }
 
-/** Coherent + diversified genre Instant Mix. */
 export const genreMixCandidateTracks = (
   label: string,
   id: string,
@@ -211,7 +207,7 @@ export const dedupeById = <T extends { readonly id: string }>(
   })
 }
 
-/** Serial commit queue over an immutable fold — progressive Home paint. */
+/** Serial upserts into the Home mix fold. */
 export const createMixFoldQueue = (
   target: number,
   onChange: (mixes: readonly HomeMixCard[]) => void,

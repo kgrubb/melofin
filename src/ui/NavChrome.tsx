@@ -7,7 +7,7 @@ type PressProps = {
   readonly onPress: () => void
 }
 
-/** Thin geometric back chevron — avoids SF Symbol stretch/weight quirks. */
+/** Avoid SF Symbol stretch/weight quirks. */
 const BackChevron = ({
   size = 18,
   color = colors.text,
@@ -33,7 +33,6 @@ const BackChevron = ({
   )
 }
 
-/** Hierarchical back — glass circle with chevron. */
 export const BackButton = ({
   onPress,
   label = 'Back',
@@ -52,10 +51,7 @@ export const BackButton = ({
   </PressableScale>
 )
 
-/**
- * Sheet dismiss affordance — HIG grabber (not a down chevron).
- * Tappable for accessibility; swipe-down remains the primary gesture.
- */
+/** Sheet grabber (tappable; swipe-down is primary). */
 export const CloseChip = ({ onPress }: PressProps) => (
   <PressableScale
     accessibilityRole="button"
@@ -69,7 +65,6 @@ export const CloseChip = ({ onPress }: PressProps) => (
   </PressableScale>
 )
 
-/** Overflow / more — glass circle with ellipsis. */
 export const MoreButton = ({
   onPress,
   label = 'More',

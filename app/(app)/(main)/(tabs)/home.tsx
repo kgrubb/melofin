@@ -93,7 +93,6 @@ type HomeMix = HomeMixCard & {
   readonly icon: string
 }
 
-/** Spotify Daily Mix–style 2×2 artwork collage. */
 const MixCollage = ({
   arts,
   size,
@@ -125,7 +124,6 @@ const MixCollage = ({
   )
 }
 
-/** Horizontal rail — Spotify density: sharp-ish art, tight type, no content chrome. */
 const HomeRail = ({
   title,
   items,

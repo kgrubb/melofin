@@ -366,7 +366,7 @@ export default function PlayerScreen() {
     opacity: interpolate(progress.value, [0, 1], [0, 0.55], Extrapolation.CLAMP),
   }))
 
-  /** Apple-style sheet: slide vertically. Never non-uniform scale (no squish). */
+  /** Vertical sheet dismiss — never non-uniform scale (no squish). */
   const sheetStyle = useAnimatedStyle(() => {
     const p = progress.value
     return {

@@ -1,4 +1,3 @@
-/** Shared catalog item shape — domain-safe (no service imports). */
 export type LibraryItem = {
   readonly id: string
   readonly name: string

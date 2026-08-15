@@ -9,9 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Crossfade (Off / 5s / 8s / 12s): local overlap fade via `melio-audio-graph` secondary player + primary volume ramp; cast ignores
 - Start radio track action (Instant Mix + padding → shuffled queue with Autoplay session on)
 - Autoplay (default on): when a queue ends with repeat off, keep playing similar Instant Mix tracks (Settings + Now Playing infinity toggle; Recommended section in Queue)
-- Direct Play stream candidates first (FLAC/ALAC/AAC/MP3 static) with universal + `/stream.mp3` failover; honest `playMethod`
-- Account scope helpers for per-account offline indexes, packs, and audio/lyrics paths; EQ preset domain persisted for a future engine insert
-- CarPlay browse hardening: albums tab, artist/album “More…” paging, Play all downloads queue (flag still off until `com.apple.developer.carplay-audio` entitlement)
+- Direct Play stream candidates first (FLAC/ALAC/AAC/MP3 static) with universal + `/stream.mp3` failover; report real `playMethod`
+- Per-account offline indexes, packs, and audio/lyrics paths
+- CarPlay browse: albums tab, artist/album “More…” paging, Play all downloads queue (flag still off until `com.apple.developer.carplay-audio` entitlement)
 - Keep offline sync packs for albums/playlists
 - Multi-Jellyfin accounts in Settings (Add server / switch / long-press remove) with per-account offline indexes + packs
 - Synced + plain lyrics on Now Playing (Jellyfin Lyrics API, tap line to seek, offline lyrics sidecar on download)
@@ -22,21 +22,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Library sort/filter (Name, Date added, Recently played; All/Favorites/Unplayed) and Mark played/unplayed
 - Play next + shared track action menus; queue swipe-remove, Move up/down, and Clear upcoming
 - Favorite / unfavorite (Jellyfin UserLibrary) with Now Playing heart and long-press actions
-- Per-download delete from Downloads; Spotify-style sleep timer (presets + end of track)
-- Liquid Glass retrofit via official `expo-glass-effect` (`GlassView` / `GlassContainer`, dual availability gates, BlurView fallback)
+- Per-download delete from Downloads; sleep timer (presets + end of track)
+- Liquid Glass via `expo-glass-effect` (`GlassView` / `GlassContainer`, BlurView fallback)
 - Spotty-network playback: prefer local files, stall failover to disk, Jellyfin reachability, adaptive prefetch (5 Wi‑Fi / 2 cellular). Undownloaded tracks still need the server
-- Offline Jellyfin listen sync: qualifying completed listens (4 min or half the track) that fail to report while offline are queued and flushed on reconnect via PlaybackStart/Stop plus MarkPlayedItem(datePlayed). ListenBrainz timestamps for delayed flushes reflect approximately when Melio regained network (Jellyfin has no historical playstate import yet)
-- Spotify-style Devices casting: AirPlay (iOS), Chromecast, and Jellyfin remote sessions
+- Offline listen sync: completed listens (4 min or half the track) that fail to report while offline are queued and flushed on reconnect
+- Devices casting: AirPlay (iOS), Chromecast, and Jellyfin remote sessions
 - Playlist create, rename, delete, and add/remove tracks synced with Jellyfin
 - Artist and album links from Now Playing (dismisses into the collection screen)
 - Lock-screen / Control Center next and previous track controls (`expo-audio` patch)
 - CarPlay gated behind a `CARPLAY_ENABLED` feature flag (templates + play wiring ready; awaiting `com.apple.developer.carplay-audio` on App ID `app.melio.player` before flipping the flag)
-- Domain tests for audio-session playback rules and pause/resume scrobble intents
 
 ### Changed
 
 - Downloads is collection-first (Albums / Playlists / Songs) with Play/Shuffle, a storage meter + limit picker, and artwork rows; prefetch cache is listed and playable like explicit downloads
-- Home paints Continue Listening, Favorites, and artists as soon as listen history returns; albums, playlists, and genres follow on their own
+- Home shows Continue Listening, Favorites, and artists as soon as listen history returns; albums, playlists, and genres follow on their own
 - Your Mixes: 6 Instant Mix cards from top artists (genre fill), seed-based titles, disk cache for a day, rebuild on Home focus or app foreground
 - Instant Mix filters cross-genre noise; Home is greeting + chips → mixes / artists / recently added / genres / continue / playlists / favorites
 - Library Sync Now uses the same incremental song path as On open (full pull only on first sync, schema bump, or count mismatch); Wi‑Fi pages songs in larger parallel pairs; failed full pulls leave the on-device catalog intact
@@ -45,9 +44,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Settings Sync Now is an accent action with live sync % / phase on the row (no longer a plain list row)
 - Streaming Automatic explains High-on-Wi‑Fi / Normal-on-cellular under the group
 - Remote playback prefers Direct Play when decodable; MP3 transcoder remains last-resort failover
-- Library songs use SQLite as catalog source of truth with a keyset-paged Zustand window (lower RAM on large libraries); play-all pages ids from SQLite
+- Library songs use SQLite with a keyset-paged Zustand window; play-all pages ids from SQLite
 - Offline index is JSON-only (removed SQLite dual-write), stored per account under `scopes/<key>/`
-- Playback engine split into load/scrobble/lifecycle modules; cast uses `outputPolicy` instead of importing the engine
 - Atomic JSON writes (temp + rename) for crash-safer caches
 - Faster remote track transitions: shorter first-URI failover, pause downloads during handoff; prefer local prefetch only when the file exists (sync check), with a 250ms safety cap if AVPlayer hangs on a corrupt file
 - Floating tab bar + mini player: iOS 26 platter geometry (62pt capsule, 21pt margin, equal-width selection) with BlurView fallback
@@ -86,7 +84,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Lock screen / CarPlay Now Playing progress: supply Jellyfin track duration when native stream duration is 0/NaN (`expo-audio` metadata)
 - Auto-advance after track end when native duration is unknown; clear stuck `advancing` so the next song still starts
 - Mid-track reload after a network blip no longer restarts from 0 — resume seek is guarded and near-zero position snaps are rejected
-- Playback handoff hardening: no double-skip while the prior item is still at EOF, no stall-failover replace loops at t=0, re-bind lock screen on resume
+- Playback handoff: no double-skip while the prior item is still at EOF, no stall-failover replace loops at t=0, re-bind lock screen on resume
 - Now Playing / scrubber performance: throttle lock-screen updates, cache artwork, smoother in-app progress (ignore engine sync ticks), lock-screen play/pause/seek sync through Melio
 - Shuffle builds a fresh random order each time (was seeded from playlist length, so every shuffle of the same list played identically)
 - Casting: AirPlay module now autolinks (podspec); cast router no longer shadows `state` (broke remote play/pause and transfer timeouts); Devices sheet shows Cast button so iOS can grant Local Network

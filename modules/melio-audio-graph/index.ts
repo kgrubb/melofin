@@ -27,7 +27,7 @@ const loadNative = (): MelioAudioGraphNative | null => {
   }
 }
 
-/** Native companion for crossfade priming — EQ/gapless are deferred. */
+/** Crossfade / next-URI priming. */
 export const melioAudioGraph = {
   isAvailable: (): boolean => {
     const mod = loadNative()

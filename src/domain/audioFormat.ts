@@ -8,10 +8,7 @@ const asciiAt = (header: Uint8Array, offset: number, text: string): boolean => {
   return true
 }
 
-/**
- * Returns a filename extension without the dot, or null when unknown.
- * Unknown is safer than a wrong extension — caller keeps the original name.
- */
+/** Extension without the dot, or null — wrong guess is worse than unknown. */
 export const audioExtensionFromHeader = (header: Uint8Array): string | null => {
   if (header.length < 12) return null
   if (asciiAt(header, 0, 'fLaC')) return 'flac'

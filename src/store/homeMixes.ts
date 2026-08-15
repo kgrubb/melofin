@@ -65,9 +65,8 @@ export const persistHomeMixes = async (
 
 type HomeMixesStore = {
   readonly byId: Readonly<Record<string, CachedHomeMix>>
-  /** Replace the whole index (final Home paint / logout). */
   readonly setMixes: (mixes: readonly CachedHomeMix[]) => void
-  /** Progressive paint — keep other mixes so an open mix detail stays valid. */
+  /** Merge one mix; leave siblings intact so an open detail stays valid. */
   readonly upsertMix: (mix: CachedHomeMix) => void
   readonly clear: () => void
 }

@@ -12,7 +12,7 @@ export type TrackActionHandlers = {
   readonly extra?: readonly TrackActionButton[]
 }
 
-/** Ordered Melio track menu: Play next → queue → radio → playlist → favorite → played → extras. */
+/** Menu order: Play next → queue → radio → playlist → favorite → played → extras. */
 export const buildTrackActions = (
   handlers: TrackActionHandlers,
 ): readonly TrackActionButton[] => {

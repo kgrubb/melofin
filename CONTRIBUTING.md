@@ -8,7 +8,7 @@ npm run lint && npm run typecheck && npm run test:coverage
 
 Keep screens thin. Logic lives in `src/` with tests. New deps need a line in `DEPENDENCIES.md`. No `for...in`. Prefer `const`; `let` / `for` / `for…of` when clearer. Update `CHANGELOG.md` for user-visible changes.
 
-## Perf / rural smoke (A-tier)
+## Perf / offline smoke
 
 Manual checks after large library or offline work:
 

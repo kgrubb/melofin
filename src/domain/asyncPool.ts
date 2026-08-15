@@ -1,4 +1,4 @@
-/** Run `fn` over items with at most `concurrency` in flight. Preserves result order. */
+/** Bounded concurrency; results stay in input order. */
 export const mapPool = async <T, R>(
   items: readonly T[],
   concurrency: number,

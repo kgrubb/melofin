@@ -16,8 +16,8 @@ export const isReplayGainMode = (value: unknown): value is ReplayGainMode =>
   value === 'off' || value === 'track' || value === 'album'
 
 /**
- * Convert ReplayGain dB to a player volume in (0, 1].
- * iOS cannot boost above unity — clamp positives to 1 (Finamp paradigm).
+ * ReplayGain dB → player volume in (0, 1].
+ * iOS can't boost above unity — clamp positives to 1.
  */
 export const volumeFromGainDb = (gainDb: number | undefined | null): number => {
   if (gainDb === undefined || gainDb === null || Number.isNaN(Number(gainDb))) {

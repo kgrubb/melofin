@@ -26,7 +26,7 @@ export const rememberPlaybackNetwork = (state: NetInfoState): PlaybackNetwork =>
   return cache.network
 }
 
-/** Updated by NetInfo listener — sync-safe for the load hot path. */
+/** Updated by NetInfo listener — safe to read during load. */
 export const getPlaybackNetworkCached = (): PlaybackNetwork => cache.network
 
 /** Wi‑Fi-only library sync: interface type only (not isInternetReachable). */

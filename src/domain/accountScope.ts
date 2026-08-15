@@ -1,5 +1,3 @@
-/** Stable account/offline scope keys — pure; no I/O. */
-
 const FNV_OFFSET = 2166136261
 const FNV_PRIME = 16777619
 

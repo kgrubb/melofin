@@ -8,7 +8,7 @@ Deny by default. Pin exact versions in `package.json`.
 |---------|---------|
 | `expo` (+ modules in lockfile) | SDK + router, audio, FS, SecureStore, image, glass, blur, symbols, linking, web-browser, status-bar, splash, fonts, build-properties, constants, dev-client |
 | `expo-sqlite` | On-device library songs catalog |
-| `@shopify/flash-list` | High-performance recycled lists (Library / Collection / Queue) |
+| `@shopify/flash-list` | FlashList for Library / Collection / Queue |
 | `react` / `react-native` (+ screens, safe-area, gesture-handler, web, webview, worklets) | UI + router peers |
 | `react-native-reanimated` | Expo Router peer (deny-list exception) |
 | `@jellyfin/sdk` + `axios` | Jellyfin API (axios is peer only) |
@@ -27,13 +27,13 @@ Deny by default. Pin exact versions in `package.json`.
 
 TrackPlayer, expo-av, AsyncStorage, lodash/ramda, uuid/nanoid, date libs, app-wide axios, React Query/SWR, immer, analytics SDKs, Redux/MobX, UI kits.
 
-## Audio engine ADR (parity Phase 0)
+## Audio engine
 
 **Decision:** Gapless + EQ should eventually share one native graph via an **expo-audio extension** (patch and/or local module), not TrackPlayer/expo-av.
 
-**Current shipping path:** Playback remains expo-audio `AVPlayer` + `replace()`. `melio-audio-graph` primes the next URI and can run a secondary `AVPlayer` for local **crossfade** overlap while the primary volume ramps down. Cast clears the primed next item.
+**Shipping:** Playback remains expo-audio `AVPlayer` + `replace()`. `melio-audio-graph` primes the next URI and can run a secondary `AVPlayer` for local **crossfade** overlap while the primary volume ramps down. Cast clears the primed next item.
 
-**Not yet audible:** True gapless handoff and EQ insert require replacing the expo-audio path with `AVAudioEngine` scheduled nodes (ReplayGain → EQ → output). Settings no longer expose Gapless/EQ until that lands.
+**Not yet:** True gapless handoff and EQ insert need `AVAudioEngine` scheduled nodes (ReplayGain → EQ → output). Settings hide Gapless/EQ until that lands.
 
 **Fallback:** Crossfade Off keeps today’s single-player `replace()` path.
 

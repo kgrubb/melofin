@@ -11,7 +11,7 @@ export type LyricsPayload = {
   readonly lines: readonly LyricLine[]
 }
 
-/** Pure Genius/web-scrape chrome — drop the whole line. */
+/** Genius/scrape chrome — drop the whole line. */
 const isBoilerplateLine = (text: string): boolean => {
   const t = text.trim()
   if (!t) return true

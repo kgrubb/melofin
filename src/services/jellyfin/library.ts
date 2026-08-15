@@ -672,7 +672,6 @@ export const fetchInstantMix = async (
   }
 }
 
-/** Instant Mix seeded from a MusicArtist — usually tighter than a single song. */
 export const fetchInstantMixFromArtist = async (
   context: JellyfinContext,
   userId: string,
@@ -694,7 +693,6 @@ export const fetchInstantMixFromArtist = async (
   }
 }
 
-/** Instant Mix seeded from a music genre id. */
 export const fetchInstantMixFromGenre = async (
   context: JellyfinContext,
   userId: string,
@@ -716,7 +714,7 @@ export const fetchInstantMixFromGenre = async (
   }
 }
 
-/** Instant Mix seeded from a genre name (when the id isn’t in the catalog page). */
+/** Genre Instant Mix by name when the id isn’t in the catalog page. */
 export const fetchInstantMixFromGenreName = async (
   context: JellyfinContext,
   userId: string,

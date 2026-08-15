@@ -34,10 +34,7 @@ const tracksOf = <T,>(
     | null,
 ): readonly T[] => (result?.ok ? result.value : [])
 
-/**
- * Rolling Instant Mix refill. Append-only; single-flight.
- * Returns true when the queue has a next index afterward.
- */
+/** Single-flight Instant Mix refill; returns true if the queue has a next index. */
 export const ensureAutoplayContinuation = async (): Promise<boolean> => {
   if (flight.current) return flight.current
 

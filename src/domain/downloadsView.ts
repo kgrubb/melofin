@@ -1,5 +1,3 @@
-/** Downloads tab view-model — collection-first, honest storage, pack progress. */
-
 import type { OfflineEntry, OfflineIndex } from '@/src/domain/offline'
 import { packTrackIdSet, type SyncPack, type SyncPackIndex } from '@/src/domain/syncPack'
 

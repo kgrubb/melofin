@@ -22,7 +22,7 @@ export const isLocalOutputEnabled = (): boolean => state.localOutputEnabled
 
 export const isMelioScrobbleEnabled = (): boolean => state.melioScrobbleEnabled
 
-/** Playback engine binds pause/resume side effects without cast importing the engine. */
+/** Avoid cast ↔ engine import cycle. */
 export const bindLocalOutputChange = (listener: LocalOutputListener | null): void => {
   state.onLocalOutputChange = listener
 }

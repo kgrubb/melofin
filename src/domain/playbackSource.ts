@@ -50,7 +50,7 @@ const timeoutsFor = (
     }),
   )
 
-/** Pure URI order + per-URI load timeouts. */
+/** URI order + per-URI load timeouts. */
 export const planSourceCandidates = (
   input: SourcePlanInput,
 ): SourcePlan | null => {

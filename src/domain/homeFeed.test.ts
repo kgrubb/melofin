@@ -118,7 +118,7 @@ describe('homeFeed', () => {
     ).toEqual(['s1', 's2'])
   })
 
-  it('titles mixes from the seed label — never Mix N', () => {
+  it('rejects numbered Mix N titles', () => {
     expect(seededMixTitle('Tyler, The Creator')).toBe('Tyler, The Creator Mix')
     expect(seededMixTitle('Hip Hop')).toBe('Hip Hop Mix')
     expect(seededMixTitle('Favorites Mix')).toBe('Favorites Mix')
@@ -166,7 +166,7 @@ describe('homeFeed', () => {
     ).toBe('Ambient Mix')
   })
 
-  it('titles Instant Mix cards honestly from the seed', () => {
+  it('titles Instant Mix cards from the seed', () => {
     expect(instantMixCardTitle(undefined)).toBe('Instant Mix')
     expect(
       instantMixCardTitle(item('s', 'Audio', { artists: ['Radiohead'], name: 'Creep' })),
@@ -194,7 +194,7 @@ describe('homeFeed', () => {
     ).toEqual([['From Track'], ['Kept']])
   })
 
-  it('builds album card subtitles with honest fallbacks', () => {
+  it('builds album card subtitles with fallbacks', () => {
     expect(albumCardSubtitle(item('a', 'MusicAlbum', { artists: ['Radiohead'] }))).toBe(
       'Radiohead',
     )

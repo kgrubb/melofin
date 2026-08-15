@@ -1,4 +1,4 @@
-/** Ten-band graphic EQ presets — pure; gains in dB (−24…+24). */
+/** Ten-band EQ presets; gains in dB (−24…+24). */
 
 export const EQ_BAND_HZ = [
   32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16_000,
@@ -37,7 +37,7 @@ export const EQ_PRESETS: Readonly<Record<Exclude<EqPresetId, 'custom'>, EqGains>
   vocal: [-2, -1, 0, 2, 4, 4, 2, 0, -1, -2],
 }
 
-/** Five visual bands — each drives a pair of the native 10-band EQ. */
+/** Each UI band maps to a pair of native 10-band indices. */
 export const EQ_UI_BANDS = [
   { label: '60', indices: [0, 1] as const },
   { label: '250', indices: [2, 3] as const },
@@ -70,7 +70,6 @@ export const effectiveEqGains = (settings: EqSettings): EqGains => {
   return normalizeEqGains(settings.gainsDb)
 }
 
-/** Average each UI band’s paired native gains for the visual sliders. */
 export const fiveBandGainsFromTen = (gains: EqGains): FiveBandGains => {
   const values = EQ_UI_BANDS.map(({ indices }) => {
     const a = gains[indices[0]] ?? 0
@@ -80,7 +79,6 @@ export const fiveBandGainsFromTen = (gains: EqGains): FiveBandGains => {
   return values as unknown as FiveBandGains
 }
 
-/** Set one visual band (writes both paired native bands). */
 export const setFiveBandGain = (
   gains: EqGains,
   bandIndex: number,

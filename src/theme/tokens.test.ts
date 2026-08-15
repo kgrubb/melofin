@@ -9,7 +9,7 @@ describe('theme tokens', () => {
     expect(typography.title.fontWeight).toBe('700')
   })
 
-  it('exposes shared motion language', () => {
+  it('has motion spring/duration values', () => {
     expect(motion.scale.button).toBe(0.97)
     expect(motion.scale.card).toBe(0.985)
     expect(motion.duration.ui).toBe(240)

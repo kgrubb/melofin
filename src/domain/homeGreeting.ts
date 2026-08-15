@@ -1,6 +1,4 @@
-/** Time-of-day greeting for Home — pure; no I/O. */
-
-/** Local-hour breakpoints: morning 5–11, afternoon 12–16, else evening. */
+/** Morning 5–11, afternoon 12–16, else evening. */
 export const homeGreeting = (now: Date): string => {
   const hour = now.getHours()
   if (hour >= 5 && hour < 12) return 'Good morning'

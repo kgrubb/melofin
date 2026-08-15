@@ -16,7 +16,6 @@ export const effectiveDurationSec = (
   return 0
 }
 
-/** Whether intentional playback reached the end of the current media. */
 export const mediaReachedEnd = ({
   isPlayingIntent,
   mediaPlaying,

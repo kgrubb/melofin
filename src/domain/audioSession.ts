@@ -1,9 +1,6 @@
-/** Platform-agnostic audio session rules for reliable playback. */
-
 /** expo-audio deactivates the session on pause unless this is set. */
 export const KEEP_AUDIO_SESSION_ACTIVE = true
 
-/** Volume / mute applied immediately before play(). */
 export const PLAY_OUTPUT = {
   volume: 1,
   muted: false,
@@ -16,10 +13,10 @@ export const PLAY_OUTPUT = {
 export const shouldPauseBeforeReplace = (platform: string): boolean =>
   platform === 'web'
 
-/** Ignore the prior item's status events still in flight after replace(). */
+/** Ignore prior-item status events still in flight after replace(). */
 export const REPLACE_LOAD_GRACE_MS = 80
 
-/** Only `isLoaded` means the current source is ready — never trust playing/duration. */
+/** Only `isLoaded` means the current source is ready — not playing/duration. */
 export const sourceIsLoaded = (snapshot: {
   readonly isLoaded?: boolean
 }): boolean => Boolean(snapshot.isLoaded)

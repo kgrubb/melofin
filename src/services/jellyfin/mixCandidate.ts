@@ -22,7 +22,6 @@ const tracksOf = (
   result: Result<readonly LibraryItem[]> | null | undefined,
 ): readonly LibraryItem[] => (result?.ok ? result.value : [])
 
-/** Build one Home / radio mix candidate from an Instant Mix seed. */
 export const buildMixCandidate = async (
   context: JellyfinContext,
   userId: string,

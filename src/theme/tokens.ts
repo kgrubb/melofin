@@ -1,6 +1,5 @@
 export const colors = {
   background: '#08040F',
-  /** Content-layer standard material (not Liquid Glass). */
   surface: 'rgba(255, 255, 255, 0.07)',
   elevated: 'rgba(255, 255, 255, 0.10)',
   text: '#F8F4FF',
@@ -85,7 +84,6 @@ export const typography = {
   },
 }
 
-/** Shared motion language — Melio liquid glass. */
 export const motion = {
   spring: {
     // Soft press — stiff springs thrash Blur/Liquid Glass composites.

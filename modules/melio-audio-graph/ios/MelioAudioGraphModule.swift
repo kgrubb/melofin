@@ -1,15 +1,7 @@
 import AVFoundation
 import ExpoModulesCore
 
-/**
- Melio audio graph companion.
-
- Owns next-item priming and optional overlap crossfade via a secondary
- AVPlayer while expo-audio fades the primary track.
-
- EQ / true gapless require inserting into the expo-audio render path and are
- intentionally not claimed here until that lands.
- */
+/// Next-URI priming + secondary AVPlayer for local crossfade overlap.
 public final class MelioAudioGraphModule: Module {
   private var nextItem: AVPlayerItem?
   private var crossfadePlayer: AVPlayer?
@@ -39,8 +31,7 @@ public final class MelioAudioGraphModule: Module {
       self.nextItem = nil
     }
 
-    /// Start primed next item at volume 0 and ramp to 1 over `durationSec`.
-    /// Returns immediately once overlap has started so the JS primary fade can run in parallel.
+    /// Overlap fade of primed next item; returns once started.
     AsyncFunction("crossfadeToNext") { (durationSec: Double) -> Bool in
       guard let item = self.nextItem else { return false }
       self.stopCrossfadePlayer()

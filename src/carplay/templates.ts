@@ -2,7 +2,7 @@ import type { LibraryItem } from '@/src/services/jellyfin/library'
 import type { OfflineEntry } from '@/src/domain/offline'
 import type { QueueTrack } from '@/src/domain/queue'
 
-/** CarPlay list caps — Apple recommends short lists; page with “More…”. */
+/** CarPlay list page size (“More…” for the rest). */
 export const CARPLAY_PAGE_SIZE = 40
 
 export type CarPlayListSection = {

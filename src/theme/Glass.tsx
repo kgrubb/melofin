@@ -65,10 +65,8 @@ const useReduceTransparency = (): boolean => {
 }
 
 /**
- * Floating chrome material (tab bar, mini player, sheet controls).
- * Do not use in the content layer — use `Surface` for cards/rows/forms.
- *
- * iOS 26+: real `UIGlassEffect`. Older iOS: dense dark BlurView (readable chrome).
+ * Tab bar / mini player / sheet chrome.
+ * Use `Surface` for content cards/rows. iOS 26+: UIGlassEffect; older: dense BlurView.
  */
 export const Glass = ({
   children,
@@ -173,7 +171,7 @@ export const GlassCluster = ({
   )
 }
 
-/** Content-layer standard material (grouped cards, list rows, forms). */
+/** Opaque surface for cards, list rows, forms. */
 export const Surface = ({
   children,
   style,

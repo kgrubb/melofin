@@ -10,7 +10,6 @@ import {
 } from '@/src/domain/eqPresets'
 import { colors, radii, spacing, typography } from '@/src/theme/tokens'
 
-/** HIG minimum touch target. */
 const HIT = 44
 const TRACK_HEIGHT = 140
 const TRACK_WIDTH = 6
@@ -30,16 +29,11 @@ const yToDb = (y: number): number => {
 
 type Props = {
   readonly gainsDb: EqGains
-  /** Live updates (native EQ) while dragging. */
   readonly onChange: (gainsDb: EqGains) => void
-  /** Persist when the gesture ends. */
   readonly onCommit?: (gainsDb: EqGains) => void
 }
 
-/**
- * Visual 5-band graphic EQ (HIG-sized targets, capsule tracks, circular thumbs).
- * Each band maps to a pair of the native 10-band curve.
- */
+/** UI bands map 2:1 onto the native 10-band curve. */
 export const EqBandSliders = ({ gainsDb, onChange, onCommit }: Props) => {
   const [draft, setDraft] = useState(gainsDb)
   const draftRef = useRef(draft)
@@ -208,7 +202,6 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: '600',
   },
-  /** Full HIG hit target; track/thumb centered inside. */
   hit: {
     width: HIT,
     height: TRACK_HEIGHT,

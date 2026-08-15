@@ -49,7 +49,7 @@ export const genreTagSet = (
 ): ReadonlySet<string> =>
   new Set(genres.map(canonicalGenre).filter((tag) => tag.length > 0))
 
-/** Jaccard similarity on genre tag sets; null when either side is empty. */
+/** Jaccard on genre tags; null if either side is empty. */
 export const jaccardSimilarity = (
   left: ReadonlySet<string>,
   right: ReadonlySet<string>,
@@ -62,10 +62,7 @@ export const jaccardSimilarity = (
   return intersection / (left.size + right.size - intersection)
 }
 
-/**
- * Recall of track tags against the seed — “does this track sit in the seed’s lane?”
- * Standard content-based fit when the question is asymmetric (seed → candidate).
- */
+/** Fraction of track tags that also appear on the seed. */
 export const genreRecall = (
   seed: ReadonlySet<string>,
   track: ReadonlySet<string>,
@@ -78,21 +75,14 @@ export const genreRecall = (
   return hits / track.size
 }
 
-/** Missing tags score below the keep floor — sparse metadata doesn’t auto-admit outliers. */
 export const GENRE_FIT_NEUTRAL = 0.3
-/** Keep Instant Mix candidates at or above this genre-fit score. */
 export const GENRE_FIT_MIN = 0.4
 
-/**
- * Content-based genre fit in [0, 1].
- * Instant Mix retrieves similar artists; this scores whether tags agree.
- */
 export const genreFitScore = (
   seedGenres: readonly string[],
   trackGenres: readonly string[],
 ): number => genreFitScoreAgainst(genreTagSet(seedGenres), trackGenres)
 
-/** Fit against a precomputed seed tag set (hot path for filtering many tracks). */
 export const genreFitScoreAgainst = (
   seed: ReadonlySet<string>,
   trackGenres: readonly string[],
@@ -127,7 +117,7 @@ const matchesSeedArtist = (
   )
 }
 
-/** When the seed has no genres, borrow dominant tags from same-artist Instant Mix rows. */
+/** Borrow dominant same-artist tags when the seed has no genres. */
 export const enrichSeedGenres = (
   seed: LibraryItem,
   mixTracks: readonly LibraryItem[],
@@ -163,11 +153,6 @@ export const enrichSeedGenres = (
   )
 }
 
-/**
- * Instant Mix = candidate retrieval (similar artists).
- * Genre Jaccard/recall = content filter for homogeneity.
- * Artist soft-cap (later) = diversity within that lane.
- */
 export const filterInstantMixTracks = (
   seed: LibraryItem,
   tracks: readonly LibraryItem[],
@@ -210,16 +195,15 @@ export const mixArtistKey = (track: LibraryItem): string => {
   return name ? `name:${name}` : `track:${track.id}`
 }
 
-/** Soft cap so one artist can’t own a whole mix (~1/10 of the target). */
+/** Soft cap ~1/10 of target per artist. */
 export const mixArtistCap = (target = LISTEN_NOW_TARGET): number =>
   Math.max(2, Math.ceil(target / 10))
 
-/** Seed artist stays a guest in “their” radio (~1/12), not the whole show. */
+/** Tighter ~1/12 cap for the seed artist. */
 export const mixSeedArtistCap = (target = LISTEN_NOW_TARGET): number =>
   Math.max(2, Math.ceil(target / 12))
 
 export const MIX_MIN_DISTINCT_ARTISTS = 3
-/** Reject / re-pad when one artist is more than this share of the mix. */
 export const MIX_MAX_DOMINANT_SHARE = 0.45
 
 const playableTracks = (tracks: readonly LibraryItem[]): readonly LibraryItem[] =>
@@ -269,7 +253,6 @@ export const isMixDiverseEnough = (
   return artists >= needed && dominantShare <= maxShare
 }
 
-/** Length alone is not enough — mono Instant Mix often clears the old min. */
 export const needsMixDiversityPad = (
   tracks: readonly LibraryItem[],
   minLength: number,
@@ -294,7 +277,6 @@ type ArtistBuckets = {
   readonly tracks: ReadonlyMap<string, readonly LibraryItem[]>
 }
 
-/** Local mutable grouping — pure from the caller’s perspective. */
 const bucketByArtist = (tracks: readonly LibraryItem[]): ArtistBuckets => {
   const order: string[] = []
   const map = new Map<string, LibraryItem[]>()
@@ -310,11 +292,7 @@ const bucketByArtist = (tracks: readonly LibraryItem[]): ArtistBuckets => {
   return { order, tracks: map }
 }
 
-/**
- * Round-robin across artists with a soft cap. Seed artists (when provided) use a
- * tighter cap so Instant Mix “from artist” radios don’t collapse to discography.
- * Only drops caps entirely if the mix would be unplayable.
- */
+/** Round-robin artists; seed uses a tighter cap. Soften caps only if needed for minPlayable. */
 export const diversifyMixTracks = (
   tracks: readonly LibraryItem[],
   target = LISTEN_NOW_TARGET,
@@ -388,10 +366,6 @@ const seedArtistOptions = (
   return { seedArtistKey: key, seedArtistCap: mixSeedArtistCap() }
 }
 
-/**
- * Retrieve (Instant Mix) → genre-fit filter → artist soft-cap diversify.
- * Homogeneous lane, diverse artists — no hard-coded genre blacklists.
- */
 export const themedMixTracks = (
   seed: LibraryItem,
   tracks: readonly LibraryItem[],
@@ -406,7 +380,6 @@ export const themedMixTracks = (
     seedArtistOptions(seed),
   )
 
-/** Merge pools, keep seed-coherent rows, then diversify. */
 export const themedMixFromPools = (
   seed: LibraryItem,
   pools: readonly (readonly LibraryItem[])[],
@@ -420,13 +393,12 @@ export const themedMixFromPools = (
     minPlayable,
   )
 
-/** Theme Instant Mix; pad with genre neighbors only when still thin/mono. */
+/** Pad with genre neighbors only when still thin/mono. */
 export const assembleThemedMix = (
   seed: LibraryItem,
   rawMix: readonly LibraryItem[],
   genrePads: readonly LibraryItem[],
   minLength: number,
-  /** Pass a precomputed themed list to avoid filtering/diversifying twice. */
   prethemed?: readonly LibraryItem[],
 ): readonly LibraryItem[] => {
   const themed = prethemed ?? themedMixTracks(seed, rawMix)
@@ -435,7 +407,6 @@ export const assembleThemedMix = (
     : themed
 }
 
-/** Unique genre labels from recent/favorite listens (preserves first-seen spelling). */
 export const listeningGenreNames = (
   tracks: readonly LibraryItem[],
 ): readonly string[] => {
@@ -450,7 +421,6 @@ export const listeningGenreNames = (
   )
 }
 
-/** Genre tiles from recent/favorite GenreItems. */
 export const listeningGenresFromTracks = (
   tracks: readonly LibraryItem[],
   limit = 16,
@@ -496,7 +466,6 @@ export const foldGenreCatalog = (
   return out
 }
 
-/** True when a listening name is not yet on the painted genre rail. */
 export const listeningGenresNeedCatalog = (
   listeningNames: readonly string[],
   tiles: readonly LibraryItem[],
@@ -511,7 +480,7 @@ export const listeningGenresNeedCatalog = (
   })
 }
 
-/** Put genres you actually listen to ahead of alphabetical catalog filler. */
+/** Prefer listening genres, then the rest of the catalog. */
 export const preferListeningGenres = (
   catalog: readonly LibraryItem[],
   listeningNames: readonly string[],
@@ -549,18 +518,13 @@ export const preferListeningGenres = (
   return out
 }
 
-/** Drop tracks already used in earlier Home mixes so cards stay more distinct. */
 export const excludeTrackIds = (
   tracks: readonly LibraryItem[],
   usedIds: ReadonlySet<string>,
 ): readonly LibraryItem[] =>
   tracks.filter((track) => track.id && !usedIds.has(track.id))
 
-/**
- * Dedupe key for mix card titles — “Hip-Hop Mix” and “Hip Hop Mix” collide.
- * Uses genre normalization when it yields a token; otherwise a soft lowercase key
- * so artist names like “!!!” still dedupe instead of being dropped.
- */
+/** Normalize for title dedupe (Hip-Hop vs Hip Hop; keep artist tokens like “!!!”). */
 export const mixTitleKey = (titleOrLabel: string): string => {
   const trimmed = titleOrLabel.trim()
   if (!trimmed) return ''

@@ -7,13 +7,10 @@ import {
 import type { LibraryItem } from '@/src/domain/libraryItem'
 import type { QueueState, QueueTrack, RepeatMode } from '@/src/domain/queue'
 
-/** Matches Listen Now / Instant Mix batch size. */
 export const AUTOPLAY_TARGET = LISTEN_NOW_TARGET
-/** Pad Instant Mix when thinner than this (same as Listen Now). */
 export const AUTOPLAY_MIN = LISTEN_NOW_MIN
-/** Refill when fewer than this many tracks remain ahead (Music Assistant–style). */
+/** Refill when fewer than this many tracks remain ahead. */
 export const AUTOPLAY_REFILL_AT = 5
-/** Cap session history used for autoplay dedupe. */
 export const AUTOPLAY_RECENT_CAP = 64
 
 export type AutoplaySeedInput = {
@@ -70,7 +67,6 @@ export const filterAutoplayTracks = (
   return out
 }
 
-/** Assemble Instant Mix + padding sources, then drop already-queued / recent ids. */
 export const assembleAutoplayBatch = (
   sources: readonly (readonly LibraryItem[])[],
   excludeIds: ReadonlySet<string>,
@@ -91,7 +87,7 @@ export const pushRecentPlayedId = (
   return next.slice(next.length - cap)
 }
 
-/** Index to truncate from when disabling Autoplay without removing the current track. */
+/** Index to truncate from when turning Autoplay off (keep current track). */
 export const autoplayStripFromIndex = (
   anchorIndex: number | null,
   currentIndex: number,
@@ -105,7 +101,7 @@ export const autoplayStripFromIndex = (
   return afterCurrent < trackCount ? afterCurrent : null
 }
 
-/** Drop Recommended tracks (store index ≥ anchor), keeping the playing row. */
+/** Drop Recommended tracks (store index ≥ anchor); keep the playing row. */
 export const stripAutoplayTracks = (
   state: QueueState,
   anchorIndex: number | null,

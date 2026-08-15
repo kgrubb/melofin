@@ -1,7 +1,7 @@
 import type { LibraryItem } from '@/src/domain/libraryItem'
 import type { OfflineEntry } from '@/src/domain/offline'
 
-/** Group key so Instant Mix cards diversify by artist (not one Christmas rabbit hole). */
+/** Group Instant Mix seeds by artist (then album / item). */
 export const mixSeedKey = (item: LibraryItem): string => {
   if (item.artistId?.trim()) return `artist:${item.artistId.trim()}`
   const named = item.artists.find((name) => name.trim().length > 0)?.trim()
@@ -10,7 +10,7 @@ export const mixSeedKey = (item: LibraryItem): string => {
   return `item:${item.id}`
 }
 
-/** Distinct Instant Mix seeds — Audio first so album/playlist rows don’t crowd out song seeds. */
+/** Prefer Audio seeds so album/playlist rows don’t crowd out songs. */
 export const assembleMixSeeds = (
   candidates: readonly LibraryItem[],
   limit = 3,
@@ -34,10 +34,7 @@ export const assembleMixSeeds = (
 
 export const recentMixTitle = (): string => 'Recently played'
 
-/**
- * Single display artist for section titles.
- * Jellyfin often packs collabs as one string with `/` (keep commas — “Tyler, The Creator”).
- */
+/** Split collabs on / | ; keep commas in names. */
 export const primaryArtistName = (
   artists: readonly string[],
   fallback = '',
@@ -48,7 +45,6 @@ export const primaryArtistName = (
   return first
 }
 
-/** Fill empty MusicAlbum artists from Audio rows that share albumId. */
 export const withArtistsFromTracks = (
   albums: readonly LibraryItem[],
   tracks: readonly LibraryItem[],
@@ -67,7 +63,6 @@ export const withArtistsFromTracks = (
   })
 }
 
-/** Rail subtitle: artist → album → song count → added date (albums only). */
 export const albumCardSubtitle = (item: LibraryItem): string => {
   const artist = primaryArtistName(item.artists)
   if (artist) return artist
@@ -82,7 +77,6 @@ export const albumCardSubtitle = (item: LibraryItem): string => {
   })}`
 }
 
-/** Display label for an Instant Mix seed — artist when known. */
 export const instantMixLabel = (seed: LibraryItem): string => {
   if (seed.type === 'Audio') {
     return primaryArtistName(seed.artists, seed.name) || seed.name
@@ -90,7 +84,6 @@ export const instantMixLabel = (seed: LibraryItem): string => {
   return seed.name
 }
 
-/** Honest Instant Mix title from seed — never fake editorial brands. */
 export const instantMixCardTitle = (seed: LibraryItem | undefined): string => {
   if (!seed) return 'Instant Mix'
   return `Mix · ${instantMixLabel(seed)}`
@@ -98,15 +91,10 @@ export const instantMixCardTitle = (seed: LibraryItem | undefined): string => {
 
 export const favoritesMixTitle = (): string => 'Favorites mix'
 
-/** True for discarded numbered labels like “Mix 1” / “mix 12”. */
 export const isNumberedMixTitle = (title: string): boolean =>
   /^mix\s*\d+$/i.test(title.trim())
 
-/**
- * Title-case a genre for mix cards — “rock” → “Rock”, “hip-hop” → “Hip-Hop”.
- * Splits on spaces / hyphens / slashes / & so apostrophes stay intact
- * (“children's music” → “Children's Music”, not “Children'S Music”).
- */
+/** Don’t split genre labels on apostrophes. */
 export const titleCaseGenreLabel = (label: string): string => {
   const trimmed = label.trim()
   if (!trimmed) return ''
@@ -115,7 +103,6 @@ export const titleCaseGenreLabel = (label: string): string => {
     .replace(/(^|[\s\-/&])([a-z])/g, (_, sep: string, char: string) => sep + char.toUpperCase())
 }
 
-/** Seed-based mix label — “Tyler, The Creator Mix” / “Hip Hop Mix”. Never “Mix N”. */
 export const seededMixTitle = (seedLabel: string): string => {
   const label = seedLabel.trim()
   if (!label || isNumberedMixTitle(label)) return ''
@@ -123,7 +110,6 @@ export const seededMixTitle = (seedLabel: string): string => {
   return `${label} Mix`
 }
 
-/** Rank artists by frequency in a mix (for titles/subtitles). */
 export const topArtistsFromTracks = (
   tracks: readonly LibraryItem[],
   limit = 3,
@@ -148,10 +134,6 @@ export const topArtistsFromTracks = (
     .map((entry) => entry.name)
 }
 
-/**
- * Spotify-like mix card title from the seed artist/genre, else dominant artists
- * in the track list. Never falls back to “Mix 1”.
- */
 export const homeMixCardTitle = (
   seedLabel: string,
   tracks: readonly LibraryItem[],
@@ -168,10 +150,6 @@ export const homeMixCardTitle = (
   return 'Your Mix'
 }
 
-/**
- * Subtitle under a mix card — Spotify Daily Mix style:
- * “Kendrick Lamar, Frank Ocean, SZA and more”
- */
 export const homeMixCardSubtitle = (
   seedLabel: string,
   tracks: readonly LibraryItem[],
@@ -188,19 +166,12 @@ export const homeMixCardSubtitle = (
   return `${names[0]}, ${names[1]}, ${names[2]} and more`
 }
 
-/** How many Instant Mix cards Home aims for. */
 export const HOME_INSTANT_MIX_TARGET = 6
-/** Artist seeds to try before genre fill — extras replace failed artist cards. */
 export const HOME_INSTANT_MIX_SEED_ATTEMPTS = 12
-/** Parallel Instant Mix fetches while building the Home rail. */
 export const HOME_MIX_FETCH_CONCURRENCY = 6
 export const HOME_GENRE_PREVIEW_LIMIT = 32
 export const HOME_GENRE_CATALOG_LIMIT = 250
 
-/**
- * Pick up to `limit` Audio seeds for Instant Mix cards from ranked artists.
- * Falls back to a MusicArtist-shaped seed when no track is available.
- */
 export const assembleInstantMixSeeds = (
   {
     rankedArtists,
@@ -235,10 +206,6 @@ export const assembleInstantMixSeeds = (
   return out
 }
 
-/**
- * Rank artists by how often they appear on tracks (favorites / recent).
- * Returns MusicArtist-shaped items for rails.
- */
 export const rankArtistsFromTracks = (
   tracks: readonly LibraryItem[],
   limit = 12,
@@ -271,7 +238,6 @@ export const rankArtistsFromTracks = (
     }))
 }
 
-/** Merge API favorite artists ahead of ranked-from-tracks, deduped. */
 export const assembleFavoriteArtists = (
   liked: readonly LibraryItem[],
   ranked: readonly LibraryItem[],
@@ -288,7 +254,6 @@ export const assembleFavoriteArtists = (
   return out
 }
 
-/** Up to 4 tracks with distinct artwork for a Daily Mix–style collage. */
 export const collageTracks = (
   tracks: readonly LibraryItem[],
   limit = 4,
@@ -311,7 +276,6 @@ export const collageImageIds = (
 ): readonly string[] =>
   collageTracks(tracks, limit).map((track) => track.imageItemId ?? track.id)
 
-/** Complete offline entries as library-shaped rail cards (newest access first). */
 export const downloadsFromOffline = (
   entries: Readonly<Record<string, OfflineEntry>>,
 ): readonly LibraryItem[] =>

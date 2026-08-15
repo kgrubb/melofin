@@ -1,4 +1,4 @@
-/** Allowed Spotify-style crossfade durations (seconds). 0 = off. */
+/** Crossfade seconds: 0 | 5 | 8 | 12. */
 export const CROSSFADE_PRESETS = [0, 5, 8, 12] as const
 export type CrossfadeSeconds = (typeof CROSSFADE_PRESETS)[number]
 

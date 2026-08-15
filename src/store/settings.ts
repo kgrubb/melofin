@@ -61,11 +61,11 @@ type Settings = {
    * Kept so older settings.json round-trips without noisy resets.
    */
   readonly gaplessPlayback: boolean
-  /** Keep playing similar Instant Mix tracks when a queue ends — default on. */
+  /** Keep playing similar tracks when a queue ends (default on). */
   readonly autoplayEnabled: boolean
-  /** Local overlap fade duration; 0 = off. */
+  /** Local overlap fade seconds; 0 = off. */
   readonly crossfadeSeconds: CrossfadeSeconds
-  /** Persisted for a future engine insert; UI removed until audible. */
+  /** Kept for round-trip; EQ UI hidden until native insert lands. */
   readonly eq: EqSettings
   readonly syncPacks: SyncPackIndex
 }
