@@ -14,6 +14,7 @@ import { LoadingState, Screen } from '@/src/ui/primitives'
 const AuthGate = ({ children }: { readonly children: React.ReactNode }) => {
   const hydrated = useSessionStore((s) => s.hydrated)
   const session = useSessionStore((s) => s.session)
+  const addingAccount = useSessionStore((s) => s.addingAccount)
   const hydrateSession = useSessionStore((s) => s.hydrate)
   const hydrateSettings = useSettingsStore((s) => s.hydrate)
   const segments = useSegments()
@@ -31,10 +32,16 @@ const AuthGate = ({ children }: { readonly children: React.ReactNode }) => {
       router.replace('/(auth)/server')
       return
     }
-    if (session && inAuth) {
+    // Allow Settings → Add server while still signed in.
+    if (session && inAuth && !addingAccount) {
       router.replace('/(app)/(main)/(tabs)/home')
+      return
     }
-  }, [hydrated, session, segments, router])
+    // Left the auth stack after Add server — drop the gate flag.
+    if (session && !inAuth && addingAccount) {
+      useSessionStore.getState().cancelAddAccount()
+    }
+  }, [hydrated, session, addingAccount, segments, router])
 
   if (!hydrated) {
     return (

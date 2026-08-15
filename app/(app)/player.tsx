@@ -35,20 +35,15 @@ import { useCastStore } from '@/src/cast/castStore'
 import { setActiveVolume, startDiscovery } from '@/src/cast/router'
 import {
   DOCK_REVEAL_PROGRESS,
-  EXPANDED_CONTENT_FADE,
-  MINI_CONTENT_FADE,
   SHEET_HANDOFF_FADE_MS,
-  expandedPlayerFrame,
-  fallbackMiniFrame,
 } from '@/src/player/nowPlayingGeometry'
 import { isSleepArmed, remainingMs, SLEEP_PRESETS_MINUTES } from '@/src/domain/sleepTimer'
 import {
-  offlineLyricsRelativePath,
   sanitizeLyricsPayload,
   type LyricsPayload,
 } from '@/src/domain/lyrics'
 import { toggleFavoriteItem } from '@/src/services/jellyfin/favoriteToggle'
-import { fetchLyrics } from '@/src/services/jellyfin/library'
+import { fetchLyrics, resizeArtworkUrl } from '@/src/services/jellyfin/library'
 import { AccentGradient } from '@/src/theme/Atmosphere'
 import { Glass, GlassCluster } from '@/src/theme/Glass'
 import { IconButton, PressableScale } from '@/src/theme/motion'
@@ -75,9 +70,6 @@ const SHEET_CLOSE_TIMING = {
   easing: Easing.bezier(0.4, 0, 0.2, 1),
 } as const
 
-const MINI_ART = 44
-const MINI_PLAY = 44
-
 const PlayerProgress = ({ durationMs }: { readonly durationMs: number }) => {
   const positionMs = usePlayerStore((s) => s.positionMs)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
@@ -96,7 +88,7 @@ export default function PlayerScreen() {
   const router = useRouter()
   const navigation = useNavigation()
   const insets = useSafeAreaInsets()
-  const { width, height } = useWindowDimensions()
+  const { height } = useWindowDimensions()
   const reduceMotion = useReducedMotion()
   const allowRemove = useRef(false)
   const dockRevealed = useRef(false)
@@ -104,11 +96,14 @@ export default function PlayerScreen() {
   const track = usePlayerStore((s) =>
     s.currentIndex >= 0 ? s.tracks[s.currentIndex] : undefined,
   )
+  const heroArt = resizeArtworkUrl(track?.artworkUrl, 'hero')
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const shuffle = usePlayerStore((s) => s.shuffle)
   const repeat = usePlayerStore((s) => s.repeat)
+  const autoplaySessionOn = usePlayerStore((s) => s.autoplaySessionOn)
   const toggleShuffle = usePlayerStore((s) => s.toggleShuffle)
   const cycleRepeat = usePlayerStore((s) => s.cycleRepeat)
+  const toggleAutoplaySession = usePlayerStore((s) => s.toggleAutoplaySession)
   const goPrevious = usePlayerStore((s) => s.goPrevious)
   const goNext = usePlayerStore((s) => s.goNext)
   const togglePlaying = usePlayerStore((s) => s.togglePlaying)
@@ -117,7 +112,6 @@ export default function PlayerScreen() {
   const setSleepMinutes = usePlayerStore((s) => s.setSleepMinutes)
   const setSleepEndOfTrack = usePlayerStore((s) => s.setSleepEndOfTrack)
   const clearSleep = usePlayerStore((s) => s.clearSleep)
-  const measuredMini = usePlayerStore((s) => s.miniPlayerFrame)
   const activeOutput = useCastStore((s) => s.transfer.active)
   const volumeSupported = useCastStore((s) => s.volumeSupported)
   const volume = useCastStore((s) => s.volume)
@@ -152,14 +146,17 @@ export default function PlayerScreen() {
   }, [track?.id])
 
   useEffect(() => {
+    if (!heroArt || heroArt.startsWith('file:') || heroArt.startsWith('/')) return
+    void Image.prefetch(heroArt, 'disk')
+  }, [heroArt])
+
+  useEffect(() => {
     if (!lyricsOpen || !track) return
     let cancelled = false
     const load = async () => {
       setLyricsStatus('loading')
       if (offlineLyricsPath) {
-        const relative = offlineLyricsPath.startsWith('lyrics/')
-          ? offlineLyricsPath
-          : offlineLyricsRelativePath(track.id)
+        const relative = offlineLyricsPath
         const cached = await readJsonFile<LyricsPayload>(relative)
         if (cancelled) return
         if (cached.ok && cached.value && cached.value.lines.length > 0) {
@@ -198,51 +195,16 @@ export default function PlayerScreen() {
     }
   }, [lyricsOpen, track, context, offlineLyricsPath])
 
-  const from = measuredMini ?? fallbackMiniFrame(width, height, insets.bottom)
-  const to = expandedPlayerFrame(width, height, insets.top, insets.bottom)
-
-  const fromX = useSharedValue(from.x)
-  const fromY = useSharedValue(from.y)
-  const fromW = useSharedValue(from.width)
-  const fromH = useSharedValue(from.height)
-  const toX = useSharedValue(to.x)
-  const toY = useSharedValue(to.y)
-  const toW = useSharedValue(to.width)
-  const toH = useSharedValue(to.height)
-
   const progress = useSharedValue(reduceMotion ? 1 : 0)
+  const screenH = useSharedValue(height)
   const dragOrigin = useSharedValue(1)
   const closing = useSharedValue(false)
   const dockRevealSV = useSharedValue(0)
   const sheetOpacity = useSharedValue(1)
 
   useEffect(() => {
-    fromX.value = from.x
-    fromY.value = from.y
-    fromW.value = from.width
-    fromH.value = from.height
-    toX.value = to.x
-    toY.value = to.y
-    toW.value = to.width
-    toH.value = to.height
-  }, [
-    from.height,
-    from.width,
-    from.x,
-    from.y,
-    fromH,
-    fromW,
-    fromX,
-    fromY,
-    to.height,
-    to.width,
-    to.x,
-    to.y,
-    toH,
-    toW,
-    toX,
-    toY,
-  ])
+    screenH.value = height
+  }, [height, screenH])
 
   useEffect(() => {
     setNowPlayingOpen(true)
@@ -272,7 +234,7 @@ export default function PlayerScreen() {
 
   const finishDismiss = useCallback(() => {
     revealDock()
-    // Let the morph sheet finish fading over live glass before the route pops.
+    // Let the drawer finish fading over the live mini player before the route pops.
     setTimeout(() => {
       allowRemove.current = true
       const href = pendingHref.current
@@ -404,76 +366,25 @@ export default function PlayerScreen() {
     opacity: interpolate(progress.value, [0, 1], [0, 0.55], Extrapolation.CLAMP),
   }))
 
+  /** Apple-style sheet: slide vertically. Never non-uniform scale (no squish). */
   const sheetStyle = useAnimatedStyle(() => {
     const p = progress.value
-    const tw = Math.max(toW.value, 1)
-    const th = Math.max(toH.value, 1)
-    const scaleX = interpolate(p, [0, 1], [fromW.value / tw, 1], Extrapolation.CLAMP)
-    const scaleY = interpolate(p, [0, 1], [fromH.value / th, 1], Extrapolation.CLAMP)
-    const fromCx = fromX.value + fromW.value / 2
-    const fromCy = fromY.value + fromH.value / 2
-    const toCx = toX.value + toW.value / 2
-    const toCy = toY.value + toH.value / 2
     return {
-      position: 'absolute' as const,
-      left: toX.value,
-      top: toY.value,
-      width: toW.value,
-      height: toH.value,
-      borderRadius: interpolate(p, [0, 1], [radii.lg, 0], Extrapolation.CLAMP),
+      flex: 1,
+      borderTopLeftRadius: interpolate(p, [0, 1], [radii.xl, 0], Extrapolation.CLAMP),
+      borderTopRightRadius: interpolate(p, [0, 1], [radii.xl, 0], Extrapolation.CLAMP),
       overflow: 'hidden' as const,
       opacity: sheetOpacity.value,
-      borderWidth: interpolate(p, [0, 0.85, 1], [StyleSheet.hairlineWidth, StyleSheet.hairlineWidth, 0], Extrapolation.CLAMP),
       transform: [
         {
-          translateX: interpolate(p, [0, 1], [fromCx - toCx, 0], Extrapolation.CLAMP),
+          translateY: interpolate(
+            p,
+            [0, 1],
+            [screenH.value, 0],
+            Extrapolation.CLAMP,
+          ),
         },
-        {
-          translateY: interpolate(p, [0, 1], [fromCy - toCy, 0], Extrapolation.CLAMP),
-        },
-        { scaleX },
-        { scaleY },
       ],
-    }
-  })
-
-  const expandedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      progress.value,
-      [EXPANDED_CONTENT_FADE.start, EXPANDED_CONTENT_FADE.end],
-      [0, 1],
-      Extrapolation.CLAMP,
-    ),
-  }))
-
-  /** Mini row counter-scales so it stays readable as the sheet shrinks into the dock. */
-  const miniChromeStyle = useAnimatedStyle(() => {
-    const p = progress.value
-    const tw = Math.max(toW.value, 1)
-    const th = Math.max(toH.value, 1)
-    const sx = Math.max(
-      interpolate(p, [0, 1], [fromW.value / tw, 1], Extrapolation.CLAMP),
-      0.001,
-    )
-    const sy = Math.max(
-      interpolate(p, [0, 1], [fromH.value / th, 1], Extrapolation.CLAMP),
-      0.001,
-    )
-    const fw = fromW.value
-    const fh = fromH.value
-    return {
-      opacity: interpolate(
-        p,
-        [MINI_CONTENT_FADE.start, MINI_CONTENT_FADE.end],
-        [1, 0],
-        Extrapolation.CLAMP,
-      ),
-      position: 'absolute' as const,
-      left: (tw - fw) / 2,
-      top: (th - fh) / 2,
-      width: fw,
-      height: fh,
-      transform: [{ scaleX: 1 / sx }, { scaleY: 1 / sy }],
     }
   })
 
@@ -556,42 +467,9 @@ export default function PlayerScreen() {
 
           <GestureDetector gesture={pan}>
             <Animated.View style={[styles.sheet, sheetStyle]}>
-              <Animated.View
-                pointerEvents="none"
-                style={[styles.miniChrome, miniChromeStyle]}
-              >
-                {track.artworkUrl ? (
-                  <Image
-                    source={{ uri: track.artworkUrl }}
-                    style={styles.miniArt}
-                    cachePolicy="memory-disk"
-                  />
-                ) : (
-                  <View style={styles.miniArt} />
-                )}
-                <View style={styles.miniMeta}>
-                  <Text style={styles.miniTitle} numberOfLines={1}>
-                    {track.title}
-                  </Text>
-                  <Text style={styles.miniArtist} numberOfLines={1}>
-                    {track.artist}
-                  </Text>
-                </View>
-                <View style={styles.miniPlay}>
-                  <AccentGradient style={styles.miniPlayFill}>
-                    <Icon
-                      name={isPlaying ? 'pause.fill' : 'play.fill'}
-                      tintColor={colors.onAccent}
-                      size={18}
-                    />
-                  </AccentGradient>
-                </View>
-              </Animated.View>
-
-              <Animated.View
+              <View
                 style={[
                   styles.expanded,
-                  expandedStyle,
                   {
                     paddingTop: Math.max(insets.top, spacing.sm),
                     paddingBottom: Math.max(insets.bottom, spacing.lg),
@@ -632,13 +510,18 @@ export default function PlayerScreen() {
                             }
                             reduceMotion={Boolean(reduceMotion)}
                           />
-                        ) : track.artworkUrl ? (
+                        ) : heroArt ? (
                           <Image
-                            source={{ uri: track.artworkUrl }}
+                            source={{
+                              uri: heroArt,
+                              cacheKey: `art-hero-${track.id}`,
+                            }}
                             style={styles.art}
                             contentFit="cover"
-                            cachePolicy="memory-disk"
+                            cachePolicy="disk"
                             priority="high"
+                            allowDownscaling={false}
+                            recyclingKey={`art-hero-${track.id}`}
                           />
                         ) : (
                           <View style={[styles.art, styles.artFallback]} />
@@ -795,6 +678,18 @@ export default function PlayerScreen() {
                           />
                         </IconButton>
                         <IconButton
+                          accessibilityLabel="Autoplay"
+                          onPress={toggleAutoplaySession}
+                        >
+                          <Icon
+                            name="infinity"
+                            tintColor={
+                              autoplaySessionOn ? colors.accent : colors.textSecondary
+                            }
+                            size={20}
+                          />
+                        </IconButton>
+                        <IconButton
                           accessibilityLabel="Devices"
                           onPress={() => {
                             startDiscovery()
@@ -860,7 +755,7 @@ export default function PlayerScreen() {
                     </View>
                   </View>
                 </View>
-              </Animated.View>
+              </View>
             </Animated.View>
           </GestureDetector>
         </View>
@@ -882,52 +777,9 @@ const styles = StyleSheet.create({
     pointerEvents: 'none',
   },
   sheet: {
+    flex: 1,
     backgroundColor: 'rgba(36, 20, 58, 0.96)',
     borderColor: colors.glassBorder,
-  },
-  miniChrome: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    gap: spacing.sm,
-    zIndex: 2,
-  },
-  miniArt: {
-    width: MINI_ART,
-    height: MINI_ART,
-    borderRadius: radii.sm,
-    backgroundColor: colors.elevated,
-  },
-  miniMeta: {
-    flex: 1,
-    minWidth: 0,
-    justifyContent: 'center',
-    gap: 2,
-  },
-  miniTitle: {
-    color: colors.text,
-    fontWeight: '600',
-    fontSize: 14,
-    lineHeight: 18,
-  },
-  miniArtist: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  miniPlay: {
-    width: MINI_PLAY,
-    height: MINI_PLAY,
-    borderRadius: radii.pill,
-    overflow: 'hidden',
-  },
-  miniPlayFill: {
-    width: MINI_PLAY,
-    height: MINI_PLAY,
-    borderRadius: radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   expanded: {
     flex: 1,

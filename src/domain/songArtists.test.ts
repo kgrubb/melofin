@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { backfillSongArtists } from '@/src/domain/songArtists'
-import type { LibraryItem } from '@/src/services/jellyfin/mappers'
+import type { LibraryItem } from '@/src/domain/libraryItem'
 
 const song = (
   partial: Partial<LibraryItem> & Pick<LibraryItem, 'id' | 'name'>,

@@ -164,6 +164,78 @@ export const playNext = (state: QueueState, items: readonly QueueTrack[]): Queue
   return { ...state, tracks, shuffleOrder }
 }
 
+/**
+ * Insert into the store array at `insertAt`. Shuffle order places the new
+ * tracks after the current item and before any later (higher) store indices.
+ */
+export const insertTracksAt = (
+  state: QueueState,
+  items: readonly QueueTrack[],
+  insertAt: number,
+): QueueState => {
+  if (items.length === 0) return state
+  if (state.tracks.length === 0 || state.currentIndex < 0) {
+    return playItems(state, items, 0)
+  }
+  const at = Math.max(0, Math.min(insertAt, state.tracks.length))
+  const incoming = ensureQueueEntryIds(items)
+  const shift = incoming.length
+  const tracks = [
+    ...state.tracks.slice(0, at),
+    ...incoming,
+    ...state.tracks.slice(at),
+  ]
+  const currentIndex =
+    at <= state.currentIndex ? state.currentIndex + shift : state.currentIndex
+  if (!state.shuffle) {
+    return { ...state, tracks, currentIndex, shuffleOrder: [] }
+  }
+  if (state.shuffleOrder.length !== state.tracks.length) {
+    return {
+      ...state,
+      tracks,
+      currentIndex,
+      shuffleOrder: shuffleOrderPinning(tracks.length, currentIndex),
+    }
+  }
+  const remapped = state.shuffleOrder.map((index) =>
+    index < at ? index : index + shift,
+  )
+  const inserted = Array.from({ length: shift }, (_, i) => at + i)
+  const pos = remapped.indexOf(currentIndex)
+  const fromPos = pos < 0 ? 0 : pos + 1
+  let spliceAt = remapped.length
+  for (let i = fromPos; i < remapped.length; i += 1) {
+    if (remapped[i]! >= at + shift) {
+      spliceAt = i
+      break
+    }
+  }
+  return {
+    ...state,
+    tracks,
+    currentIndex,
+    shuffleOrder: [
+      ...remapped.slice(0, spliceAt),
+      ...inserted,
+      ...remapped.slice(spliceAt),
+    ],
+  }
+}
+
+const indexAfterMove = (index: number, from: number, to: number): number => {
+  if (index === from) return to
+  if (from < index && to >= index) return index - 1
+  if (from > index && to <= index) return index + 1
+  return index
+}
+
+const remapShuffleAfterRemove = (
+  order: readonly number[],
+  removed: number,
+): readonly number[] =>
+  order.filter((i) => i !== removed).map((i) => (i > removed ? i - 1 : i))
+
 export const removeAt = (state: QueueState, index: number): QueueState => {
   if (index < 0 || index >= state.tracks.length) return state
   const removed = state.tracks[index]
@@ -202,7 +274,9 @@ export const removeAt = (state: QueueState, index: number): QueueState => {
     tracks,
     currentIndex,
     shuffleOrder: state.shuffle
-      ? shuffleOrderPinning(tracks.length, currentIndex)
+      ? state.shuffleOrder.length === state.tracks.length
+        ? remapShuffleAfterRemove(state.shuffleOrder, index)
+        : shuffleOrderPinning(tracks.length, currentIndex)
       : [],
   }
 }
@@ -237,9 +311,117 @@ export const moveTrack = (
     tracks,
     currentIndex,
     shuffleOrder: state.shuffle
-      ? shuffleOrderPinning(tracks.length, currentIndex)
+      ? state.shuffleOrder.length === state.tracks.length
+        ? state.shuffleOrder.map((i) => indexAfterMove(i, from, to))
+        : shuffleOrderPinning(tracks.length, currentIndex)
       : [],
   }
+}
+
+/** Remap a store index after a linear (non-shuffle) view move. */
+export const storeIndexAfterViewMove = (
+  index: number,
+  fromView: number,
+  toView: number,
+): number => indexAfterMove(index, fromView, toView)
+
+/** Store indices in Queue screen order: now playing, then upcoming. */
+export const queueViewIndices = (state: QueueState): readonly number[] => {
+  if (state.tracks.length === 0 || state.currentIndex < 0) {
+    return state.tracks.map((_, i) => i)
+  }
+  if (state.shuffle && state.shuffleOrder.length === state.tracks.length) {
+    const pos = state.shuffleOrder.indexOf(state.currentIndex)
+    if (pos < 0) return state.tracks.map((_, i) => i)
+    return state.shuffleOrder
+      .slice(pos)
+      .filter((index) => index >= 0 && index < state.tracks.length)
+  }
+  return state.tracks.map((_, i) => i).slice(state.currentIndex)
+}
+
+/** Queue screen order: shuffle shows play order from the current track forward. */
+export const queueViewTracks = (state: QueueState): readonly QueueTrack[] =>
+  queueViewIndices(state)
+    .map((index) => state.tracks[index])
+    .filter((track): track is QueueTrack => track != null)
+
+/**
+ * Reorder the queue as shown on the Queue screen.
+ * The playing row stays first; only upcoming rows move.
+ */
+export const moveQueueViewTrack = (
+  state: QueueState,
+  fromView: number,
+  toView: number,
+): QueueState => {
+  if (fromView === toView) return state
+  const view = queueViewIndices(state)
+  if (
+    fromView < 0 ||
+    toView < 0 ||
+    fromView >= view.length ||
+    toView >= view.length ||
+    fromView === 0 ||
+    toView === 0
+  ) {
+    return state
+  }
+  if (state.shuffle && state.shuffleOrder.length === state.tracks.length) {
+    const pos = state.shuffleOrder.indexOf(state.currentIndex)
+    if (pos < 0) return state
+    const fromStore = view[fromView]
+    const toStore = view[toView]
+    if (fromStore == null || toStore == null) return state
+    const remaining = [...state.shuffleOrder.slice(pos)]
+    const fromPos = remaining.indexOf(fromStore)
+    const toPos = remaining.indexOf(toStore)
+    if (fromPos < 0 || toPos < 0 || fromPos === toPos) return state
+    const [moved] = remaining.splice(fromPos, 1)
+    remaining.splice(toPos, 0, moved!)
+    return {
+      ...state,
+      shuffleOrder: [...state.shuffleOrder.slice(0, pos), ...remaining],
+    }
+  }
+  return moveTrack(state, view[fromView]!, view[toView]!)
+}
+
+/**
+ * Play a Queue-screen row. Shuffle keeps the other upcoming tracks;
+ * skipTo would hide anything still before the tapped index.
+ */
+export const playQueueViewIndex = (
+  state: QueueState,
+  viewIndex: number,
+): QueueState => {
+  const view = queueViewIndices(state)
+  const storeIndex = view[viewIndex]
+  if (storeIndex == null) return state
+  if (
+    viewIndex > 0 &&
+    state.shuffle &&
+    state.shuffleOrder.length === state.tracks.length
+  ) {
+    const pos = state.shuffleOrder.indexOf(state.currentIndex)
+    if (pos < 0) return skipTo(state, storeIndex)
+    const remaining = state.shuffleOrder.slice(pos)
+    const oldCurrent = remaining[0]
+    const tapped = storeIndex
+    if (oldCurrent == null) return skipTo(state, storeIndex)
+    const others = remaining.filter((index, i) => i !== 0 && index !== tapped)
+    return {
+      ...state,
+      currentIndex: tapped,
+      shuffleOrder: [
+        ...state.shuffleOrder.slice(0, pos),
+        oldCurrent,
+        tapped,
+        ...others,
+      ],
+    }
+  }
+  return skipTo(state, storeIndex)
 }
 
 /** Drop every track after the current play position; keep playback on the current item. */
@@ -269,25 +451,9 @@ export const clearUpcoming = (state: QueueState): QueueState => {
 export const upcomingCount = (state: QueueState): number => {
   if (state.tracks.length === 0 || state.currentIndex < 0) return 0
   if (state.shuffle && state.shuffleOrder.length === state.tracks.length) {
-    const pos = state.shuffleOrder.indexOf(state.currentIndex)
-    if (pos < 0) return 0
-    return Math.max(0, state.shuffleOrder.length - pos - 1)
+    if (state.shuffleOrder.indexOf(state.currentIndex) < 0) return 0
   }
-  return Math.max(0, state.tracks.length - state.currentIndex - 1)
-}
-
-/** Queue screen order: shuffle shows play order from the current track forward. */
-export const queueViewTracks = (state: QueueState): readonly QueueTrack[] => {
-  if (state.tracks.length === 0 || state.currentIndex < 0) return state.tracks
-  if (state.shuffle && state.shuffleOrder.length === state.tracks.length) {
-    const pos = state.shuffleOrder.indexOf(state.currentIndex)
-    if (pos < 0) return state.tracks
-    return state.shuffleOrder
-      .slice(pos)
-      .map((i) => state.tracks[i])
-      .filter((track): track is QueueTrack => track != null)
-  }
-  return state.tracks
+  return Math.max(0, queueViewIndices(state).length - 1)
 }
 
 export const patchTrackFavorite = (
@@ -326,7 +492,7 @@ export const expandTracksPreservingPlayback = (
   items: readonly QueueTrack[],
 ): QueueState => {
   if (items.length === 0) return state
-  const tracks = ensureQueueEntryIds(items)
+  let tracks = ensureQueueEntryIds(items)
   const current = state.tracks[state.currentIndex]
   const currentKey = playingIdentity(current)
   const byEntry =
@@ -341,6 +507,17 @@ export const expandTracksPreservingPlayback = (
         ? tracks.findIndex((track) => track.id === current.id)
         : -1
   if (foundByMedia < 0) return state
+  // Keep the playing row's identity so expand cannot remint a PlaySession.
+  if (byEntry < 0 && current?.queueEntryId) {
+    const slot = tracks[foundByMedia]!
+    if (slot.queueEntryId !== current.queueEntryId) {
+      tracks = tracks.map((track, index) =>
+        index === foundByMedia
+          ? { ...track, queueEntryId: current.queueEntryId }
+          : track,
+      )
+    }
+  }
 
   if (!state.shuffle) {
     return {

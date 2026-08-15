@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { emptyOfflineIndex, upsertEntry } from '@/src/domain/offline'
 import {
   FILE_LOAD_TIMEOUT_MS,
+  excludeFailedUris,
+  isDirectPlayRemoteUri,
   nextPlayableCachedIndex,
+  orderRemotePlaybackUris,
   planSourceCandidates,
+  playMethodForResolvedUri,
   prefetchCountForNetwork,
   REMOTE_CELLULAR_TIMEOUT_MS,
   REMOTE_FIRST_TIMEOUT_MS,
   REMOTE_WIFI_TIMEOUT_MS,
+  shouldAbandonSilentStart,
   shouldAutoAdvanceOnLoadFailure,
   shouldFailoverStall,
 } from '@/src/domain/playbackSource'
@@ -136,5 +141,103 @@ describe('playbackSource', () => {
     })
     expect(nextPlayableCachedIndex(queue, index, 0)).toBe(2)
     expect(nextPlayableCachedIndex(queue, emptyOfflineIndex(), 0)).toBe(-1)
+  })
+
+  it('orders Direct Play before universal and stream.mp3', () => {
+    const ordered = orderRemotePlaybackUris([
+      'https://jf/Audio/1/stream.mp3?x=1',
+      'https://jf/Audio/1/universal?x=1',
+      'https://jf/Audio/1/stream.flac?static=true',
+      'https://jf/Audio/1/stream.mp3?x=1',
+    ])
+    expect(ordered).toEqual([
+      'https://jf/Audio/1/stream.flac?static=true',
+      'https://jf/Audio/1/universal?x=1',
+      'https://jf/Audio/1/stream.mp3?x=1',
+    ])
+    expect(isDirectPlayRemoteUri(ordered[0]!)).toBe(true)
+    expect(
+      isDirectPlayRemoteUri('https://jf/Audio/1/stream?static=true'),
+    ).toBe(true)
+    expect(playMethodForResolvedUri(ordered[0]!, false)).toBe('DirectPlay')
+    expect(playMethodForResolvedUri(ordered[2]!, false)).toBe('Transcode')
+    expect(playMethodForResolvedUri('file:///x', true)).toBe('DirectPlay')
+  })
+
+  it('drops already-failed URIs and abandons silent starts', () => {
+    expect(
+      excludeFailedUris(['a', 'b', 'c'], new Set(['b'])),
+    ).toEqual(['a', 'c'])
+    expect(
+      shouldAbandonSilentStart({
+        wantsPlay: true,
+        elapsedMs: 200,
+        confirmWithinMs: 700,
+        positionMs: 0,
+        seekMs: 0,
+        isBuffering: false,
+      }),
+    ).toBe(false)
+    expect(
+      shouldAbandonSilentStart({
+        wantsPlay: true,
+        elapsedMs: 700,
+        confirmWithinMs: 700,
+        positionMs: 0,
+        seekMs: 0,
+        isBuffering: false,
+      }),
+    ).toBe(true)
+    expect(
+      shouldAbandonSilentStart({
+        wantsPlay: true,
+        elapsedMs: 700,
+        confirmWithinMs: 700,
+        positionMs: 0,
+        seekMs: 0,
+        isBuffering: true,
+      }),
+    ).toBe(false)
+    expect(
+      shouldAbandonSilentStart({
+        wantsPlay: true,
+        elapsedMs: 700,
+        confirmWithinMs: 700,
+        positionMs: 180_000,
+        seekMs: 0,
+        isBuffering: false,
+      }),
+    ).toBe(true)
+    expect(
+      shouldAbandonSilentStart({
+        wantsPlay: true,
+        elapsedMs: 10,
+        confirmWithinMs: 700,
+        positionMs: 0,
+        seekMs: 0,
+        isBuffering: false,
+        playbackState: 'failed',
+      }),
+    ).toBe(true)
+    expect(
+      shouldAbandonSilentStart({
+        wantsPlay: true,
+        elapsedMs: 700,
+        confirmWithinMs: 700,
+        positionMs: 0,
+        seekMs: 30_000,
+        isBuffering: false,
+      }),
+    ).toBe(true)
+    expect(
+      shouldAbandonSilentStart({
+        wantsPlay: true,
+        elapsedMs: 700,
+        confirmWithinMs: 700,
+        positionMs: 30_200,
+        seekMs: 30_000,
+        isBuffering: false,
+      }),
+    ).toBe(false)
   })
 })

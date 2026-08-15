@@ -1,5 +1,6 @@
 import { Platform } from 'react-native'
 import type { LibraryItem } from '@/src/services/jellyfin/mappers'
+import type { LibraryFilter, LibrarySort } from '@/src/domain/libraryView'
 
 type SqlDatabase = {
   execAsync: (source: string) => Promise<void>
@@ -10,12 +11,70 @@ type SqlDatabase = {
 
 let dbPromise: Promise<SqlDatabase | null> | null = null
 
-const ensureSongColumns = async (db: SqlDatabase): Promise<void> => {
-  const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(songs)')
+const SONG_COLUMNS = [
+  'id',
+  'name',
+  'type',
+  'artists_json',
+  'album',
+  'album_id',
+  'artist_id',
+  'overview',
+  'duration_ms',
+  'image_tag',
+  'image_item_id',
+  'media_source_id',
+  'child_count',
+  'sort_name',
+  'is_favorite',
+  'is_played',
+  'date_created_ms',
+  'last_played_ms',
+  'normalization_gain',
+  'has_lyrics',
+] as const
+
+const SONG_COLUMNS_SQL = SONG_COLUMNS.join(', ')
+
+const SONGS_TABLE_DDL = (name: string) => `
+  CREATE TABLE IF NOT EXISTS ${name} (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    artists_json TEXT NOT NULL,
+    album TEXT,
+    album_id TEXT,
+    artist_id TEXT,
+    overview TEXT,
+    duration_ms INTEGER NOT NULL,
+    image_tag TEXT,
+    image_item_id TEXT,
+    media_source_id TEXT,
+    child_count INTEGER,
+    sort_name TEXT NOT NULL,
+    is_favorite INTEGER,
+    is_played INTEGER,
+    date_created_ms INTEGER,
+    last_played_ms INTEGER,
+    normalization_gain REAL,
+    has_lyrics INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS ${name}_sort ON ${name}(sort_name, id);
+`
+
+const INCOMING = 'songs_incoming'
+
+const ensureSongColumns = async (
+  db: SqlDatabase,
+  table = 'songs',
+): Promise<void> => {
+  const cols = await db.getAllAsync<{ name: string }>(
+    `PRAGMA table_info(${table})`,
+  )
   const have = new Set(cols.map((c) => c.name))
   const add = async (name: string, ddl: string) => {
     if (have.has(name)) return
-    await db.execAsync(`ALTER TABLE songs ADD COLUMN ${ddl}`)
+    await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${ddl}`)
   }
   await add('is_favorite', 'is_favorite INTEGER')
   await add('is_played', 'is_played INTEGER')
@@ -64,29 +123,7 @@ const openDb = async (): Promise<SqlDatabase | null> => {
         const db = await SQLite.openDatabaseAsync('melio-library.db')
         await db.execAsync(`
         PRAGMA journal_mode = WAL;
-        CREATE TABLE IF NOT EXISTS songs (
-          id TEXT PRIMARY KEY NOT NULL,
-          name TEXT NOT NULL,
-          type TEXT NOT NULL,
-          artists_json TEXT NOT NULL,
-          album TEXT,
-          album_id TEXT,
-          artist_id TEXT,
-          overview TEXT,
-          duration_ms INTEGER NOT NULL,
-          image_tag TEXT,
-          image_item_id TEXT,
-          media_source_id TEXT,
-          child_count INTEGER,
-          sort_name TEXT NOT NULL,
-          is_favorite INTEGER,
-          is_played INTEGER,
-          date_created_ms INTEGER,
-          last_played_ms INTEGER,
-          normalization_gain REAL,
-          has_lyrics INTEGER
-        );
-        CREATE INDEX IF NOT EXISTS songs_sort ON songs(sort_name, id);
+        ${SONGS_TABLE_DDL('songs')}
       `)
         const sql = db as SqlDatabase
         await ensureSongColumns(sql)
@@ -127,9 +164,13 @@ const rowToSong = (row: Record<string, unknown>): LibraryItem => ({
 
 const songSortName = (song: LibraryItem): string => song.name.toLocaleLowerCase()
 
-const insertSong = async (db: SqlDatabase, song: LibraryItem) => {
+const insertSong = async (
+  db: SqlDatabase,
+  song: LibraryItem,
+  table = 'songs',
+) => {
   await db.runAsync(
-    `INSERT OR REPLACE INTO songs (
+    `INSERT OR REPLACE INTO ${table} (
       id, name, type, artists_json, album, album_id, artist_id, overview,
       duration_ms, image_tag, image_item_id, media_source_id, child_count, sort_name,
       is_favorite, is_played, date_created_ms, last_played_ms, normalization_gain, has_lyrics
@@ -173,10 +214,11 @@ const INSERT_CHUNK = 80
 const insertSongs = async (
   db: SqlDatabase,
   songs: readonly LibraryItem[],
+  table = 'songs',
 ): Promise<void> => {
   for (let i = 0; i < songs.length; i += INSERT_CHUNK) {
     const chunk = songs.slice(i, i + INSERT_CHUNK)
-    await Promise.all(chunk.map((song) => insertSong(db, song)))
+    await Promise.all(chunk.map((song) => insertSong(db, song, table)))
   }
 }
 
@@ -195,6 +237,39 @@ export const upsertSongs = async (songs: readonly LibraryItem[]): Promise<void> 
   await withTx(db, async () => {
     await insertSongs(db, songs)
   })
+}
+
+/**
+ * Rural-safe full replace: fill songs_incoming, then swap in one transaction.
+ * On failure the live songs table is untouched.
+ */
+export const withIncomingSongReplace = async (
+  fill: (append: (songs: readonly LibraryItem[]) => Promise<void>) => Promise<void>,
+): Promise<void> => {
+  const db = await openDb()
+  if (!db) throw new Error('Library database unavailable')
+  await db.execAsync(SONGS_TABLE_DDL(INCOMING))
+  await ensureSongColumns(db, INCOMING)
+  await db.execAsync(`DELETE FROM ${INCOMING}`)
+  try {
+    await fill(async (songs) => {
+      await insertSongs(db, songs, INCOMING)
+    })
+    await withTx(db, async () => {
+      await db.execAsync('DELETE FROM songs')
+      await db.execAsync(
+        `INSERT INTO songs (${SONG_COLUMNS_SQL}) SELECT ${SONG_COLUMNS_SQL} FROM ${INCOMING}`,
+      )
+      await db.execAsync(`DELETE FROM ${INCOMING}`)
+    })
+  } catch (cause) {
+    try {
+      await db.execAsync(`DELETE FROM ${INCOMING}`)
+    } catch {
+      // Best-effort cleanup; live songs still intact.
+    }
+    throw cause
+  }
 }
 
 export const countSongs = async (): Promise<number> => {
@@ -242,6 +317,43 @@ export const loadSongsAfter = async (
     cursor.sortName,
     cursor.id,
     safeLimit,
+  )
+  return rows.map(rowToSong)
+}
+
+const songViewWhere = (filter: LibraryFilter): string => {
+  if (filter === 'favorites') return 'is_favorite = 1'
+  if (filter === 'unplayed') return '(is_played IS NULL OR is_played = 0)'
+  return '1=1'
+}
+
+const songViewOrder = (sort: LibrarySort): string => {
+  if (sort === 'dateAdded') {
+    return 'COALESCE(date_created_ms, 0) DESC, sort_name ASC, id ASC'
+  }
+  if (sort === 'recentlyPlayed') {
+    return 'COALESCE(last_played_ms, 0) DESC, sort_name ASC, id ASC'
+  }
+  return 'sort_name ASC, id ASC'
+}
+
+/** Offset page of Songs under the active Library sort/filter. */
+export const loadSongsViewPage = async (
+  sort: LibrarySort,
+  filter: LibraryFilter,
+  offset: number,
+  limit: number,
+): Promise<readonly LibraryItem[]> => {
+  const db = await openDb()
+  if (!db) return []
+  const safeLimit = Math.max(1, Math.min(limit, 500))
+  const safeOffset = Math.max(0, offset)
+  const rows = await db.getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM songs WHERE ${songViewWhere(filter)}
+     ORDER BY ${songViewOrder(sort)}
+     LIMIT ? OFFSET ?`,
+    safeLimit,
+    safeOffset,
   )
   return rows.map(rowToSong)
 }
@@ -347,4 +459,9 @@ export const clearLibraryDb = async (): Promise<void> => {
   const db = await openDb()
   if (!db) return
   await db.execAsync('DELETE FROM songs;')
+  try {
+    await db.execAsync(`DELETE FROM ${INCOMING};`)
+  } catch {
+    // Incoming table may not exist yet.
+  }
 }

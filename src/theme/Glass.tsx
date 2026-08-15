@@ -21,7 +21,7 @@ import {
 import { useEffect, useState, type ReactNode } from 'react'
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { PressableScale, useMotionEnabled } from '@/src/theme/motion'
-import { colors, gradients, motion, radii, spacing } from '@/src/theme/tokens'
+import { colors, gradients, motion, radii } from '@/src/theme/tokens'
 
 type GlassProps = ViewProps & {
   readonly children?: ReactNode
@@ -38,6 +38,12 @@ const webGlassStyle = {
   WebkitBackdropFilter: 'blur(12px) saturate(140%)',
   backgroundColor: 'rgba(28, 14, 48, 0.28)',
 } as ViewStyle
+
+const continuousCurve =
+  Platform.OS === 'ios' ? ({ borderCurve: 'continuous' as const } satisfies ViewStyle) : null
+
+export const nativeLiquidGlass = (): boolean =>
+  Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable()
 
 const useReduceTransparency = (): boolean => {
   const [reduceTransparency, setReduceTransparency] = useState(false)
@@ -58,12 +64,11 @@ const useReduceTransparency = (): boolean => {
   return reduceTransparency
 }
 
-const nativeLiquidGlass = (): boolean =>
-  Platform.OS === 'ios' && isLiquidGlassAvailable() && isGlassEffectAPIAvailable()
-
 /**
  * Floating chrome material (tab bar, mini player, sheet controls).
  * Do not use in the content layer — use `Surface` for cards/rows/forms.
+ *
+ * iOS 26+: real `UIGlassEffect`. Older iOS: dense dark BlurView (readable chrome).
  */
 export const Glass = ({
   children,
@@ -81,7 +86,7 @@ export const Glass = ({
 
   if (reduceTransparency) {
     return (
-      <View style={[styles.shell, styles.fallback, style]} {...rest}>
+      <View style={[styles.shell, styles.opaqueFallback, continuousCurve, style]} {...rest}>
         {frame}
       </View>
     )
@@ -89,7 +94,7 @@ export const Glass = ({
 
   if (Platform.OS === 'web') {
     return (
-      <View style={[styles.shell, styles.blurFill, webGlassStyle, style]} {...rest}>
+      <View style={[styles.shell, styles.blurFill, webGlassStyle, continuousCurve, style]} {...rest}>
         <LinearGradient
           colors={[...gradients.card]}
           start={{ x: 0, y: 0 }}
@@ -104,7 +109,7 @@ export const Glass = ({
   if (nativeLiquidGlass()) {
     return (
       <GlassView
-        style={[styles.shell, style]}
+        style={[styles.shellLiquid, continuousCurve, style]}
         glassEffectStyle={glassEffectStyle}
         tintColor={tintColor}
         isInteractive={isInteractive}
@@ -119,15 +124,19 @@ export const Glass = ({
   }
 
   return (
-    <View style={[styles.shell, styles.blurFill, style]} {...rest} pointerEvents="box-none">
+    <View
+      style={[styles.shell, styles.blurFill, continuousCurve, style]}
+      {...rest}
+      pointerEvents="box-none"
+    >
       <BlurView
         intensity={intensity}
-        tint="dark"
+        tint="systemChromeMaterialDark"
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
       <LinearGradient
-        colors={[...gradients.card]}
+        colors={['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.02)']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[StyleSheet.absoluteFill, styles.passThrough]}
@@ -151,7 +160,7 @@ export const GlassCluster = ({
 
   if (reduceTransparency || !nativeLiquidGlass()) {
     return (
-      <View style={[styles.clusterFallback, { gap: mergeSpacing }, style]} {...rest}>
+      <View style={[{ gap: mergeSpacing }, style]} {...rest}>
         {children}
       </View>
     )
@@ -174,7 +183,7 @@ export const Surface = ({
   readonly children?: ReactNode
   readonly contentStyle?: StyleProp<ViewStyle>
 }) => (
-  <View style={[styles.surface, style]} {...rest}>
+  <View style={[styles.surface, continuousCurve, style]} {...rest}>
     <View style={[styles.inner, contentStyle]}>{children}</View>
   </View>
 )
@@ -232,14 +241,15 @@ export const Toggle = ({
 }
 
 const styles = StyleSheet.create({
+  shellLiquid: { borderRadius: radii.lg },
   shell: {
     overflow: 'hidden',
     borderRadius: radii.lg,
   },
   blurFill: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(24, 12, 40, 0.22)',
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: 'rgba(18, 10, 28, 0.38)',
   },
   surface: {
     overflow: 'hidden',
@@ -251,15 +261,10 @@ const styles = StyleSheet.create({
   passThrough: {
     pointerEvents: 'none',
   },
-  fallback: {
+  opaqueFallback: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(36, 20, 58, 0.94)',
-  },
-  clusterFallback: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
   },
   inner: {
     pointerEvents: 'box-none',

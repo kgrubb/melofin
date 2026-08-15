@@ -1,32 +1,8 @@
 import { newQueueEntryId, type QueueTrack } from '@/src/domain/queue'
+import type { LibraryItem } from '@/src/domain/libraryItem'
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
 
-export type LibraryItem = {
-  readonly id: string
-  readonly name: string
-  readonly type: string
-  readonly artists: readonly string[]
-  readonly album?: string
-  readonly albumId?: string
-  readonly artistId?: string
-  readonly overview?: string
-  readonly durationMs: number
-  readonly imageTag?: string
-  /** Item id that owns `imageTag` (track id, or album id when falling back). */
-  readonly imageItemId?: string
-  readonly mediaSourceId?: string
-  readonly childCount?: number
-  /** Jellyfin playlist entry id (PlaylistItemId); required for remove/reorder. */
-  readonly playlistEntryId?: string
-  readonly isFavorite?: boolean
-  readonly hasLyrics?: boolean
-  /** Jellyfin UserData.Played */
-  readonly isPlayed?: boolean
-  readonly dateCreatedMs?: number
-  readonly lastPlayedMs?: number
-  /** Jellyfin LUFS / ReplayGain track gain in dB when present. */
-  readonly normalizationGain?: number
-}
+export type { LibraryItem } from '@/src/domain/libraryItem'
 
 type NameIdPair = {
   readonly id: string
@@ -89,10 +65,14 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
   const albumIdRaw = fieldString(item, 'AlbumId', 'albumId')
   const parentIdRaw = fieldString(item, 'ParentId', 'parentId')
   const isAudio = String(item.Type ?? item.type ?? '') === 'Audio'
-  // ParentId is the album for library audio; only use it when album art implies that link
-  // (playlist children can have ParentId = playlist).
+  const overviewText = item.Overview ? String(item.Overview).trim() : ''
+  const playlistEntryRaw = item.PlaylistItemId ? String(item.PlaylistItemId).trim() : ''
+  // Library audio ParentId is the album. Playlist children have PlaylistItemId
+  // and must not treat the playlist as albumId.
   const albumId =
-    albumIdRaw || (isAudio && albumPrimary && parentIdRaw ? parentIdRaw : '') || undefined
+    albumIdRaw ||
+    (isAudio && !playlistEntryRaw && parentIdRaw ? parentIdRaw : '') ||
+    undefined
   const artistId =
     artistPairs.find((entry) => entry.id)?.id ??
     albumArtistPairs.find((entry) => entry.id)?.id ??
@@ -108,8 +88,6 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
       ? String((mediaSources[0] as { Id?: string }).Id ?? item.Id ?? '')
       : String(item.Id ?? '')
 
-  const overviewText = item.Overview ? String(item.Overview).trim() : ''
-  const playlistEntryRaw = item.PlaylistItemId ? String(item.PlaylistItemId).trim() : ''
   const userData = item.UserData
   const isFavorite =
     userData && typeof userData === 'object'
@@ -124,6 +102,17 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
       ? (userData as { LastPlayedDate?: string }).LastPlayedDate
       : undefined
   const lastPlayedMs = lastPlayedRaw ? Date.parse(String(lastPlayedRaw)) : Number.NaN
+  const positionTicksRaw =
+    userData && typeof userData === 'object'
+      ? (userData as { PlaybackPositionTicks?: number | string }).PlaybackPositionTicks
+      : undefined
+  const positionTicks =
+    positionTicksRaw === undefined || positionTicksRaw === null || positionTicksRaw === ''
+      ? Number.NaN
+      : Number(positionTicksRaw)
+  const playbackPositionMs = Number.isFinite(positionTicks)
+    ? Math.max(0, Math.round(positionTicks / 10_000))
+    : undefined
   const createdRaw = item.DateCreated ? Date.parse(String(item.DateCreated)) : Number.NaN
   const hasLyrics =
     item.HasLyrics === undefined || item.HasLyrics === null
@@ -134,6 +123,18 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
     gainRaw === undefined || gainRaw === null || gainRaw === ''
       ? undefined
       : Number(gainRaw)
+
+  const genreNames = stringList(item.Genres ?? item.genres)
+  const genrePairs = nameIdPairs(item.GenreItems ?? item.genreItems)
+  const genres = [
+    ...new Set([
+      ...genreNames,
+      ...genrePairs.map((entry) => entry.name).filter((name) => name.length > 0),
+    ]),
+  ]
+  const genreItems = genrePairs
+    .filter((entry) => entry.id.length > 0 && entry.name.length > 0)
+    .map((entry) => ({ id: entry.id, name: entry.name }))
 
   return {
     id,
@@ -155,10 +156,16 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
     isPlayed,
     dateCreatedMs: Number.isFinite(createdRaw) ? createdRaw : undefined,
     lastPlayedMs: Number.isFinite(lastPlayedMs) ? lastPlayedMs : undefined,
+    playbackPositionMs:
+      playbackPositionMs !== undefined && playbackPositionMs > 0
+        ? playbackPositionMs
+        : undefined,
     normalizationGain:
       normalizationGain !== undefined && !Number.isNaN(normalizationGain)
         ? normalizationGain
         : undefined,
+    genres: genres.length > 0 ? genres : undefined,
+    genreItems: genreItems.length > 0 ? genreItems : undefined,
   }
 }
 
@@ -183,11 +190,11 @@ export const toQueueTrack = (
 
 type ArtworkSize = 'thumb' | 'card' | 'hero'
 
-/** Pixel caps for @3x phones — old 120/320/600 looked soft in lists + Now Playing. */
-const ARTWORK_MAX_HEIGHT: Record<ArtworkSize, number> = {
-  thumb: 256,
-  card: 640,
-  hero: 1200,
+/** Pixel caps — hero must exceed @3x Now Playing (~390–430pt). */
+export const ARTWORK_MAX_PX: Record<ArtworkSize, number> = {
+  thumb: 384,
+  card: 960,
+  hero: 2048,
 }
 
 const primaryImageUrl = (
@@ -201,7 +208,8 @@ const primaryImageUrl = (
     ? `&api_key=${encodeURIComponent(context.accessToken)}`
     : ''
   const tagParam = tag ? `&tag=${encodeURIComponent(tag)}` : ''
-  return `${context.serverUrl}${path}?maxHeight=${ARTWORK_MAX_HEIGHT[size]}&quality=90${tagParam}${token}`
+  const px = ARTWORK_MAX_PX[size]
+  return `${context.serverUrl}${path}?maxWidth=${px}&maxHeight=${px}&quality=96${tagParam}${token}`
 }
 
 export const artworkUrl = (
@@ -211,6 +219,24 @@ export const artworkUrl = (
   size: ArtworkSize = 'hero',
 ): string | undefined =>
   primaryImageUrl(context, itemId ? `/Items/${itemId}/Images/Primary` : '', tag, size)
+
+/** Point a Jellyfin image URL at another size without rebuilding context. */
+export const resizeArtworkUrl = (
+  uri: string | undefined,
+  size: ArtworkSize,
+): string | undefined => {
+  if (!uri || uri.startsWith('file:') || uri.startsWith('/')) return uri
+  const px = ARTWORK_MAX_PX[size]
+  if (!uri.includes('maxHeight=') && !uri.includes('maxWidth=')) return uri
+  let next = uri
+    .replace(/maxHeight=\d+/g, `maxHeight=${px}`)
+    .replace(/maxWidth=\d+/g, `maxWidth=${px}`)
+    .replace(/quality=\d+/g, 'quality=96')
+  if (!next.includes('maxWidth=')) {
+    next = next.replace(/([?&])maxHeight=/, `$1maxWidth=${px}&maxHeight=`)
+  }
+  return next
+}
 
 /** Jellyfin user primary image (profile photo). */
 export const userImageUrl = (
@@ -243,6 +269,7 @@ export const buildUniversalStreamUrl = (
   return `${context.serverUrl}/Audio/${itemId}/universal?${params.toString()}`
 }
 
+/** Forced MP3 transcoder path — last-resort failover for decode failures. */
 export const buildAudioStreamUrl = (
   context: JellyfinContext,
   itemId: string,
@@ -263,15 +290,32 @@ export const buildAudioStreamUrl = (
   return `${context.serverUrl}/Audio/${itemId}/stream.mp3?${params.toString()}`
 }
 
+/**
+ * Static Direct Play (container-preserving, no extension so AVPlayer sniffs
+ * Content-Type). Guessing `.flac` / `.m4a` first made non-matching files look
+ * loaded while staying silent. Universal + `/stream.mp3` remain failover.
+ */
+export const buildDirectPlayStreamUrls = (
+  context: JellyfinContext,
+  itemId: string,
+  userId: string,
+): readonly string[] => {
+  const token = context.accessToken
+    ? `&api_key=${encodeURIComponent(context.accessToken)}`
+    : ''
+  const q = `UserId=${encodeURIComponent(userId)}&DeviceId=${encodeURIComponent(context.deviceId)}&static=true${token}`
+  return [`${context.serverUrl}/Audio/${itemId}/stream?${q}`]
+}
+
 export const buildPlaybackStreamCandidates = (
   context: JellyfinContext,
   itemId: string,
   userId: string,
   maxBitrate = 320_000,
 ): readonly string[] => [
-  // Direct mp3 first — AVPlayer is most reliable with this for queue skips.
-  buildAudioStreamUrl(context, itemId, userId, maxBitrate),
+  ...buildDirectPlayStreamUrls(context, itemId, userId),
   buildUniversalStreamUrl(context, itemId, userId, maxBitrate),
+  buildAudioStreamUrl(context, itemId, userId, maxBitrate),
 ]
 
 export const audioAuthHeaders = (

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
 import { Image } from 'expo-image'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -26,36 +26,105 @@ import { colors, motion, radii, scrollUnderChromePad, spacing, typography } from
 export default function GenreRoute() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, name: nameParam } = useLocalSearchParams<{
+    id: string
+    name?: string
+  }>()
   const genreId = String(id ?? '')
+  const passedName =
+    typeof nameParam === 'string' && nameParam.trim().length > 0
+      ? nameParam
+      : undefined
   const context = useSessionStore((s) => s.context)
   const session = useSessionStore((s) => s.session)
   const [genre, setGenre] = useState<LibraryItem | null>(null)
   const [albums, setAlbums] = useState<readonly LibraryItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [filling, setFilling] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const paintedRef = useRef<readonly LibraryItem[]>([])
 
   const load = useCallback(async () => {
-    if (!context || !session || !genreId) return
-    setLoading(true)
-    setError(null)
-    const [genreResult, albumsResult] = await Promise.all([
-      fetchItem(context, session.userId, genreId),
-      fetchAlbumsByGenre(context, session.userId, genreId),
-    ])
-    if (!genreResult.ok && !albumsResult.ok) {
-      setError(albumsResult.error.message)
+    if (!context || !session || !genreId) {
       setLoading(false)
+      setFilling(false)
       return
     }
-    if (genreResult.ok) setGenre(genreResult.value)
-    if (albumsResult.ok) setAlbums(albumsResult.value)
-    else setError(albumsResult.error.message)
-    setLoading(false)
-  }, [context, genreId, session])
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
+    const live = () => !ac.signal.aborted
+    paintedRef.current = []
+    setLoading(true)
+    setFilling(false)
+    setError(null)
+    setAlbums([])
+    setGenre(null)
+    const applyPartial = (next: readonly LibraryItem[]) => {
+      if (!live() || next.length === 0) return
+      paintedRef.current = next
+      setAlbums(next)
+      setLoading(false)
+      setFilling(true)
+    }
+    try {
+      const [genreResult, albumsResult] = await Promise.all([
+        fetchItem(context, session.userId, genreId),
+        fetchAlbumsByGenre(context, session.userId, genreId, passedName, {
+          onPartial: applyPartial,
+          signal: ac.signal,
+        }),
+      ])
+      if (!live()) return
+      if (!genreResult.ok && !albumsResult.ok) {
+        if (albumsResult.error.code !== 'cancelled') {
+          setError(albumsResult.error.message)
+        }
+        return
+      }
+      if (genreResult.ok) setGenre(genreResult.value)
+      let albums = albumsResult.ok ? albumsResult.value : paintedRef.current
+      const resolvedName =
+        passedName ?? (genreResult.ok ? genreResult.value.name : undefined)
+      if (albums.length === 0 && resolvedName && resolvedName !== passedName) {
+        const retry = await fetchAlbumsByGenre(
+          context,
+          session.userId,
+          genreId,
+          resolvedName,
+          { onPartial: applyPartial, signal: ac.signal },
+        )
+        if (!live()) return
+        if (retry.ok) albums = retry.value
+        else if (!albumsResult.ok && retry.error.code !== 'cancelled') {
+          setError(retry.error.message)
+          return
+        }
+      }
+      if (!live()) return
+      setAlbums(albums)
+      if (
+        !albumsResult.ok &&
+        albums.length === 0 &&
+        albumsResult.error.code !== 'cancelled'
+      ) {
+        setError(albumsResult.error.message)
+      }
+    } catch {
+      if (!live()) return
+      setError('Failed to load genre')
+    } finally {
+      if (live()) {
+        setFilling(false)
+        setLoading(false)
+      }
+    }
+  }, [context, genreId, passedName, session])
 
   useEffect(() => {
     void load()
+    return () => abortRef.current?.abort()
   }, [load])
 
   const artFor = (item: LibraryItem) =>
@@ -74,21 +143,32 @@ export default function GenreRoute() {
             }}
           />
           <Text style={styles.title} numberOfLines={1}>
-            {genre?.name ?? 'Genre'}
+            {passedName ?? genre?.name ?? 'Genre'}
           </Text>
           <View style={styles.headerSpacer} />
         </View>
-        {loading ? <LoadingState label="Loading genre" /> : null}
+        {loading && albums.length === 0 ? (
+          <LoadingState label="Loading genre" />
+        ) : null}
         {error && albums.length === 0 ? (
           <ErrorState message={error} onRetry={() => void load()} />
         ) : null}
-        {!loading && !error && albums.length === 0 ? (
+        {!loading && !filling && !error && albums.length === 0 ? (
           <EmptyState title="No albums" message="Nothing in this genre yet." />
         ) : null}
         {albums.length > 0 ? (
           <FlashList
             data={albums}
+            extraData={filling}
             keyExtractor={(item) => item.id}
+            ListFooterComponent={
+              filling ? (
+                <View style={styles.footer}>
+                  <ActivityIndicator color={colors.accent} />
+                  <Muted>Finding more albums…</Muted>
+                </View>
+              ) : null
+            }
             contentContainerStyle={{
               ...styles.list,
               paddingBottom: scrollUnderChromePad(insets.bottom),
@@ -144,6 +224,13 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: spacing.lg,
     gap: spacing.xs,
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
   },
   row: {
     flexDirection: 'row',

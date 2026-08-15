@@ -30,7 +30,16 @@ eas build -p ios --profile development
 npx expo start --dev-client
 ```
 
-Expo Go is unsupported. CarPlay needs `com.apple.developer.carplay-audio` on App ID `app.melio.player`. EAS Update is off for v1.
+Expo Go is unsupported. EAS Update is off for v1.
+
+### CarPlay (ready; entitlement-gated)
+
+1. In Apple Developer → Identifiers → `app.melio.player`, enable **CarPlay Audio** (`com.apple.developer.carplay-audio`).
+2. Set `"CARPLAY_ENABLED": true` in `features.json`.
+3. `npx expo prebuild --platform ios` (applies entitlement + `plugins/withCarPlayAudio.js`).
+4. Rebuild the native app and smoke browse/play in CarPlay.
+
+Leave the flag `false` until Apple grants the entitlement (otherwise signing fails).
 
 ## Checks
 

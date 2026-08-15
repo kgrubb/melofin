@@ -5,7 +5,7 @@ import type { LibraryItem } from '@/src/services/jellyfin/library'
 import { PressableHighlight } from '@/src/theme/motion'
 import { colors, radii, spacing, typography } from '@/src/theme/tokens'
 
-export const TRACK_ROW_HEIGHT = 64
+export const TRACK_ROW_HEIGHT = 52 + spacing.sm * 2
 
 export const TrackRow = memo(function TrackRow({
   item,
@@ -14,14 +14,16 @@ export const TrackRow = memo(function TrackRow({
   onLongPress,
   accessoryLabel,
   index,
+  selected = false,
   accessibilityHint,
 }: {
-  readonly item: LibraryItem
+  readonly item: Pick<LibraryItem, 'id' | 'name' | 'artists' | 'album' | 'type'>
   readonly artworkUrl?: string
   readonly onPress: () => void
   readonly onLongPress?: () => void
   readonly accessoryLabel?: string
   readonly index?: number
+  readonly selected?: boolean
   readonly accessibilityHint?: string
 }) {
   const subtitle =
@@ -36,13 +38,14 @@ export const TrackRow = memo(function TrackRow({
       accessibilityRole="button"
       accessibilityLabel={a11y}
       accessibilityHint={accessibilityHint}
+      accessibilityState={selected ? { selected: true } : undefined}
       onPress={onPress}
       onLongPress={onLongPress}
       style={styles.row}
       contentStyle={styles.rowInner}
     >
       {index !== undefined ? (
-        <Text style={styles.index}>{index + 1}</Text>
+        <Text style={[styles.index, selected ? styles.selected : null]}>{index + 1}</Text>
       ) : artworkUrl ? (
         <Image
           source={{ uri: artworkUrl }}
@@ -55,7 +58,7 @@ export const TrackRow = memo(function TrackRow({
         <View style={[styles.art, styles.artFallback]} />
       )}
       <View style={styles.meta}>
-        <Text style={styles.title} numberOfLines={1}>
+        <Text style={[styles.title, selected ? styles.selected : null]} numberOfLines={1}>
           {item.name}
         </Text>
         {subtitle ? (
@@ -74,7 +77,7 @@ const styles = StyleSheet.create({
     marginHorizontal: -spacing.xs,
   },
   rowInner: {
-    minHeight: TRACK_ROW_HEIGHT,
+    height: TRACK_ROW_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -114,5 +117,9 @@ const styles = StyleSheet.create({
   accessory: {
     color: colors.textSecondary,
     fontSize: 12,
+  },
+  selected: {
+    color: colors.accent,
+    fontWeight: '700',
   },
 })

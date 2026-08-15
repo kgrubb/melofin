@@ -58,6 +58,8 @@ export const stateRef: {
   stallFailoverDone: boolean
   lastLoadAllRemotesFailed: boolean
   playbackVolume: number
+  failedUris: Set<string>
+  forceReload: boolean
 } = {
   engine: null,
   startPromise: null,
@@ -78,6 +80,8 @@ export const stateRef: {
   stallFailoverDone: false,
   lastLoadAllRemotesFailed: false,
   playbackVolume: 1,
+  failedUris: new Set(),
+  forceReload: false,
 }
 
 export const enqueue = (task: () => Promise<void>) => {

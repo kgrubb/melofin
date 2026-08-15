@@ -8,6 +8,11 @@ import {
   librarySyncFraction,
   librarySyncModeLabel,
   shouldSyncLibrary,
+  songDeltaWatermarkMs,
+  songSyncAfterDelta,
+  songSyncFetchPlan,
+  songSyncPhase,
+  libraryCacheBelongsToSession,
 } from '@/src/domain/librarySync'
 
 describe('librarySync', () => {
@@ -41,7 +46,7 @@ describe('librarySync', () => {
   })
 
   it('formats sync progress for the settings control', () => {
-    expect(formatLibrarySyncButton(false, idleSyncProgress())).toBe('Sync now')
+    expect(formatLibrarySyncButton(false, idleSyncProgress())).toBe('Sync Now')
     expect(
       formatLibrarySyncProgress({
         phase: 'collections',
@@ -84,5 +89,74 @@ describe('librarySync', () => {
         songsTotal: 0,
       }),
     ).toBeNull()
+  })
+
+  it('picks song sync phase without using trigger', () => {
+    expect(
+      songSyncPhase({
+        schemaStale: false,
+        songsSyncedAt: 1_700_000_000_000,
+        localCount: 10,
+      }),
+    ).toBe('delta')
+    expect(
+      songSyncPhase({
+        schemaStale: true,
+        songsSyncedAt: 1_700_000_000_000,
+        localCount: 10,
+      }),
+    ).toBe('full')
+    expect(
+      songSyncPhase({ schemaStale: false, songsSyncedAt: null, localCount: 10 }),
+    ).toBe('full')
+    expect(
+      songSyncPhase({
+        schemaStale: false,
+        songsSyncedAt: 1_700_000_000_000,
+        localCount: 0,
+      }),
+    ).toBe('full')
+  })
+
+  it('resolves delta outcomes from counts', () => {
+    expect(
+      songSyncAfterDelta({ remoteCount: 100, localCount: 100, deltaLength: 0 }),
+    ).toBe('skip')
+    expect(
+      songSyncAfterDelta({ remoteCount: 100, localCount: 100, deltaLength: 3 }),
+    ).toBe('upsertOk')
+    expect(
+      songSyncAfterDelta({ remoteCount: 100, localCount: 97, deltaLength: 0 }),
+    ).toBe('full')
+    expect(
+      songSyncAfterDelta({ remoteCount: 100, localCount: 99, deltaLength: 2 }),
+    ).toBe('full')
+  })
+
+  it('stamps watermark from pull start and plans wifi pages', () => {
+    expect(songDeltaWatermarkMs(1_000_060_000)).toBe(1_000_000_000)
+    expect(songSyncFetchPlan(true)).toEqual({ pageSize: 400, concurrency: 2 })
+    expect(songSyncFetchPlan(false)).toEqual({ pageSize: 200, concurrency: 1 })
+  })
+
+  it('treats missing userId as the same account on the same server', () => {
+    expect(
+      libraryCacheBelongsToSession(
+        { serverUrl: 'https://jf', userId: null },
+        { serverUrl: 'https://jf', userId: 'u1' },
+      ),
+    ).toBe(true)
+    expect(
+      libraryCacheBelongsToSession(
+        { serverUrl: 'https://jf', userId: 'u1' },
+        { serverUrl: 'https://jf', userId: 'u2' },
+      ),
+    ).toBe(false)
+    expect(
+      libraryCacheBelongsToSession(
+        { serverUrl: 'https://a', userId: 'u1' },
+        { serverUrl: 'https://b', userId: 'u1' },
+      ),
+    ).toBe(false)
   })
 })

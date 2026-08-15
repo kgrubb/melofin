@@ -2,7 +2,12 @@ import { Platform } from 'react-native'
 import { create } from 'zustand'
 import {
   idleSyncProgress,
+  libraryCacheBelongsToSession,
   shouldSyncLibrary,
+  songDeltaWatermarkMs,
+  songSyncAfterDelta,
+  songSyncFetchPlan,
+  songSyncPhase,
   type LibrarySyncProgress,
   type LibrarySyncTrigger,
 } from '@/src/domain/librarySync'
@@ -20,22 +25,27 @@ import {
   fetchSongsSince,
   type LibraryItem,
 } from '@/src/services/jellyfin/library'
-import { fetchSongsProgressive } from '@/src/services/jellyfin/songsSync'
+import {
+  fetchSongsProgressive,
+  forEachSongPage,
+} from '@/src/services/jellyfin/songsSync'
 import { isWifiLikeConnection } from '@/src/services/network'
 import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
+import { usesSongNameKeyset } from '@/src/domain/libraryView'
 import { readJsonFile, writeJsonFile } from '@/src/storage/jsonFile'
 import {
   clearLibraryDb,
   countSongs,
   loadSongsAfter,
   loadSongsFromLetter,
+  loadSongsViewPage,
   loadSongAlphabetLetters,
-  loadAllSongs,
   patchSongUserData,
   replaceSongs,
   songCursorOf,
   upsertSongs,
+  withIncomingSongReplace,
   type SongCursor,
 } from '@/src/storage/libraryDb'
 
@@ -53,6 +63,7 @@ const SONGS_SCHEMA = 4
 type LibraryMeta = {
   readonly syncedAt: number | null
   readonly serverUrl: string | null
+  readonly userId: string | null
   readonly songsCount: number
   readonly songsSyncedAt: number | null
   readonly songsSchema?: number
@@ -65,11 +76,13 @@ export type LibraryCache = {
   readonly playlists: readonly LibraryItem[]
   readonly syncedAt: number | null
   readonly serverUrl: string | null
+  readonly userId: string | null
 }
 
 const emptyMeta = (): LibraryMeta => ({
   syncedAt: null,
   serverUrl: null,
+  userId: null,
   songsCount: 0,
   songsSyncedAt: null,
 })
@@ -81,6 +94,7 @@ const emptyLibraryCache = (): LibraryCache => ({
   playlists: [],
   syncedAt: null,
   serverUrl: null,
+  userId: null,
 })
 
 const asCacheEntry = (item: LibraryItem): PlaylistCacheEntry => ({
@@ -124,6 +138,7 @@ const writeMeta = (meta: LibraryMeta) => writeJsonFile(META_FILE, meta)
 
 const finishMeta = async (
   serverUrl: string,
+  userId: string,
   songsCount: number,
   songsSyncedAt: number | null,
   songsSchema = SONGS_SCHEMA,
@@ -131,6 +146,7 @@ const finishMeta = async (
   const next: LibraryMeta = {
     syncedAt: Date.now(),
     serverUrl,
+    userId,
     songsCount,
     songsSyncedAt,
     songsSchema,
@@ -138,6 +154,9 @@ const finishMeta = async (
   await writeMeta(next)
   return next
 }
+
+/** Bumped on clearCache so an in-flight sync cannot write after an account switch. */
+let librarySyncGen = 0
 
 type LibraryState = LibraryCache & {
   readonly hydrated: boolean
@@ -169,6 +188,21 @@ const refreshNativeWindow = async (): Promise<{
   songsHasMore: boolean
 }> => {
   const songsCount = await countSongs()
+  const { librarySort, libraryFilter } = useSettingsStore.getState()
+  if (!usesSongNameKeyset(librarySort, libraryFilter)) {
+    const songs = await loadSongsViewPage(
+      librarySort,
+      libraryFilter,
+      0,
+      SONGS_PAGE,
+    )
+    return {
+      songs,
+      songsCount,
+      songsCursor: null,
+      songsHasMore: songs.length === SONGS_PAGE,
+    }
+  }
   const songs = await loadSongsAfter(null, SONGS_PAGE)
   const last = songs[songs.length - 1]
   return {
@@ -200,6 +234,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         writeMeta({
           syncedAt: cache.syncedAt,
           serverUrl: cache.serverUrl,
+          userId: cache.userId ?? null,
           songsCount: cache.songs.length,
           songsSyncedAt: cache.syncedAt,
         }),
@@ -224,6 +259,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         playlists,
         syncedAt: meta.syncedAt,
         serverUrl: meta.serverUrl,
+        userId: meta.userId ?? null,
         songsCount: songs.length,
         songsCursor: null,
         songsHasMore: false,
@@ -240,10 +276,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       playlists,
       syncedAt: meta.syncedAt,
       serverUrl: meta.serverUrl,
+      userId: meta.userId ?? null,
       hydrated: true,
     })
   },
   clearCache: async () => {
+    librarySyncGen += 1
     await Promise.all([
       writeSection(ALBUMS_FILE, []),
       writeSection(ARTISTS_FILE, []),
@@ -270,7 +308,27 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   loadMoreSongs: async () => {
     if (Platform.OS === 'web') return
     const { songsHasMore, songsCursor, songs } = get()
-    if (!songsHasMore || !songsCursor) return
+    if (!songsHasMore) return
+    const { librarySort, libraryFilter } = useSettingsStore.getState()
+    if (!usesSongNameKeyset(librarySort, libraryFilter)) {
+      const page = await loadSongsViewPage(
+        librarySort,
+        libraryFilter,
+        songs.length,
+        SONGS_PAGE,
+      )
+      if (page.length === 0) {
+        set({ songsHasMore: false })
+        return
+      }
+      set({
+        songs: [...songs, ...page],
+        songsCursor: null,
+        songsHasMore: page.length === SONGS_PAGE,
+      })
+      return
+    }
+    if (!songsCursor) return
     const page = await loadSongsAfter(songsCursor, SONGS_PAGE)
     if (page.length === 0) {
       set({ songsHasMore: false })
@@ -305,6 +363,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     if (inWindow >= 0) return inWindow
 
     if (Platform.OS === 'web') return null
+    const { librarySort, libraryFilter } = useSettingsStore.getState()
+    if (!usesSongNameKeyset(librarySort, libraryFilter)) return null
 
     const page = await loadSongsFromLetter(letter, SONGS_PAGE)
     if (page.length === 0) return null
@@ -338,10 +398,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       return false
     }
 
+    const syncGen = librarySyncGen
+    const stillCurrent = () => librarySyncGen === syncGen
+
     const finish = (patch: {
       readonly syncError?: string | null
       readonly syncedAt?: number | null
       readonly serverUrl?: string | null
+      readonly userId?: string | null
       readonly songsCount?: number
       readonly songs?: readonly LibraryItem[]
       readonly songsCursor?: SongCursor | null
@@ -349,12 +413,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       readonly albums?: readonly LibraryItem[]
       readonly artists?: readonly LibraryItem[]
       readonly playlists?: readonly LibraryItem[]
-    } = {}) =>
+    } = {}) => {
+      if (!stillCurrent()) return
       set({
         syncing: false,
         syncProgress: idleSyncProgress(),
         ...patch,
       })
+    }
 
     set({
       syncing: true,
@@ -378,6 +444,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const nextAlbums = albums.ok ? albums.value : []
     const nextArtists = artists.ok ? artists.value : []
     const nextPlaylists = playlists.ok ? playlists.value : []
+    if (!stillCurrent()) return false
     await Promise.all([
       writeSection(ALBUMS_FILE, nextAlbums),
       writeSection(ARTISTS_FILE, nextArtists),
@@ -397,14 +464,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       Platform.OS === 'web' ? get().songs.length : await countSongs()
     const { songsSyncedAt } = meta
     const songsSchemaStale = (meta.songsSchema ?? 0) < SONGS_SCHEMA
+    const pullStartedAt = Date.now()
+    const watermarkMs = songDeltaWatermarkMs(pullStartedAt)
+    const fetchPlan = songSyncFetchPlan(isWifi)
 
-    // Delta only when counts match after upsert (strict); else full replace.
-    // Schema bumps always full-replace so mapper fixes rewrite SQLite rows.
+    // Delta for Sync Now and On open alike; full when schema/empty/mismatch.
     if (
-      trigger !== 'manual' &&
-      !songsSchemaStale &&
-      songsSyncedAt != null &&
-      localCount > 0
+      songSyncPhase({
+        schemaStale: songsSchemaStale,
+        songsSyncedAt,
+        localCount,
+      }) === 'delta'
     ) {
       set({
         syncProgress: {
@@ -416,14 +486,21 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const delta = await fetchSongsSince(
         context,
         userId,
-        new Date(songsSyncedAt).toISOString(),
+        new Date(songsSyncedAt!).toISOString(),
       )
       if (delta.ok) {
-        if (delta.value.length === 0 && remoteCount === localCount) {
-          const nextMeta = await finishMeta(serverUrl, remoteCount, Date.now())
+        const after = songSyncAfterDelta({
+          remoteCount,
+          localCount,
+          deltaLength: delta.value.length,
+        })
+        if (after === 'skip') {
+          if (!stillCurrent()) return false
+          const nextMeta = await finishMeta(serverUrl, userId, remoteCount, watermarkMs)
           finish({
             syncedAt: nextMeta.syncedAt,
             serverUrl,
+            userId,
             songsCount: remoteCount,
             syncError: null,
           })
@@ -442,9 +519,21 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             const byId = new Map(get().songs.map((song) => [song.id, song]))
             for (const song of deltaSongs) byId.set(song.id, song)
             const merged = [...byId.values()]
-            await writeSection(SONGS_FILE, merged)
-            if (merged.length === remoteCount) {
-              const nextMeta = await finishMeta(serverUrl, remoteCount, Date.now())
+            if (
+              songSyncAfterDelta({
+                remoteCount,
+                localCount: merged.length,
+                deltaLength: delta.value.length,
+              }) === 'upsertOk'
+            ) {
+              if (!stillCurrent()) return false
+              await writeSection(SONGS_FILE, merged)
+              const nextMeta = await finishMeta(
+                serverUrl,
+                userId,
+                remoteCount,
+                watermarkMs,
+              )
               finish({
                 songs: merged,
                 songsCount: merged.length,
@@ -452,20 +541,34 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
                 songsHasMore: false,
                 syncedAt: nextMeta.syncedAt,
                 serverUrl,
+                userId,
                 syncError: null,
               })
               return true
             }
           } else {
+            if (!stillCurrent()) return false
             await upsertSongs(deltaSongs)
             const nextCount = await countSongs()
-            if (nextCount === remoteCount) {
-              const nextMeta = await finishMeta(serverUrl, remoteCount, Date.now())
+            if (
+              songSyncAfterDelta({
+                remoteCount,
+                localCount: nextCount,
+                deltaLength: delta.value.length,
+              }) === 'upsertOk'
+            ) {
+              const nextMeta = await finishMeta(
+                serverUrl,
+                userId,
+                remoteCount,
+                watermarkMs,
+              )
               const window = await refreshNativeWindow()
               finish({
                 ...window,
                 syncedAt: nextMeta.syncedAt,
                 serverUrl,
+                userId,
                 syncError: null,
               })
               return true
@@ -475,34 +578,50 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       }
     }
 
-    const songProgress = { lastPct: -1 }
-    const onSongPage = (
-      _page: readonly LibraryItem[],
-      accumulated: number,
-      total: number,
-    ) => {
+    const reportSongProgress = (loaded: number, total: number) => {
+      if (!stillCurrent()) return
       const songsTotal = total > 0 ? total : remoteCount
       const pct =
-        songsTotal > 0 ? Math.min(100, Math.floor((accumulated / songsTotal) * 100)) : 0
-      // Avoid re-rendering Settings on every page when the percent is unchanged.
-      if (pct === songProgress.lastPct && accumulated < songsTotal) return
-      songProgress.lastPct = pct
+        songsTotal > 0
+          ? Math.min(100, Math.floor((loaded / songsTotal) * 100))
+          : 0
+      const prev = get().syncProgress
+      const sameTotal = prev.phase === 'songs' && prev.songsTotal === songsTotal
+      const prevPct =
+        sameTotal && songsTotal > 0
+          ? Math.min(100, Math.floor((prev.songsLoaded / songsTotal) * 100))
+          : -1
+      if (sameTotal && pct === prevPct && loaded < songsTotal) return
       set({
-        syncProgress: {
-          phase: 'songs',
-          songsLoaded: accumulated,
-          songsTotal,
-        },
+        syncProgress: { phase: 'songs', songsLoaded: loaded, songsTotal },
       })
     }
 
     if (Platform.OS === 'web') {
       set({
-        syncProgress: { phase: 'songs', songsLoaded: 0, songsTotal: remoteCount },
+        syncProgress: {
+          phase: 'songs',
+          songsLoaded: 0,
+          songsTotal: remoteCount,
+        },
       })
-      const progressive = await fetchSongsProgressive(context, userId, onSongPage)
+      const progressive = await fetchSongsProgressive(
+        context,
+        userId,
+        (_page, accumulated, total) => {
+          reportSongProgress(accumulated, total)
+        },
+        fetchPlan,
+        remoteCount,
+      )
       if (!progressive.ok) {
         finish({ syncError: progressive.error.message })
+        return false
+      }
+      if (progressive.value.length === 0 && remoteCount > 0) {
+        finish({
+          syncError: 'Song catalog pull returned no items',
+        })
         return false
       }
       set({
@@ -513,8 +632,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         },
       })
       const webSongs = backfillSongArtists(progressive.value, nextAlbums)
+      if (!stillCurrent()) return false
       await writeSection(SONGS_FILE, webSongs)
-      const nextMeta = await finishMeta(serverUrl, webSongs.length, Date.now())
+      const nextMeta = await finishMeta(serverUrl, userId, webSongs.length, watermarkMs)
       finish({
         songs: webSongs,
         songsCount: webSongs.length,
@@ -525,35 +645,56 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         playlists: nextPlaylists,
         syncedAt: nextMeta.syncedAt,
         serverUrl,
+        userId,
         syncError: null,
       })
       return true
     }
 
-    // Native: replace SQLite only after a successful full pull (rural-safe).
+    // Native: stage into songs_incoming, swap only on success (rural-safe).
+    if (!stillCurrent()) return false
     set({
       syncProgress: { phase: 'songs', songsLoaded: 0, songsTotal: remoteCount },
     })
-    const progressive = await fetchSongsProgressive(context, userId, onSongPage)
-    if (!progressive.ok) {
+    try {
+      await withIncomingSongReplace(async (append) => {
+        const streamed = await forEachSongPage(
+          context,
+          userId,
+          fetchPlan,
+          async (page, loaded, total) => {
+            if (!stillCurrent()) throw new Error('sync superseded')
+            await append(backfillSongArtists(page, nextAlbums))
+            reportSongProgress(loaded, total)
+          },
+          remoteCount,
+        )
+        if (!stillCurrent()) throw new Error('sync superseded')
+        if (!streamed.ok) throw new Error(streamed.error.message)
+        if (streamed.value === 0 && remoteCount > 0) {
+          throw new Error('Song catalog pull returned no items')
+        }
+      })
+    } catch (cause) {
       const window = await refreshNativeWindow()
       finish({
         ...window,
-        syncError: progressive.error.message,
+        syncError:
+          cause instanceof Error ? cause.message : 'Library sync failed',
       })
       return false
     }
 
+    const savedCount = await countSongs()
+    if (!stillCurrent()) return false
     set({
       syncProgress: {
         phase: 'saving',
-        songsLoaded: progressive.value.length,
-        songsTotal: progressive.value.length,
+        songsLoaded: savedCount,
+        songsTotal: savedCount,
       },
     })
-    const nativeSongs = backfillSongArtists(progressive.value, nextAlbums)
-    await replaceSongs(nativeSongs)
-    const nextMeta = await finishMeta(serverUrl, nativeSongs.length, Date.now())
+    const nextMeta = await finishMeta(serverUrl, userId, savedCount, watermarkMs)
     const window = await refreshNativeWindow()
     finish({
       ...window,
@@ -562,6 +703,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       playlists: nextPlaylists,
       syncedAt: nextMeta.syncedAt,
       serverUrl,
+      userId,
       syncError: null,
     })
     return true
@@ -570,20 +712,16 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     await get().hydrate()
     const session = useSessionStore.getState().session
     const cache = get()
-    if (session && cache.serverUrl && cache.serverUrl !== session.serverUrl) {
-      await get().clearCache()
-      await useSettingsStore.getState().clearOfflineCache({
-        serverUrl: session.serverUrl,
-        userId: session.userId,
-      })
-    } else if (session) {
-      const { stampOfflineScope } = await import('@/src/offline/downloader')
-      const stamped = await stampOfflineScope(session.serverUrl, session.userId)
-      if (stamped.ok) {
-        await useSettingsStore.getState().setOfflineIndex(stamped.value)
-      }
+    const switched = Boolean(
+      session && !libraryCacheBelongsToSession(cache, session),
+    )
+    if (switched) await get().clearCache()
+    if (session) {
+      await useSettingsStore
+        .getState()
+        .activateAccountScope(session.serverUrl, session.userId)
     }
-    await get().syncLibrary('open')
+    await get().syncLibrary(switched ? 'manual' : 'open')
   },
   upsertPlaylist: async (item) => {
     const playlists = upsertPlaylistItem(

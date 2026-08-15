@@ -6,6 +6,7 @@ describe('buildTrackActions', () => {
     const actions = buildTrackActions({
       onPlayNext: () => undefined,
       onAddToQueue: () => undefined,
+      onStartRadio: () => undefined,
       onAddToPlaylist: () => undefined,
       onToggleFavorite: () => undefined,
       isFavorite: false,
@@ -16,6 +17,7 @@ describe('buildTrackActions', () => {
     expect(actions.map((a) => a.text)).toEqual([
       'Play next',
       'Add to queue',
+      'Start radio',
       'Add to playlist…',
       'Favorite',
       'Mark as Played',

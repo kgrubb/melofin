@@ -10,10 +10,11 @@ export const registerCarPlay = (
   playlists: readonly LibraryItem[],
   artists: readonly LibraryItem[],
   offline: readonly OfflineEntry[],
+  albums: readonly LibraryItem[] = [],
 ) => {
   try {
     const template = createBrowseTemplate(
-      buildLibrarySections(playlists, artists, offline),
+      buildLibrarySections(playlists, artists, offline, albums),
       (itemId) => {
         void handleCarPlayItemPress(itemId)
       },

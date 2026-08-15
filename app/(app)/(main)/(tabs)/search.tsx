@@ -146,6 +146,11 @@ export default function SearchScreen() {
       buildTrackActions({
         onPlayNext: () => playNextTracks([queueTrack]),
         onAddToQueue: () => enqueueTracks([queueTrack]),
+        onStartRadio: () => {
+          void import('@/src/player/startRadio').then(({ startRadioFromItem }) => {
+            void startRadioFromItem(item.id, item.artistId)
+          })
+        },
         onAddToPlaylist: () => {
           if (!requireSession()) return
           setPendingTrackId(item.id)

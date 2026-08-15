@@ -8,6 +8,7 @@ import { startCastRouter, stopCastRouter } from '@/src/cast/router'
 import { startPlaystateSync } from '@/src/services/jellyfin/playstateSync'
 import { startJellyfinReachability } from '@/src/services/jellyfin/reachability'
 import { colors } from '@/src/theme/tokens'
+import { GlassCluster, nativeLiquidGlass } from '@/src/theme/Glass'
 import { registerCarPlay } from '@/src/carplay/register'
 import { MiniPlayer } from '@/src/ui/MiniPlayer'
 import { DevicesSheet } from '@/src/ui/DevicesSheet'
@@ -30,6 +31,9 @@ export default function AppLayout() {
   )
   const artists = useLibraryStore((s) =>
     CARPLAY_ENABLED ? s.artists : EMPTY_LIBRARY_ITEMS,
+  )
+  const albums = useLibraryStore((s) =>
+    CARPLAY_ENABLED ? s.albums : EMPTY_LIBRARY_ITEMS,
   )
   const playlists = useLibraryStore((s) =>
     CARPLAY_ENABLED ? s.playlists : EMPTY_LIBRARY_ITEMS,
@@ -65,8 +69,9 @@ export default function AppLayout() {
       playlists,
       artists,
       Object.values(offlineIndex.entries),
+      albums,
     )
-  }, [context, session, offlineSignature, artists, playlists])
+  }, [context, session, offlineSignature, artists, playlists, albums])
 
   return (
     <View style={styles.root}>
@@ -101,12 +106,26 @@ export default function AppLayout() {
               presentation: 'modal',
               animation: 'slide_from_bottom',
               contentStyle: { backgroundColor: colors.background },
+              sheetGrabberVisible: false,
             }}
           />
         </Stack>
       </View>
-      <MiniPlayer />
-      <FloatingTabBar />
+      {nativeLiquidGlass() ? (
+        <GlassCluster
+          spacing={10}
+          style={styles.chromeCluster}
+          pointerEvents="box-none"
+        >
+          <MiniPlayer />
+          <FloatingTabBar />
+        </GlassCluster>
+      ) : (
+        <>
+          <MiniPlayer />
+          <FloatingTabBar />
+        </>
+      )}
       <DevicesSheet />
     </View>
   )
@@ -124,5 +143,10 @@ const styles = StyleSheet.create({
   /** Above mini (20) + tab bar (30). */
   stackRaised: {
     zIndex: 40,
+  },
+  /** Lets mini + tab Liquid Glass morph as one chrome material. */
+  chromeCluster: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
   },
 })

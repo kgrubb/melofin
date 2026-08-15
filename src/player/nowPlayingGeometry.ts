@@ -9,9 +9,9 @@ export const fallbackMiniFrame = (
 ): MiniPlayerFrame => {
   const bottom = Math.max(bottomInset, spacing.sm) + chrome.miniBottomOffset
   return {
-    x: spacing.md,
+    x: chrome.tabBarMargin,
     y: screenHeight - bottom - chrome.miniHeight,
-    width: Math.max(0, screenWidth - spacing.md * 2),
+    width: Math.max(0, screenWidth - chrome.tabBarMargin * 2),
     height: chrome.miniHeight,
   }
 }
@@ -29,37 +29,20 @@ export const expandedPlayerFrame = (
   height: screenHeight,
 })
 
-/** Expanded controls fade out before the sheet is heavily scaled. */
-export const EXPANDED_CONTENT_FADE = {
-  start: 0.42,
-  end: 0.68,
-} as const
+/**
+ * Drawer dismiss: how far the sheet has traveled toward off-screen.
+ * progress 1 = open (offset 0), progress 0 = fully dismissed (offset = height).
+ */
+export const drawerOffsetY = (
+  progress: number,
+  screenHeight: number,
+): number => (1 - Math.min(1, Math.max(0, progress))) * screenHeight
 
 /**
- * Mini chrome clone fades in so the morph ends as a filled mini player,
- * not a blank card (Apple Music-style continuous surface).
+ * Uncover the live mini player once the sheet has slid far enough that the
+ * dock is no longer fully covered (Apple sheet / drawer handoff).
  */
-export const MINI_CONTENT_FADE = {
-  start: 0.12,
-  end: 0.42,
-} as const
+export const DOCK_REVEAL_PROGRESS = 0.55
 
-/** Uncover the live dock once the sheet is mostly mini, then fade the morph away. */
-export const DOCK_REVEAL_PROGRESS = 0.34
-
-/** Morph sheet fades out after dock reveal so opaque card → glass isn't a hard cut. */
-export const SHEET_HANDOFF_FADE_MS = 120
-
-export const sheetContentOpacity = (progress: number): number => {
-  const { start, end } = EXPANDED_CONTENT_FADE
-  if (progress <= start) return 0
-  if (progress >= end) return 1
-  return (progress - start) / (end - start)
-}
-
-export const miniChromeOpacity = (progress: number): number => {
-  const { start, end } = MINI_CONTENT_FADE
-  if (progress <= start) return 1
-  if (progress >= end) return 0
-  return 1 - (progress - start) / (end - start)
-}
+/** Sheet fades out after dock reveal so the handoff isn’t a hard cut. */
+export const SHEET_HANDOFF_FADE_MS = 140

@@ -1,0 +1,13 @@
+{
+  "name": "melio-audio-graph",
+  "version": "1.0.0",
+  "description": "AVAudioEngine queue + EQ insert for Melio gapless/EQ",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {},
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

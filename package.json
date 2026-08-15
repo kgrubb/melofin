@@ -24,6 +24,7 @@
     "@react-native-community/netinfo": "11.4.1",
     "@shopify/flash-list": "2.0.2",
     "airplay-route-picker": "file:modules/airplay-route-picker",
+    "melio-audio-graph": "file:modules/melio-audio-graph",
     "axios": "1.19.0",
     "expo": "54.0.36",
     "expo-asset": "~12.0.13",

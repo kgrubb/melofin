@@ -3,6 +3,7 @@ import type { TrackActionButton } from '@/src/ui/PlaylistActions'
 export type TrackActionHandlers = {
   readonly onPlayNext: () => void
   readonly onAddToQueue: () => void
+  readonly onStartRadio?: () => void
   readonly onAddToPlaylist?: () => void
   readonly onToggleFavorite?: () => void
   readonly isFavorite?: boolean
@@ -11,7 +12,7 @@ export type TrackActionHandlers = {
   readonly extra?: readonly TrackActionButton[]
 }
 
-/** Ordered Melio track menu: Play next → Add to queue → playlist → favorite → played → extras. */
+/** Ordered Melio track menu: Play next → queue → radio → playlist → favorite → played → extras. */
 export const buildTrackActions = (
   handlers: TrackActionHandlers,
 ): readonly TrackActionButton[] => {
@@ -19,6 +20,9 @@ export const buildTrackActions = (
     { text: 'Play next', onPress: handlers.onPlayNext },
     { text: 'Add to queue', onPress: handlers.onAddToQueue },
   ]
+  if (handlers.onStartRadio) {
+    actions.push({ text: 'Start radio', onPress: handlers.onStartRadio })
+  }
   if (handlers.onAddToPlaylist) {
     actions.push({ text: 'Add to playlist…', onPress: handlers.onAddToPlaylist })
   }

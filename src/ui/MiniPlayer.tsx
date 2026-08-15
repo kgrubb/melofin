@@ -6,10 +6,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { usePlayerStore } from '@/src/store/player'
 import { useCastStore } from '@/src/cast/castStore'
 import { AccentGradient } from '@/src/theme/Atmosphere'
-import { Glass } from '@/src/theme/Glass'
+import { Glass, nativeLiquidGlass } from '@/src/theme/Glass'
 import { PressableScale } from '@/src/theme/motion'
 import { Icon } from '@/src/ui/Icon'
 import { ProgressLine } from '@/src/ui/ProgressBar'
+import { resizeArtworkUrl } from '@/src/services/jellyfin/library'
 import { chrome, colors, motion, radii, spacing } from '@/src/theme/tokens'
 
 const ART = 44
@@ -73,6 +74,8 @@ export const MiniPlayer = () => {
 
   if (!track) return null
 
+  const liquid = nativeLiquidGlass()
+  const thumbArt = resizeArtworkUrl(track.artworkUrl, 'thumb')
   const bottom = Math.max(insets.bottom, spacing.sm) + chrome.miniBottomOffset
 
   return (
@@ -84,11 +87,16 @@ export const MiniPlayer = () => {
         measure()
       }}
       pointerEvents={covered ? 'none' : 'box-none'}
-      style={[styles.wrap, { bottom }]}
+      style={[styles.wrap, { bottom, height: chrome.miniHeight }]}
       accessibilityElementsHidden={covered}
       importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}
     >
-      <Glass style={styles.glass} contentStyle={styles.row} intensity={18}>
+      <Glass
+        style={[styles.glass, liquid ? null : styles.glassClip]}
+        contentStyle={styles.row}
+        intensity={42}
+        isInteractive={liquid}
+      >
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel={`Now playing ${track.title}`}
@@ -102,11 +110,15 @@ export const MiniPlayer = () => {
           }}
           style={styles.mainHit}
         >
-          {track.artworkUrl ? (
+          {thumbArt ? (
             <Image
-              source={{ uri: track.artworkUrl }}
+              source={{
+                uri: thumbArt,
+                cacheKey: `art-thumb-${track.id}`,
+              }}
               style={styles.art}
               cachePolicy="memory-disk"
+              recyclingKey={`art-thumb-${track.id}`}
             />
           ) : (
             <View style={styles.art} />
@@ -151,16 +163,19 @@ export const MiniPlayer = () => {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
+    left: chrome.tabBarMargin,
+    right: chrome.tabBarMargin,
     zIndex: 20,
   },
   glass: {
-    borderRadius: radii.lg,
+    borderRadius: chrome.miniHeight / 2,
+    flex: 1,
+  },
+  glassClip: {
     overflow: 'hidden',
   },
   row: {
-    minHeight: ART + spacing.md,
+    flex: 1,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     flexDirection: 'row',

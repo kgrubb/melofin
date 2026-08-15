@@ -6,11 +6,14 @@ import {
   enqueue,
   expandTracksPreservingPlayback,
   indexOfMediaIdInPlayOrder,
+  moveQueueViewTrack,
   moveTrack,
   nextIndex,
   patchTrackFavorite,
+  playQueueViewIndex,
   playItems,
   playNext,
+  insertTracksAt,
   playingIdentity,
   prefetchTargets,
   previousIndex,
@@ -167,36 +170,71 @@ describe('queue', () => {
     expect(new Set(next.shuffleOrder)).toEqual(new Set([0, 1, 2, 3]))
   })
 
-  it('removeAt follows shuffle-next when removing the current track', () => {
+  it('insertTracksAt splices before later store indices without moving current', () => {
+    const linear = playItems(emptyQueue(), [track('a'), track('b'), track('r')], 0)
+    const queued = insertTracksAt(linear, [track('x')], 2)
+    expect(queued.tracks.map((t) => t.id)).toEqual(['a', 'b', 'x', 'r'])
+    expect(queued.currentIndex).toBe(0)
+
+    const shuffled = {
+      ...playItems(emptyQueue(), [track('a'), track('b'), track('r1'), track('r2')], 0),
+      shuffle: true,
+      shuffleOrder: [0, 1, 2, 3] as const,
+    }
+    const inserted = insertTracksAt(shuffled, [track('x')], 2)
+    expect(inserted.tracks.map((t) => t.id)).toEqual(['a', 'b', 'x', 'r1', 'r2'])
+    expect(inserted.currentIndex).toBe(0)
+    expect(inserted.shuffleOrder.slice(0, 2)).toEqual([0, 1])
+    expect(inserted.shuffleOrder[2]).toBe(2)
+    expect(new Set(inserted.shuffleOrder)).toEqual(new Set([0, 1, 2, 3, 4]))
+
+    const playingRecommended = {
+      ...shuffled,
+      currentIndex: 3,
+    }
+    const shifted = insertTracksAt(playingRecommended, [track('x')], 2)
+    expect(shifted.tracks.map((t) => t.id)).toEqual(['a', 'b', 'x', 'r1', 'r2'])
+    expect(shifted.currentIndex).toBe(4)
+    expect(shifted.tracks[shifted.currentIndex]?.id).toBe('r2')
+  })
+
+  it('removeAt keeps remaining shuffle order', () => {
     const state = {
       ...playItems(emptyQueue(), [track('1'), track('2'), track('3'), track('4')], 1),
       shuffle: true,
       shuffleOrder: [1, 3, 0, 2] as const,
     }
-    const removed = removeAt(state, 1)
-    expect(removed.tracks.map((t) => t.id)).toEqual(['1', '3', '4'])
-    expect(removed.tracks[removed.currentIndex]?.id).toBe('4')
+    expect(queueViewTracks(state).map((t) => t.id)).toEqual(['2', '4', '1', '3'])
+
+    const droppedUpcoming = removeAt(state, 0)
+    expect(queueViewTracks(droppedUpcoming).map((t) => t.id)).toEqual(['2', '4', '3'])
+    expect(droppedUpcoming.currentIndex).toBe(0)
+
+    const droppedCurrent = removeAt(state, 1)
+    expect(droppedCurrent.tracks.map((t) => t.id)).toEqual(['1', '3', '4'])
+    expect(droppedCurrent.tracks[droppedCurrent.currentIndex]?.id).toBe('4')
+    expect(queueViewTracks(droppedCurrent).map((t) => t.id)).toEqual(['4', '1', '3'])
+    expect(nextIndex(droppedUpcoming)).toBe(
+      droppedUpcoming.shuffleOrder[
+        droppedUpcoming.shuffleOrder.indexOf(droppedUpcoming.currentIndex) + 1
+      ],
+    )
+    expect(droppedUpcoming.tracks[nextIndex(droppedUpcoming)]?.id).toBe('4')
   })
 
-  it('removeAt rebuilds shuffle and adjusts indices before current', () => {
-    const shuffled = setShuffle(
-      playItems(emptyQueue(), [track('1'), track('2'), track('3')], 2),
-      true,
-    )
-    const removed = removeAt(shuffled, 0)
-    expect(removed.currentIndex).toBe(1)
-    expect(removed.shuffleOrder).toHaveLength(2)
-  })
-
-  it('rebuilds shuffle when moving tracks and clears upcoming', () => {
-    const shuffled = setShuffle(
-      playItems(emptyQueue(), [track('1'), track('2'), track('3'), track('4')], 1),
-      true,
-    )
-    const moved = moveTrack(shuffled, 3, 0)
-    expect(moved.shuffleOrder).toHaveLength(4)
+  it('moveTrack remaps shuffle indices without reshuffling', () => {
+    const state = {
+      ...playItems(emptyQueue(), [track('1'), track('2'), track('3'), track('4')], 1),
+      shuffle: true,
+      shuffleOrder: [1, 3, 0, 2] as const,
+    }
+    const before = queueViewTracks(state).map((t) => t.id)
+    const moved = moveTrack(state, 3, 0)
+    expect(queueViewTracks(moved).map((t) => t.id)).toEqual(before)
     expect(new Set(moved.shuffleOrder)).toEqual(new Set([0, 1, 2, 3]))
+  })
 
+  it('clears upcoming in linear and shuffle order', () => {
     const playing = playItems(emptyQueue(), [track('1'), track('2'), track('3')], 1)
     const cleared = clearUpcoming(playing)
     expect(cleared.tracks.map((t) => t.id)).toEqual(['1', '2'])
@@ -227,6 +265,84 @@ describe('queue', () => {
     expect(indexOfMediaIdInPlayOrder(playItems(emptyQueue(), [track('a'), track('b')], 0), 'b')).toBe(1)
   })
 
+  it('reorders the visible queue, including shuffle upcoming', () => {
+    const linear = playItems(emptyQueue(), [track('1'), track('2'), track('3')], 0)
+    expect(moveQueueViewTrack(linear, 2, 1).tracks.map((t) => t.id)).toEqual([
+      '1',
+      '3',
+      '2',
+    ])
+    expect(moveQueueViewTrack(linear, 1, 1)).toBe(linear)
+
+    const shuffled = {
+      ...playItems(emptyQueue(), [track('1'), track('2'), track('3'), track('4')], 2),
+      shuffle: true,
+      shuffleOrder: [2, 0, 3, 1] as const,
+    }
+    expect(queueViewTracks(shuffled).map((t) => t.id)).toEqual(['3', '1', '4', '2'])
+    const moved = moveQueueViewTrack(shuffled, 1, 3)
+    expect(queueViewTracks(moved).map((t) => t.id)).toEqual(['3', '4', '2', '1'])
+    expect(moved.tracks.map((t) => t.id)).toEqual(['1', '2', '3', '4'])
+    expect(moved.currentIndex).toBe(2)
+    expect(moveQueueViewTrack(shuffled, 0, 2)).toBe(shuffled)
+    expect(moveQueueViewTrack(shuffled, 2, 0)).toBe(shuffled)
+
+    const linearMid = playItems(emptyQueue(), [track('1'), track('2'), track('3'), track('4')], 1)
+    expect(queueViewTracks(linearMid).map((t) => t.id)).toEqual(['2', '3', '4'])
+    expect(moveQueueViewTrack(linearMid, 0, 2)).toBe(linearMid)
+    expect(queueViewTracks(moveQueueViewTrack(linearMid, 2, 1)).map((t) => t.id)).toEqual([
+      '2',
+      '4',
+      '3',
+    ])
+    const five = playItems(
+      emptyQueue(),
+      [track('1'), track('2'), track('3'), track('4'), track('5')],
+      1,
+    )
+    expect(queueViewTracks(moveQueueViewTrack(five, 3, 1)).map((t) => t.id)).toEqual([
+      '2',
+      '5',
+      '3',
+      '4',
+    ])
+  })
+
+  it('ignores out-of-range shuffle indices in the queue view', () => {
+    const shuffled = {
+      ...playItems(emptyQueue(), [track('1'), track('2'), track('3'), track('4')], 2),
+      shuffle: true,
+      shuffleOrder: [2, 0, 99, 3] as const,
+    }
+    expect(queueViewTracks(shuffled).map((t) => t.id)).toEqual(['3', '1', '4'])
+    expect(upcomingCount(shuffled)).toBe(2)
+    const jumped = playQueueViewIndex(shuffled, 2)
+    expect(jumped.currentIndex).toBe(3)
+    expect(queueViewTracks(jumped).map((t) => t.id)).toEqual(['4', '1'])
+    expect(queueViewTracks(moveQueueViewTrack(shuffled, 1, 2)).map((t) => t.id)).toEqual([
+      '3',
+      '4',
+      '1',
+    ])
+  })
+
+  it('playing a shuffled queue row keeps the other upcoming tracks', () => {
+    const shuffled = {
+      ...playItems(emptyQueue(), [track('1'), track('2'), track('3'), track('4')], 2),
+      shuffle: true,
+      shuffleOrder: [2, 0, 3, 1] as const,
+    }
+    expect(queueViewTracks(shuffled).map((t) => t.id)).toEqual(['3', '1', '4', '2'])
+    const jumped = playQueueViewIndex(shuffled, 2)
+    expect(jumped.currentIndex).toBe(3)
+    expect(queueViewTracks(jumped).map((t) => t.id)).toEqual(['4', '1', '2'])
+    expect(new Set(jumped.shuffleOrder)).toEqual(new Set([0, 1, 2, 3]))
+    expect(playQueueViewIndex(shuffled, 0).currentIndex).toBe(2)
+    const linear = playItems(emptyQueue(), [track('1'), track('2'), track('3')], 0)
+    expect(playQueueViewIndex(linear, 2).currentIndex).toBe(2)
+    expect(queueViewTracks(playQueueViewIndex(linear, 2)).map((t) => t.id)).toEqual(['3'])
+  })
+
   it('queueViewTracks starts at the current shuffle position', () => {
     const state = {
       ...playItems(emptyQueue(), [track('1'), track('2'), track('3'), track('4')], 2),
@@ -238,6 +354,11 @@ describe('queue', () => {
     expect(
       queueViewTracks(playItems(emptyQueue(), [track('1'), track('2')], 0)).map((t) => t.id),
     ).toEqual(['1', '2'])
+    expect(
+      queueViewTracks(playItems(emptyQueue(), [track('1'), track('2'), track('3')], 1)).map(
+        (t) => t.id,
+      ),
+    ).toEqual(['2', '3'])
   })
 
   it('patches favorite flags on matching tracks', () => {
@@ -277,6 +398,7 @@ describe('queue', () => {
     ])
     expect(grown.currentIndex).toBe(2)
     expect(grown.tracks.map((t) => t.id)).toEqual(['a', 'b', 'c', 'd'])
+    expect(grown.tracks[2]?.queueEntryId).toBe(seed.tracks[0]?.queueEntryId)
 
     const shuffled = setShuffle(playItems(emptyQueue(), [track('c')], 0), true)
     const expanded = expandTracksPreservingPlayback(shuffled, [

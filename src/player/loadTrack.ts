@@ -5,15 +5,24 @@ import {
 import { Platform } from 'react-native'
 import { useCastStore } from '@/src/cast/castStore'
 import { isLocalAudible } from '@/src/cast/scrobblePolicy'
-import { PLAY_OUTPUT, sourceIsLoaded } from '@/src/domain/audioSession'
+import {
+  PLAY_OUTPUT,
+  REPLACE_LOAD_GRACE_MS,
+  replaceLoadDecision,
+  shouldPauseBeforeReplace,
+  sourceIsLoaded,
+} from '@/src/domain/audioSession'
 import { touchEntry } from '@/src/domain/offline'
 import {
   pickNormalizationGain,
   volumeFromGainDb,
 } from '@/src/domain/replayGain'
 import {
+  AUDIO_START_CONFIRM_MS,
+  excludeFailedUris,
   nextPlayableCachedIndex,
   prefetchCountForNetwork,
+  shouldAbandonSilentStart,
   shouldAutoAdvanceOnLoadFailure,
   shouldFailoverStall,
 } from '@/src/domain/playbackSource'
@@ -40,6 +49,12 @@ import { resolveTrackSource } from '@/src/player/trackResolver'
 import { bitrateForPreset, resolveStreamPreset } from '@/src/domain/streamQuality'
 import { fetchItem } from '@/src/services/jellyfin/library'
 import { melioRootUri, offlineAudioExists } from '@/src/storage/jsonFile'
+import { maybeRefillAutoplay } from '@/src/player/autoplayContinuation'
+import {
+  applyNativeEq,
+  primeNextIfEnabled,
+} from '@/src/player/nativeQueue'
+import { stopLocalCrossfade } from '@/src/player/crossfadeLocal'
 import {
   getJellyfinReachable,
   markJellyfinReachable,
@@ -56,10 +71,34 @@ export const recoverLocalOutput = () => {
   }
 }
 
+const afterSuccessfulLoad = () => {
+  stopLocalCrossfade()
+  applyNativeEq(useSettingsStore.getState().eq)
+  maybeRefillAutoplay()
+  void primeNextIfEnabled()
+}
+
+const applyPlaybackVolume = (player: AudioPlayer) => {
+  try {
+    player.volume = stateRef.playbackVolume
+    player.muted = PLAY_OUTPUT.muted
+  } catch {
+    // Native player may already be torn down.
+  }
+}
+
+const snapshotStatus = (player: AudioPlayer): AudioStatus | null => {
+  try {
+    return player.currentStatus
+  } catch {
+    return null
+  }
+}
+
 /**
- * After replace(), give native a beat to drop the prior item, then accept
- * isLoaded. Do NOT wait for duration — Jellyfin mp3 streams often leave
- * duration at 0 for a long time, which previously caused ~15s gaps.
+ * After replace(), ignore the prior item's in-flight status. Do NOT wait for
+ * duration — Jellyfin mp3 streams often leave duration at 0 for a long time.
+ * Never treat `playing` as loaded (that is the previous track).
  */
 const waitForLoaded = (
   player: AudioPlayer,
@@ -68,7 +107,6 @@ const waitForLoaded = (
 ): Promise<boolean> =>
   new Promise((resolve) => {
     const startedAt = Date.now()
-    const graceMs = 40
     const settled = { current: false }
     const finish = (ok: boolean) => {
       if (settled.current) return
@@ -84,24 +122,32 @@ const waitForLoaded = (
       return
     }
 
-    const timeout = setTimeout(() => finish(false), timeoutMs)
-    const poll = setInterval(() => {
+    const consider = (status?: {
+      readonly isLoaded?: boolean
+      readonly playbackState?: string
+    }) => {
       if (epoch !== stateRef.loadEpoch) {
         finish(false)
         return
       }
-      if (Date.now() - startedAt < graceMs) return
-      if (sourceIsLoaded(player) || player.playing) finish(true)
+      const decision = replaceLoadDecision({
+        elapsedMs: Date.now() - startedAt,
+        graceMs: REPLACE_LOAD_GRACE_MS,
+        isLoaded: Boolean(status?.isLoaded ?? sourceIsLoaded(player)),
+        playbackState: status?.playbackState,
+      })
+      if (decision === 'failed') finish(false)
+      if (decision === 'ready') finish(true)
+    }
+
+    const timeout = setTimeout(() => finish(false), timeoutMs)
+    const poll = setInterval(() => {
+      consider(snapshotStatus(player) ?? { isLoaded: sourceIsLoaded(player) })
     }, 50)
     const subscription = player.addListener(
       'playbackStatusUpdate',
       (status: AudioStatus) => {
-        if (epoch !== stateRef.loadEpoch) {
-          finish(false)
-          return
-        }
-        if (Date.now() - startedAt < graceMs) return
-        if (status.isLoaded || status.playing) finish(true)
+        consider(status)
       },
     )
   })
@@ -110,12 +156,66 @@ export const safePlay = (player: AudioPlayer) => {
   recoverLocalOutput()
   if (!isLocalOutputEnabled()) return
   try {
-    player.volume = stateRef.playbackVolume
-    player.muted = PLAY_OUTPUT.muted
+    applyPlaybackVolume(player)
     player.play()
   } catch {
     // Web can throw mid-replace.
   }
+}
+
+const confirmAudibleStart = async (
+  player: AudioPlayer,
+  epoch: number,
+  shouldPlay: boolean,
+  seekMs: number,
+  transportGen?: number,
+): Promise<boolean> => {
+  const wantsPlay = () =>
+    shouldPlay &&
+    epoch === stateRef.loadEpoch &&
+    (transportGen === undefined || transportGen === stateRef.transportGen) &&
+    usePlayerStore.getState().isPlaying &&
+    isLocalOutputEnabled()
+
+  if (!wantsPlay()) return true
+
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < AUDIO_START_CONFIRM_MS) {
+    if (epoch !== stateRef.loadEpoch) return false
+    const status = snapshotStatus(player)
+    const raw = (status?.currentTime ?? player.currentTime) * 1000
+    const positionMs = Number.isFinite(raw) ? Math.round(raw) : 0
+    const elapsedMs = Date.now() - startedAt
+    if (
+      shouldAbandonSilentStart({
+        wantsPlay: true,
+        elapsedMs,
+        confirmWithinMs: AUDIO_START_CONFIRM_MS,
+        positionMs,
+        seekMs,
+        isBuffering: Boolean(status?.isBuffering ?? player.isBuffering),
+        playbackState: status?.playbackState,
+      })
+    ) {
+      return false
+    }
+    if (seekMs < 80 && positionMs >= 80 && positionMs < 5_000) return true
+    if (seekMs >= 80 && Math.abs(positionMs - seekMs) < 2_500) return true
+    await yieldMs(80)
+  }
+
+  const status = snapshotStatus(player)
+  const raw = (status?.currentTime ?? player.currentTime) * 1000
+  const positionMs = Number.isFinite(raw) ? Math.round(raw) : 0
+  return !shouldAbandonSilentStart({
+    wantsPlay: true,
+    elapsedMs: AUDIO_START_CONFIRM_MS,
+    confirmWithinMs: AUDIO_START_CONFIRM_MS,
+    positionMs,
+    seekMs,
+    isBuffering: Boolean(status?.isBuffering ?? player.isBuffering),
+    playbackState: status?.playbackState,
+  })
 }
 
 const tryLoadUri = async (
@@ -128,16 +228,16 @@ const tryLoadUri = async (
   seekMs = 0,
   transportGen?: number,
 ): Promise<boolean> => {
-  stateRef.loadedUri = uri
   stateRef.replacing = true
   try {
-    // Pause before replace for a deterministic single-player handoff.
-    try {
-      player.pause()
-    } catch {
-      // Ignore.
-    }
     if (epoch !== stateRef.loadEpoch) return false
+    if (shouldPauseBeforeReplace(Platform.OS)) {
+      try {
+        player.pause()
+      } catch {
+        // Ignore.
+      }
+    }
 
     const source =
       headers && !uri.startsWith('file:')
@@ -150,16 +250,15 @@ const tryLoadUri = async (
         host: hostOf(uri),
         cause: String(cause),
       })
-      stateRef.loadedUri = null
       return false
     }
 
     const loaded = await waitForLoaded(player, epoch, timeoutMs)
     if (!loaded || epoch !== stateRef.loadEpoch) {
-      logger.warn('audio.load_timeout', { host: hostOf(uri), timeoutMs })
-      stateRef.loadedUri = null
       return false
     }
+
+    applyPlaybackVolume(player)
 
     const targetMs = Math.max(0, seekMs)
     if (targetMs > 0) {
@@ -197,13 +296,25 @@ const tryLoadUri = async (
         safePlay(player)
       }
     }
+
+    const audible = await confirmAudibleStart(
+      player,
+      epoch,
+      shouldPlay,
+      targetMs,
+      transportGen,
+    )
+    if (!audible || epoch !== stateRef.loadEpoch) {
+      return false
+    }
+
+    stateRef.loadedUri = uri
     return true
   } catch (cause) {
     logger.warn('audio.load_failed', {
       host: hostOf(uri),
       cause: String(cause),
     })
-    stateRef.loadedUri = null
     return false
   } finally {
     stateRef.replacing = false
@@ -211,6 +322,7 @@ const tryLoadUri = async (
 }
 
 export const handleLoadFailure = () => {
+  stopLocalCrossfade()
   const network = getPlaybackNetworkCached()
   const advance = shouldAutoAdvanceOnLoadFailure({
     network,
@@ -256,6 +368,8 @@ export const loadCurrent = async (
   if (explicitSeekMs === undefined) {
     stateRef.lastPositionMs = 0
     stateRef.stallFailoverDone = false
+    stateRef.failedUris.clear()
+    stateRef.forceReload = false
   }
   const queue = usePlayerStore.getState()
   const session = useSessionStore.getState()
@@ -337,7 +451,12 @@ export const loadCurrent = async (
     usePlayerStore.getState().isPlaying &&
     isLocalOutputEnabled()
 
-  if (stateRef.loadedUri === resolved.uri && sourceIsLoaded(player)) {
+  if (
+    !stateRef.forceReload &&
+    !stateRef.failedUris.has(resolved.uri) &&
+    stateRef.loadedUri === resolved.uri &&
+    sourceIsLoaded(player)
+  ) {
     const currentMs = Math.round(player.currentTime * 1000)
     // Only seek when explicitly requested (resume / stall). Never seekTo(0) on
     // a bare same-URI short-circuit — that restarted songs after blips/resume.
@@ -356,16 +475,22 @@ export const loadCurrent = async (
       }
     }
     if (playAllowed()) safePlay(player)
+    else applyPlaybackVolume(player)
     stateRef.playingFromCache = resolved.fromCache
     stateRef.lastMovingAt = Date.now()
+    afterSuccessfulLoad()
     return true
   }
 
   pauseOfflineDownloads()
   try {
     const epoch = ++stateRef.loadEpoch
-    const candidates = [resolved.uri, ...(resolved.fallbackUris ?? [])]
+    const candidates = excludeFailedUris(
+      [resolved.uri, ...(resolved.fallbackUris ?? [])],
+      stateRef.failedUris,
+    )
     const tallies = { remoteAttempts: 0, remoteFailures: 0 }
+    stateRef.forceReload = false
 
     const loadNext = async (index: number): Promise<boolean> => {
       if (index >= candidates.length) {
@@ -422,8 +547,10 @@ export const loadCurrent = async (
             // Ignore when lock screen is inactive.
           }
         }
+        afterSuccessfulLoad()
         return true
       }
+      stateRef.failedUris.add(uri)
       if (!isFile) tallies.remoteFailures += 1
       return loadNext(index + 1)
     }
@@ -475,6 +602,9 @@ export const maybeStallFailover = (player: AudioPlayer) => {
     return
   }
   stateRef.stallFailoverDone = true
+  if (stateRef.loadedUri) stateRef.failedUris.add(stateRef.loadedUri)
+  stateRef.loadedUri = null
+  stateRef.forceReload = true
   const seekMs = Math.max(
     stateRef.lastPositionMs,
     usePlayerStore.getState().positionMs,

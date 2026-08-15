@@ -174,6 +174,7 @@ export default function LibraryScreen() {
   >>({})
   const jumpSongsToLetter = useLibraryStore((s) => s.jumpSongsToLetter)
   const songAlphabetLetters = useLibraryStore((s) => s.songAlphabetLetters)
+  const refreshSongsWindow = useLibraryStore((s) => s.refreshSongsWindow)
   const alphabetMap = useMemo(() => {
     if (segment === 'songs' && librarySort === 'name' && libraryFilter === 'all') {
       return songLetterMap
@@ -306,6 +307,11 @@ export default function LibraryScreen() {
   useEffect(() => {
     if (!hydrated) void useLibraryStore.getState().hydrate()
   }, [hydrated])
+
+  useEffect(() => {
+    if (segment !== 'songs' || Platform.OS === 'web') return
+    void refreshSongsWindow()
+  }, [libraryFilter, librarySort, refreshSongsWindow, segment])
 
   useEffect(() => {
     if (segment !== 'genres' || !context || !session) return
@@ -503,6 +509,11 @@ export default function LibraryScreen() {
       buildTrackActions({
         onPlayNext: () => playNextTracks([queueTrack]),
         onAddToQueue: () => enqueueTracks([queueTrack]),
+        onStartRadio: () => {
+          void import('@/src/player/startRadio').then(({ startRadioFromItem }) => {
+            void startRadioFromItem(item.id, item.artistId)
+          })
+        },
         onAddToPlaylist: () => {
           if (!requireSession()) return
           setSeedTrackId(item.id)
@@ -760,7 +771,12 @@ export default function LibraryScreen() {
                   onPress={() => {
                     if (segment === 'albums') router.push(`/(app)/(main)/album/${item.id}`)
                     if (segment === 'artists') router.push(`/(app)/(main)/artist/${item.id}`)
-                    if (segment === 'genres') router.push(`/(app)/(main)/genre/${item.id}`)
+                    if (segment === 'genres') {
+                      router.push({
+                        pathname: '/(app)/(main)/genre/[id]',
+                        params: { id: item.id, name: item.name },
+                      })
+                    }
                   }}
                 />
               )}

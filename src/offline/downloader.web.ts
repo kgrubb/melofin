@@ -1,5 +1,6 @@
 import {
   emptyOfflineIndex,
+  removeEntry,
   type OfflineEntry,
   type OfflineIndex,
 } from '@/src/domain/offline'
@@ -33,14 +34,23 @@ export const setOfflineIndexPublishHandler = (
   _handler: ((index: OfflineIndex) => void) | null,
 ): void => undefined
 
-export const loadOfflineIndex = async (_scope?: {
+export const loadOfflineIndex = async (scope?: {
   readonly serverUrl?: string
   readonly userId?: string
 }): Promise<Result<OfflineIndex>> => {
-  if (state.memoryIndex) return ok(state.memoryIndex)
+  if (state.memoryIndex) {
+    if (scope?.serverUrl || scope?.userId) {
+      return ok({
+        ...state.memoryIndex,
+        serverUrl: scope.serverUrl ?? state.memoryIndex.serverUrl,
+        userId: scope.userId ?? state.memoryIndex.userId,
+      })
+    }
+    return ok(state.memoryIndex)
+  }
   const result = await readJsonFile<OfflineIndex>(INDEX_FILE)
   if (!result.ok) return result
-  state.memoryIndex = result.value ?? emptyOfflineIndex()
+  state.memoryIndex = result.value ?? emptyOfflineIndex(undefined, scope)
   return ok(state.memoryIndex)
 }
 
@@ -69,7 +79,7 @@ export const stampOfflineScope = async (
   serverUrl: string,
   userId: string,
 ): Promise<Result<OfflineIndex>> => {
-  const loaded = await loadOfflineIndex()
+  const loaded = await loadOfflineIndex({ serverUrl, userId })
   if (!loaded.ok) return loaded
   const next = { ...loaded.value, serverUrl, userId }
   await persistOfflineIndex(next)
@@ -77,6 +87,9 @@ export const stampOfflineScope = async (
 }
 
 /** Offline file downloads are native-only. Web streams remotely. */
+export const pauseOfflineDownloads = (): void => undefined
+export const resumeOfflineDownloads = (): void => undefined
+
 export const downloadTrack = async (
   _context: JellyfinContext,
   _userId: string,
@@ -90,3 +103,13 @@ export const downloadTracks = async (
   _tracks: readonly QueueTrack[],
   _kind: OfflineEntry['kind'],
 ): Promise<Result<OfflineIndex>> => loadOfflineIndex()
+
+export const removeDownloadedTrack = async (
+  itemId: string,
+): Promise<Result<OfflineIndex>> => {
+  const loaded = await loadOfflineIndex()
+  if (!loaded.ok) return loaded
+  const next = removeEntry(loaded.value, itemId)
+  await persistOfflineIndex(next)
+  return ok(next)
+}

@@ -4,7 +4,8 @@ import Animated from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { isInsecureHttpUrl, normalizeServerUrl } from '@/src/domain/jellyfin'
 import { probePublicInfo } from '@/src/services/jellyfin/client'
-import { Brand, Field, Muted, PrimaryButton, Screen } from '@/src/ui/primitives'
+import { useSessionStore } from '@/src/store/session'
+import { Brand, Field, GlassButton, Muted, PrimaryButton, Screen } from '@/src/ui/primitives'
 import { Surface, Toggle } from '@/src/theme/Glass'
 import { authCardEntering, useMotionEnabled } from '@/src/theme/motion'
 import { colors, spacing } from '@/src/theme/tokens'
@@ -12,6 +13,7 @@ import { colors, spacing } from '@/src/theme/tokens'
 export default function ServerScreen() {
   const router = useRouter()
   const enabled = useMotionEnabled()
+  const addingAccount = useSessionStore((s) => s.addingAccount)
   const [url, setUrl] = useState('')
   const [useHttps, setUseHttps] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -46,11 +48,20 @@ export default function ServerScreen() {
     })
   }
 
+  const onCancelAdd = () => {
+    // Keep addingAccount true until we leave (auth); AuthGate clears it.
+    router.replace('/(app)/settings')
+  }
+
   return (
     <Screen centered padBottom={false}>
       <View style={styles.hero}>
         <Brand>Melio</Brand>
-        <Text style={styles.tagline}>Your Jellyfin music, beautifully.</Text>
+        <Text style={styles.tagline}>
+          {addingAccount
+            ? 'Add another Jellyfin server.'
+            : 'Your Jellyfin music, beautifully.'}
+        </Text>
       </View>
 
       <Animated.View entering={authCardEntering(enabled)}>
@@ -80,6 +91,9 @@ export default function ServerScreen() {
             onPress={() => void onContinue()}
             disabled={busy}
           />
+          {addingAccount ? (
+            <GlassButton label="Cancel" onPress={onCancelAdd} />
+          ) : null}
         </Surface>
       </Animated.View>
     </Screen>

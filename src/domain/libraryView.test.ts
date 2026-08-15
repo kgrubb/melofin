@@ -5,6 +5,7 @@ import {
   isLibrarySort,
   libraryFilterLabel,
   librarySortLabel,
+  usesSongNameKeyset,
   type LibraryViewItem,
 } from '@/src/domain/libraryView'
 
@@ -60,5 +61,8 @@ describe('libraryView', () => {
     expect(isLibrarySort('x')).toBe(false)
     expect(isLibraryFilter('all')).toBe(true)
     expect(isLibraryFilter('x')).toBe(false)
+    expect(usesSongNameKeyset('name', 'all')).toBe(true)
+    expect(usesSongNameKeyset('name', 'favorites')).toBe(false)
+    expect(usesSongNameKeyset('dateAdded', 'all')).toBe(false)
   })
 })

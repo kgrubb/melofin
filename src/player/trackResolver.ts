@@ -5,6 +5,7 @@ import {
 } from '@/src/domain/offline'
 import {
   planSourceCandidates,
+  playMethodForResolvedUri,
   type PlaybackNetwork,
 } from '@/src/domain/playbackSource'
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
@@ -87,7 +88,7 @@ export const resolveTrackSource = (
     uri: planned.uri,
     fallbackUris: planned.fallbackUris,
     headers: context ? audioAuthHeaders(context) : undefined,
-    playMethod: planned.fromCache ? 'DirectPlay' : 'Transcode',
+    playMethod: playMethodForResolvedUri(planned.uri, planned.fromCache),
     fromCache: planned.fromCache,
     timeoutMsByUri: planned.timeoutMsByUri,
   }

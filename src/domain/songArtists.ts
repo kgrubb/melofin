@@ -1,4 +1,4 @@
-import type { LibraryItem } from '@/src/services/jellyfin/mappers'
+import type { LibraryItem } from '@/src/domain/libraryItem'
 
 /** Fill empty track artists from album rows or siblings (Jellyfin UI does the same). */
 export const backfillSongArtists = (

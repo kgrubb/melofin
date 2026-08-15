@@ -29,7 +29,8 @@ import {
 import type { CastDevice, CastProvider } from '@/src/cast/types'
 import { DISCOVERY_TTL_MS, LOCAL_DEVICE_ID, TRANSFER_TIMEOUT_MS } from '@/src/cast/types'
 import { logger } from '@/src/logging/logger'
-import { nextIndex, playingIdentity, indexOfMediaIdInPlayOrder } from '@/src/domain/queue'
+import { nextIndex, playingIdentity, previousIndex, indexOfMediaIdInPlayOrder } from '@/src/domain/queue'
+import { goNextWithAutoplay } from '@/src/player/autoplayContinuation'
 import { newPlaySessionId } from '@/src/domain/playSessionId'
 import {
   isLocalDeviceId,
@@ -102,7 +103,11 @@ const bindStatus = (provider: CastProvider) => {
       // Cast queue windows are finite — when a track ends near EOF while Melio
       // still wants playback, advance so syncTo loads the next window.
       const currentTrack = store.tracks[store.currentIndex]
+      const sinkOnCurrent = status.queueEntryId
+        ? status.queueEntryId === playingIdentity(currentTrack)
+        : !status.itemId || status.itemId === currentTrack?.id
       const nearEnd =
+        sinkOnCurrent &&
         Boolean(currentTrack) &&
         currentTrack!.durationMs > 0 &&
         status.positionMs >= Math.max(0, currentTrack!.durationMs - 2500)
@@ -117,7 +122,22 @@ const bindStatus = (provider: CastProvider) => {
           store.goNext()
           return
         }
+        // Single-flight inside goNextWithAutoplay — ignore repeat near-EOF polls.
+        void goNextWithAutoplay()
+        return
       }
+      const prevIdx = previousIndex(
+        store.repeat === 'one' ? { ...store, repeat: 'off' } : store,
+      )
+      const prevTrack = prevIdx >= 0 ? store.tracks[prevIdx] : undefined
+      const laggingPrevious =
+        !status.playing &&
+        Boolean(prevTrack) &&
+        prevIdx !== store.currentIndex &&
+        (status.queueEntryId
+          ? status.queueEntryId === playingIdentity(prevTrack)
+          : Boolean(status.itemId && status.itemId === prevTrack?.id))
+      if (laggingPrevious) return
       store.setPositionMs(status.positionMs)
       if (store.isPlaying !== status.playing) {
         store.setPlaying(status.playing)

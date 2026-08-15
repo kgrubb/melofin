@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  AppState,
   ScrollView,
   StyleSheet,
   Text,
@@ -7,97 +8,244 @@ import {
   useWindowDimensions,
 } from 'react-native'
 import { Image } from 'expo-image'
-import { useRouter } from 'expo-router'
+import { LinearGradient } from 'expo-linear-gradient'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import Animated from 'react-native-reanimated'
+import { mapPool } from '@/src/domain/asyncPool'
+import { accountScopeKey } from '@/src/domain/accountScope'
 import {
-  assembleListenNow,
-  LISTEN_NOW_MIN,
-  listenNowSeed,
-} from '@/src/domain/listenNow'
-import { shuffleTracks, type QueueTrack } from '@/src/domain/queue'
+  albumCardSubtitle,
+  assembleFavoriteArtists,
+  assembleInstantMixSeeds,
+  assembleMixSeeds,
+  collageTracks,
+  downloadsFromOffline,
+  HOME_GENRE_CATALOG_LIMIT,
+  HOME_GENRE_PREVIEW_LIMIT,
+  HOME_INSTANT_MIX_SEED_ATTEMPTS,
+  HOME_INSTANT_MIX_TARGET,
+  HOME_MIX_FETCH_CONCURRENCY,
+  rankArtistsFromTracks,
+  titleCaseGenreLabel,
+  withArtistsFromTracks,
+} from '@/src/domain/homeFeed'
+import { homeGreeting, msUntilNextHomeGreeting } from '@/src/domain/homeGreeting'
+import {
+  createMixFoldQueue,
+  dedupeById,
+  genreMixCandidateTracks,
+  shouldRebuildHomeMixes,
+  type HomeMixCard,
+} from '@/src/domain/homeMixes'
+import {
+  canonicalGenre,
+  foldGenreCatalog,
+  listeningGenreNames,
+  listeningGenresFromTracks,
+  listeningGenresNeedCatalog,
+  preferListeningGenres,
+} from '@/src/domain/instantMix'
+import type { QueueTrack } from '@/src/domain/queue'
+import type { Result } from '@/src/domain/result'
 import {
   artworkUrl,
+  fetchFavoriteArtists,
   fetchFavoriteTracks,
-  fetchInstantMix,
+  fetchInstantMixFromGenre,
   fetchLatestAlbums,
+  fetchMusicGenresPreview,
   fetchRandomSongs,
   fetchRecentPlaylists,
   fetchRecentSongs,
   fetchResume,
-  fetchSongsByArtist,
+  INSTANT_MIX_HOME_LIMIT,
   toQueueTrack,
   userImageUrl,
   type LibraryItem,
 } from '@/src/services/jellyfin/library'
+import { createGenreMixCache } from '@/src/services/jellyfin/genreMixCache'
+import { buildMixCandidate } from '@/src/services/jellyfin/mixCandidate'
 import { useSessionStore } from '@/src/store/session'
+import {
+  loadPersistedHomeMixes,
+  persistHomeMixes,
+  useHomeMixesStore,
+} from '@/src/store/homeMixes'
 import { usePlayerStore } from '@/src/store/player'
 import { useSettingsStore } from '@/src/store/settings'
 import { AccentGradient } from '@/src/theme/Atmosphere'
-import { PressableScale } from '@/src/theme/motion'
-import { EmptyState, ErrorState, LoadingState, Muted, Screen } from '@/src/ui/primitives'
+import {
+  PressableScale,
+  miniEntering,
+  miniExiting,
+  settleEntering,
+  useMotionEnabled,
+} from '@/src/theme/motion'
+import { EmptyState, ErrorState, Screen } from '@/src/ui/primitives'
 import { Icon } from '@/src/ui/Icon'
-import { colors, motion, radii, scrollUnderChromePad, spacing, typography } from '@/src/theme/tokens'
+import { colors, motion, radii, scrollUnderChromePad, spacing } from '@/src/theme/tokens'
 
-const Section = ({
+const MIX_CARD_W = 168
+
+type HomeMix = HomeMixCard & {
+  readonly kind: 'instant'
+  readonly icon: string
+}
+
+/** Spotify Daily Mix–style 2×2 artwork collage. */
+const MixCollage = ({
+  arts,
+  size,
+}: {
+  readonly arts: readonly (string | undefined)[]
+  readonly size: number
+}) => {
+  const cell = Math.floor(size / 2)
+  const tiles = [0, 1, 2, 3].map((index) => arts[index])
+  return (
+    <View style={[styles.collage, { width: size, height: size }]}>
+      {tiles.map((uri, index) => (
+        <View
+          key={`c-${index}`}
+          style={[styles.collageCell, { width: cell, height: cell }]}
+        >
+          {uri ? (
+            <Image
+              source={{ uri }}
+              style={{ width: cell, height: cell }}
+              contentFit="cover"
+            />
+          ) : (
+            <View style={[styles.artFallback, { width: cell, height: cell }]} />
+          )}
+        </View>
+      ))}
+    </View>
+  )
+}
+
+/** Horizontal rail — Spotify density: sharp-ish art, tight type, no content chrome. */
+const HomeRail = ({
   title,
-  subtitle,
   items,
   onPressItem,
   artFor,
   large = false,
+  variant = 'album',
 }: {
   readonly title: string
-  readonly subtitle?: string
   readonly items: readonly LibraryItem[]
   readonly onPressItem: (item: LibraryItem) => void
   readonly artFor: (item: LibraryItem) => string | undefined
   readonly large?: boolean
+  readonly variant?: 'album' | 'artist' | 'genre'
 }) => {
   const { width } = useWindowDimensions()
-  // Full-bleed rail: first card aligns to page inset, next cover peeks to the
-  // physical screen edge (no empty gutter beside a clipped card).
-  const pad = spacing.lg
-  const gap = spacing.sm
-  const visible = large ? 2.2 : 2.45
+  const pad = spacing.md
+  const gap = spacing.md
+  const circle = variant === 'artist'
+  const visible = large ? 2.15 : circle ? 3.35 : 2.4
   const card = Math.max(
-    112,
-    Math.floor((width - pad - gap * Math.floor(visible)) / visible),
+    circle ? 104 : 132,
+    Math.floor((width - pad * 2 - gap * Math.floor(visible)) / visible),
   )
-
-  if (items.length === 0) return null
+  const uniqueItems = dedupeById(items)
+  if (uniqueItems.length === 0) return null
 
   return (
     <View style={styles.section}>
-      <View style={styles.sectionHead}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {subtitle ? <Muted>{subtitle}</Muted> : null}
-      </View>
+      <Text style={styles.sectionTitle} accessibilityRole="header">
+        {title}
+      </Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.rail}
       >
-        {items.map((item) => {
-          const art = artFor(item)
-          const subtitleText = item.artists.filter(Boolean).join(', ') || item.album
+        {uniqueItems.map((entry) => {
+          const art = artFor(entry)
+          const subtitleText = albumCardSubtitle(entry)
+          const showSubtitle = variant === 'album' && Boolean(subtitleText)
+
+          if (variant === 'genre') {
+            const genreName = titleCaseGenreLabel(entry.name) || entry.name
+            return (
+              <PressableScale
+                key={entry.id}
+                onPress={() => onPressItem(entry)}
+                accessibilityRole="button"
+                accessibilityLabel={genreName}
+                scaleTo={motion.scale.card}
+                style={[styles.card, { width: card }]}
+              >
+                <View style={[styles.genreArt, { width: card, height: card }]}>
+                  {art ? (
+                    <Image
+                      source={{ uri: art }}
+                      style={[styles.genreImage, { width: card, height: card }]}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View
+                      style={[styles.artFallback, styles.genreImage, { width: card, height: card }]}
+                    />
+                  )}
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.72)']}
+                    locations={[0.42, 1]}
+                    style={styles.genreScrim}
+                  />
+                  <View pointerEvents="none" style={styles.genreLabelWrap}>
+                    <Text
+                      style={styles.genreLabel}
+                      numberOfLines={2}
+                      allowFontScaling={false}
+                    >
+                      {genreName}
+                    </Text>
+                  </View>
+                </View>
+              </PressableScale>
+            )
+          }
+
           return (
             <PressableScale
-              key={item.id}
-              onPress={() => onPressItem(item)}
+              key={entry.id}
+              onPress={() => onPressItem(entry)}
               accessibilityRole="button"
-              accessibilityLabel={item.name}
+              accessibilityLabel={entry.name}
               scaleTo={motion.scale.card}
               style={[styles.card, { width: card }]}
             >
               {art ? (
-                <Image source={{ uri: art }} style={[styles.art, { width: card, height: card }]} />
+                <Image
+                  source={{ uri: art }}
+                  style={[
+                    styles.art,
+                    { width: card, height: card },
+                    circle ? styles.artCircle : null,
+                  ]}
+                />
               ) : (
-                <View style={[styles.art, styles.artFallback, { width: card, height: card }]} />
+                <View
+                  style={[
+                    styles.art,
+                    styles.artFallback,
+                    { width: card, height: card },
+                    circle ? styles.artCircle : null,
+                  ]}
+                />
               )}
-              <Text style={styles.cardTitle} numberOfLines={2}>
-                {item.name}
+              <Text
+                style={[styles.cardTitle, circle ? styles.cardTitleCenter : null]}
+                numberOfLines={circle ? 2 : 1}
+              >
+                {entry.name}
               </Text>
-              {subtitleText ? (
+              {showSubtitle ? (
                 <Text style={styles.cardSubtitle} numberOfLines={1}>
                   {subtitleText}
                 </Text>
@@ -110,41 +258,91 @@ const Section = ({
   )
 }
 
-const ShuffleChip = ({
+const ActionChip = ({
   label,
   icon,
+  primary,
+  busy,
+  disabled,
   onPress,
-  primary = false,
-  busy = false,
 }: {
   readonly label: string
   readonly icon: string
-  readonly onPress: () => void
   readonly primary?: boolean
   readonly busy?: boolean
+  readonly disabled?: boolean
+  readonly onPress: () => void
 }) => (
   <PressableScale
     accessibilityRole="button"
     accessibilityLabel={label}
-    accessibilityState={{ busy, disabled: busy }}
-    disabled={busy}
+    accessibilityState={{ busy: Boolean(busy), disabled: Boolean(disabled || busy) }}
+    disabled={disabled || busy}
     scaleTo={motion.scale.button}
     onPress={onPress}
-    style={styles.shufflePress}
+    style={styles.chipPress}
   >
     {primary ? (
-      <AccentGradient style={styles.shufflePrimary}>
-        <Icon name={icon} tintColor={colors.onAccent} size={22} />
-        <Text style={styles.shufflePrimaryLabel}>{label}</Text>
+      <AccentGradient style={styles.chipPrimary}>
+        <Icon name={icon} tintColor={colors.onAccent} size={16} />
+        <Text style={styles.chipPrimaryLabel}>{busy ? '…' : label}</Text>
       </AccentGradient>
     ) : (
-      <View style={styles.shuffleSecondary}>
-        <Icon name={icon} tintColor={colors.text} size={22} />
-        <Text style={styles.shuffleLabel}>{label}</Text>
+      <View style={[styles.chipSecondary, disabled ? styles.chipDisabled : null]}>
+        <Icon name={icon} tintColor={colors.text} size={16} />
+        <Text style={styles.chipSecondaryLabel}>{busy ? '…' : label}</Text>
       </View>
     )}
   </PressableScale>
 )
+
+const HomeGreeting = () => {
+  const enabled = useMotionEnabled()
+  const seen = useRef(false)
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const tick = () => setNow(new Date())
+    const arm = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        tick()
+        arm()
+      }, msUntilNextHomeGreeting(new Date()))
+    }
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return
+      tick()
+      arm()
+    })
+    arm()
+    return () => {
+      if (timer) clearTimeout(timer)
+      sub.remove()
+    }
+  }, [])
+  const text = homeGreeting(now)
+  const animate = seen.current && enabled
+  seen.current = true
+  return (
+    <View
+      style={styles.greetingWrap}
+      accessibilityRole="header"
+      accessibilityLabel={text}
+    >
+      <Animated.Text
+        key={text}
+        entering={miniEntering(animate)}
+        exiting={miniExiting(animate)}
+        style={styles.greeting}
+        allowFontScaling={false}
+        accessible={false}
+      >
+        {text}
+      </Animated.Text>
+    </View>
+  )
+}
 
 export default function HomeScreen() {
   const router = useRouter()
@@ -155,27 +353,44 @@ export default function HomeScreen() {
   const offlineIndex = useSettingsStore((s) => s.offlineIndex)
   const [albums, setAlbums] = useState<readonly LibraryItem[]>([])
   const [resume, setResume] = useState<readonly LibraryItem[]>([])
-  const [listenNow, setListenNow] = useState<readonly LibraryItem[]>([])
   const [playlists, setPlaylists] = useState<readonly LibraryItem[]>([])
+  const [favorites, setFavorites] = useState<readonly LibraryItem[]>([])
+  const [favoriteArtists, setFavoriteArtists] = useState<readonly LibraryItem[]>([])
+  const [genres, setGenres] = useState<readonly LibraryItem[]>([])
+  const [homeMixes, setHomeMixes] = useState<readonly HomeMix[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [mixesPending, setMixesPending] = useState(false)
+  const [catalogPending, setCatalogPending] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [profileFailed, setProfileFailed] = useState(false)
+  const motionOn = useMotionEnabled()
+  const loadGenRef = useRef(0)
+  const paintedUserRef = useRef<string | null>(null)
+  const mixesSavedAtRef = useRef<number | undefined>(undefined)
+  const mixesCountRef = useRef(0)
+  const mixesAttemptedAtRef = useRef<number | undefined>(undefined)
+  const loadInFlightRef = useRef(false)
 
   useEffect(() => {
     setProfileFailed(false)
-  }, [session?.userId])
+  }, [session?.serverUrl, session?.userId])
+
+  const downloads = useMemo(
+    () => downloadsFromOffline(offlineIndex.entries),
+    [offlineIndex.entries],
+  )
 
   const toHeroTracks = useCallback(
     (items: readonly LibraryItem[]): readonly QueueTrack[] =>
-      items.map((item) =>
+      items.map((entry) =>
         toQueueTrack(
-          item,
+          entry,
           context
             ? artworkUrl(
                 context,
-                item.imageItemId ?? item.id,
-                item.imageTag,
+                entry.imageItemId ?? entry.id,
+                entry.imageTag,
                 'hero',
               )
             : undefined,
@@ -185,248 +400,761 @@ export default function HomeScreen() {
   )
 
   const playShuffled = useCallback(
-    (tracks: readonly QueueTrack[]) => {
+    (tracks: readonly QueueTrack[], autoplay = false) => {
       if (tracks.length === 0) return
-      playQueue(shuffleTracks(tracks), 0)
+      playQueue(tracks, 0, null, true)
+      if (autoplay) usePlayerStore.getState().armAutoplaySession(tracks.length)
     },
     [playQueue],
   )
 
   const load = useCallback(async () => {
-    if (!context || !session) return
-    setLoading(true)
-    const [a, r, p] = await Promise.all([
-      fetchLatestAlbums(context, session.userId),
-      fetchResume(context, session.userId),
-      fetchRecentPlaylists(context, session.userId),
-    ])
-    const failed = [a, r, p].find((result) => !result.ok)
-    if (failed && !failed.ok) {
+    const clearRails = () => {
+      setAlbums([])
+      setResume([])
+      setPlaylists([])
+      setFavorites([])
+      setFavoriteArtists([])
+      setGenres([])
+      setHomeMixes([])
+      useHomeMixesStore.getState().clear()
+      mixesSavedAtRef.current = undefined
+      mixesCountRef.current = 0
+      mixesAttemptedAtRef.current = undefined
+    }
+    if (!context || !session) {
+      loadGenRef.current += 1
+      loadInFlightRef.current = false
+      paintedUserRef.current = null
       setLoading(false)
-      setError(failed.error.message)
+      setMixesPending(false)
+      setCatalogPending(false)
+      setError(null)
+      clearRails()
       return
     }
-    setError(null)
-    const nextAlbums = a.ok ? a.value : []
-    const nextResume = r.ok ? r.value : []
-    const nextPlaylists = p.ok ? p.value : []
-    setAlbums(nextAlbums)
-    setResume(nextResume)
-    setPlaylists(nextPlaylists)
+    const loadGen = ++loadGenRef.current
+    const isCurrent = () => loadGenRef.current === loadGen
+    loadInFlightRef.current = true
+    const scopeKey = accountScopeKey({
+      serverUrl: session.serverUrl,
+      userId: session.userId,
+    })
 
-    const seed = listenNowSeed(nextResume, nextAlbums, nextPlaylists)
-    const empty = { ok: true as const, value: [] as readonly LibraryItem[] }
-    const mix = seed
-      ? await fetchInstantMix(context, session.userId, seed.id)
-      : empty
-    const mixTracks = mix.ok ? mix.value : []
-    let nextListenNow = assembleListenNow([mixTracks])
-    if (nextListenNow.length < LISTEN_NOW_MIN) {
-      const artistId = seed?.artistId
-      const [artist, recent, random] = await Promise.all([
-        artistId
-          ? fetchSongsByArtist(context, session.userId, artistId, 24)
-          : Promise.resolve(empty),
-        fetchRecentSongs(context, session.userId, 24),
-        fetchRandomSongs(context, session.userId, 24),
-      ])
-      nextListenNow = assembleListenNow([
-        mixTracks,
-        artist.ok ? artist.value : [],
-        recent.ok ? recent.value : [],
-        random.ok ? random.value : [],
-      ])
+    if (paintedUserRef.current !== scopeKey) {
+      clearRails()
+      setMixesPending(false)
+      setError(null)
+      setLoading(true)
     }
-    setListenNow(nextListenNow)
-    setLoading(false)
+    const cachedP =
+      paintedUserRef.current !== scopeKey
+        ? loadPersistedHomeMixes(session.serverUrl, session.userId).then(
+            (cached) => {
+              if (!isCurrent()) return cached
+              mixesSavedAtRef.current = cached.savedAt
+              mixesCountRef.current = cached.mixes.length
+              if (cached.mixes.length === 0) return cached
+              const restored = cached.mixes.map(
+                (mix): HomeMix => ({
+                  ...mix,
+                  kind: 'instant',
+                }),
+              )
+              setHomeMixes((prev) => (prev.length > 0 ? prev : restored))
+              if (Object.keys(useHomeMixesStore.getState().byId).length === 0) {
+                useHomeMixesStore.getState().setMixes(restored)
+              }
+              return cached
+            },
+          )
+        : Promise.resolve(null)
+    const gate = { cancelled: false }
+    try {
+      const recentP = fetchRecentSongs(context, session.userId, 80)
+      const favoritesP = fetchFavoriteTracks(context, session.userId)
+      const likedArtistsP = fetchFavoriteArtists(context, session.userId, 24)
+      const resumeP = fetchResume(context, session.userId)
+      const albumsP = fetchLatestAlbums(context, session.userId)
+      const playlistsP = fetchRecentPlaylists(context, session.userId)
+      const genresP = fetchMusicGenresPreview(
+        context,
+        session.userId,
+        HOME_GENRE_PREVIEW_LIMIT,
+      )
+
+      const [recent, f, likedArtists, resumeEarly] = await Promise.all([
+        recentP,
+        favoritesP,
+        likedArtistsP,
+        resumeP,
+      ])
+      if (!isCurrent()) return
+
+      const nextFavorites = f.ok ? f.value.slice(0, 40) : []
+      const nextRecent = recent.ok ? recent.value : []
+      const nextResume = resumeEarly.ok ? resumeEarly.value : []
+      const audioResume = nextResume.filter((entry) => entry.type === 'Audio')
+      const listenTracks = [...nextRecent, ...nextFavorites]
+      const listenedGenreNames = listeningGenreNames(listenTracks)
+      const genresFromTracks = listeningGenresFromTracks(listenTracks, 16)
+      let nextGenres = preferListeningGenres(
+        genresFromTracks,
+        listenedGenreNames,
+        16,
+      )
+
+      const listenFailed =
+        !recent.ok && !f.ok && !likedArtists.ok && !resumeEarly.ok
+
+      setResume(nextResume)
+      setFavorites(nextFavorites)
+      setFavoriteArtists(
+        assembleFavoriteArtists(
+          likedArtists.ok ? likedArtists.value : [],
+          rankArtistsFromTracks([...nextFavorites, ...nextRecent], 16),
+          12,
+        ),
+      )
+      if (nextGenres.length > 0) setGenres(nextGenres)
+      paintedUserRef.current = scopeKey
+      setCatalogPending(true)
+      setLoading(false)
+      if (!listenFailed) setError(null)
+
+      const live = () => isCurrent() && !gate.cancelled
+      let catalogLeft = 3
+      const settleCatalog = () => {
+        catalogLeft -= 1
+        if (catalogLeft <= 0 && isCurrent()) setCatalogPending(false)
+      }
+      void albumsP
+        .then((result) => {
+          if (!live() || !result.ok) return
+          setAlbums(withArtistsFromTracks(result.value, listenTracks))
+        })
+        .finally(settleCatalog)
+      void playlistsP
+        .then((result) => {
+          if (!live() || !result.ok) return
+          setPlaylists(result.value)
+        })
+        .finally(settleCatalog)
+      void genresP
+        .then((result) => {
+          if (!live()) return
+          const preview = result.ok ? result.value : []
+          nextGenres = preferListeningGenres(
+            foldGenreCatalog([preview, genresFromTracks]),
+            listenedGenreNames,
+            16,
+          )
+          if (nextGenres.length > 0) setGenres(nextGenres)
+          if (!listeningGenresNeedCatalog(listenedGenreNames, nextGenres)) return
+          void fetchMusicGenresPreview(
+            context,
+            session.userId,
+            HOME_GENRE_CATALOG_LIMIT,
+            { enableImages: false },
+          ).then((more) => {
+            if (!live() || !more.ok) return
+            nextGenres = preferListeningGenres(
+              foldGenreCatalog([preview, more.value, genresFromTracks]),
+              listenedGenreNames,
+              16,
+            )
+            if (nextGenres.length > 0) setGenres(nextGenres)
+          })
+        })
+        .finally(settleCatalog)
+
+      const cached = await cachedP
+      if (!isCurrent()) return
+      if (cached) {
+        mixesSavedAtRef.current = cached.savedAt
+        mixesCountRef.current = Math.max(mixesCountRef.current, cached.mixes.length)
+      }
+      if (listenFailed && mixesCountRef.current === 0) {
+        const failed = [recent, f, resumeEarly, likedArtists].find((row) => !row.ok)
+        if (failed && !failed.ok) setError(failed.error.message)
+        return
+      }
+      if (
+        !shouldRebuildHomeMixes({
+          savedAtMs: mixesSavedAtRef.current,
+          mixCount: mixesCountRef.current,
+          attemptedAtMs: mixesAttemptedAtRef.current,
+        })
+      ) {
+        return
+      }
+
+      setMixesPending(true)
+
+      const rankedForMixes = rankArtistsFromTracks(
+        [...nextRecent, ...nextFavorites, ...audioResume],
+        HOME_INSTANT_MIX_SEED_ATTEMPTS,
+      )
+      const rankedSeeds = assembleInstantMixSeeds(
+        {
+          rankedArtists: rankedForMixes,
+          recent: nextRecent,
+          favorites: nextFavorites,
+        },
+        HOME_INSTANT_MIX_SEED_ATTEMPTS,
+      )
+      const seeds =
+        rankedSeeds.length > 0
+          ? rankedSeeds
+          : assembleMixSeeds(
+              [...nextRecent, ...nextFavorites, ...audioResume],
+              HOME_INSTANT_MIX_SEED_ATTEMPTS,
+            )
+
+      const genreMixByName = createGenreMixCache(context, session.userId)
+      const toHomeMix = (card: HomeMixCard): HomeMix => ({
+        ...card,
+        kind: 'instant',
+        icon: 'shuffle',
+      })
+
+      const foldQueue = createMixFoldQueue(HOME_INSTANT_MIX_TARGET, (mixes) => {
+        if (!isCurrent() || gate.cancelled) return
+        const mapped = mixes.map(toHomeMix)
+        setHomeMixes((prev) => (prev.length > mapped.length ? prev : mapped))
+        const newest = mapped[mapped.length - 1]
+        if (newest) useHomeMixesStore.getState().upsertMix(newest)
+      })
+      const mixRailFull = () =>
+        foldQueue.snapshot().mixes.length >= HOME_INSTANT_MIX_TARGET
+
+      const mixesWork = mapPool(
+        seeds,
+        HOME_MIX_FETCH_CONCURRENCY,
+        async (seed) => {
+          try {
+            if (gate.cancelled || !isCurrent() || mixRailFull()) return
+            const candidate = await buildMixCandidate(
+              context,
+              session.userId,
+              seed,
+              genreMixByName,
+            )
+            if (!gate.cancelled && isCurrent()) await foldQueue.commit(candidate)
+          } catch {
+            /* keep painting other seeds */
+          }
+        },
+        {
+          shouldContinue: () =>
+            !gate.cancelled && isCurrent() && !mixRailFull(),
+        },
+      )
+
+      await mixesWork
+      await foldQueue.flush()
+      if (!isCurrent() || gate.cancelled) {
+        gate.cancelled = true
+        return
+      }
+
+      const painted = foldQueue.snapshot().mixes
+      if (painted.length > 0) mixesCountRef.current = painted.length
+      if (painted.length < HOME_INSTANT_MIX_TARGET) {
+        const need = HOME_INSTANT_MIX_TARGET - painted.length
+        type GenreJob = {
+          readonly key: string
+          readonly label: string
+          readonly id: string
+          readonly run: () => Promise<Result<readonly LibraryItem[]>>
+        }
+        type JobAcc = {
+          readonly seen: ReadonlySet<string>
+          readonly jobs: readonly GenreJob[]
+        }
+        const pushJob = (
+          acc: JobAcc,
+          job: GenreJob,
+          limit: number,
+        ): JobAcc => {
+          if (acc.jobs.length >= limit || !job.key || acc.seen.has(job.key)) {
+            return acc
+          }
+          return {
+            seen: new Set([...acc.seen, job.key]),
+            jobs: [...acc.jobs, job],
+          }
+        }
+        const emptyJobs: JobAcc = { seen: new Set(), jobs: [] }
+        const fromListening = listenedGenreNames.reduce<JobAcc>(
+          (acc, name) =>
+            pushJob(
+              acc,
+              {
+                key: canonicalGenre(name),
+                label: name,
+                id: `name:${canonicalGenre(name)}`,
+                run: () => genreMixByName(name),
+              },
+              need + 2,
+            ),
+          emptyJobs,
+        )
+        const genreJobs = nextGenres
+          .reduce<JobAcc>(
+            (acc, genre) =>
+              pushJob(
+                acc,
+                {
+                  key: canonicalGenre(genre.name),
+                  label: genre.name,
+                  id: genre.id,
+                  run: () =>
+                    fetchInstantMixFromGenre(
+                      context,
+                      session.userId,
+                      genre.id,
+                      INSTANT_MIX_HOME_LIMIT,
+                    ),
+                },
+                need + 4,
+              ),
+            fromListening,
+          )
+          .jobs.slice(0, Math.max(need * 2, need))
+
+        await mapPool(
+          genreJobs,
+          HOME_MIX_FETCH_CONCURRENCY,
+          async (job) => {
+            try {
+              if (gate.cancelled || !isCurrent() || mixRailFull()) return
+              const mix = await job.run()
+              if (!gate.cancelled && isCurrent()) {
+                await foldQueue.commit({
+                  id: `genre:${job.id}`,
+                  seedLabel: job.label,
+                  tracks: genreMixCandidateTracks(
+                    job.label,
+                    job.id,
+                    mix.ok ? mix.value : [],
+                  ),
+                })
+              }
+            } catch {
+              /* skip */
+            }
+          },
+          {
+            shouldContinue: () =>
+              !gate.cancelled && isCurrent() && !mixRailFull(),
+          },
+        )
+        await foldQueue.flush()
+      }
+
+      if (!isCurrent() || gate.cancelled) {
+        gate.cancelled = true
+        return
+      }
+      const finalMixes = dedupeById(foldQueue.snapshot().mixes).map(toHomeMix)
+      mixesAttemptedAtRef.current = Date.now()
+      if (finalMixes.length > 0) {
+        const savedAt = Date.now()
+        mixesSavedAtRef.current = savedAt
+        mixesCountRef.current = finalMixes.length
+        mixesAttemptedAtRef.current = savedAt
+        setHomeMixes(finalMixes)
+        useHomeMixesStore.getState().setMixes(finalMixes)
+        void persistHomeMixes(session.serverUrl, session.userId, finalMixes, savedAt)
+      }
+    } catch {
+      gate.cancelled = true
+      if (!isCurrent()) return
+      if (paintedUserRef.current !== scopeKey) {
+        setHomeMixes([])
+        useHomeMixesStore.getState().clear()
+      }
+    } finally {
+      if (isCurrent()) {
+        loadInFlightRef.current = false
+        setLoading(false)
+        setMixesPending(false)
+      }
+    }
   }, [context, session])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const artFor = (item: LibraryItem) =>
-    context
-      ? artworkUrl(context, item.imageItemId ?? item.id, item.imageTag, 'card')
-      : undefined
+  const skipResumeFocusRefresh = useRef(true)
+  const refreshStaleMixes = useCallback(() => {
+    if (loadInFlightRef.current) return
+    if (
+      !shouldRebuildHomeMixes({
+        savedAtMs: mixesSavedAtRef.current,
+        mixCount: mixesCountRef.current,
+        attemptedAtMs: mixesAttemptedAtRef.current,
+      })
+    ) {
+      return
+    }
+    loadInFlightRef.current = true
+    void load()
+  }, [load])
 
-  const openItem = (item: LibraryItem) => {
-    if (item.type === 'Audio') {
-      playQueue(toHeroTracks([item]), 0)
+  useFocusEffect(
+    useCallback(() => {
+      if (!context || !session) return
+      if (skipResumeFocusRefresh.current) {
+        skipResumeFocusRefresh.current = false
+        return
+      }
+      const focusGen = loadGenRef.current
+      void (async () => {
+        const result = await fetchResume(context, session.userId)
+        if (loadGenRef.current !== focusGen) return
+        if (result.ok) setResume(result.value)
+      })()
+      refreshStaleMixes()
+    }, [context, session, refreshStaleMixes]),
+  )
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return
+      refreshStaleMixes()
+    })
+    return () => sub.remove()
+  }, [refreshStaleMixes])
+
+  const artFor = useCallback(
+    (entry: LibraryItem) => {
+      const offlineArt = offlineIndex.entries[entry.id]?.artworkPath
+      if (offlineArt) return offlineArt
+      return context
+        ? artworkUrl(context, entry.imageItemId ?? entry.id, entry.imageTag, 'card')
+        : undefined
+    },
+    [context, offlineIndex.entries],
+  )
+
+  const openItem = (
+    entry: LibraryItem,
+    opts?: { readonly resume?: boolean },
+  ) => {
+    if (entry.type === 'Audio') {
+      const offlineArt = offlineIndex.entries[entry.id]?.artworkPath
+      const startMs =
+        opts?.resume && entry.playbackPositionMs && entry.playbackPositionMs > 0
+          ? entry.playbackPositionMs
+          : 0
+      playQueue(
+        [
+          toQueueTrack(
+            entry,
+            offlineArt ??
+              (context
+                ? artworkUrl(
+                    context,
+                    entry.imageItemId ?? entry.id,
+                    entry.imageTag,
+                    'hero',
+                  )
+                : undefined),
+          ),
+        ],
+        0,
+        null,
+        undefined,
+        startMs,
+      )
       return
     }
-    if (item.type === 'MusicAlbum') {
-      router.push(`/(app)/(main)/album/${item.id}`)
+    if (entry.type === 'MusicAlbum') {
+      router.push(`/(app)/(main)/album/${entry.id}`)
       return
     }
-    if (item.type === 'MusicArtist') {
-      router.push(`/(app)/(main)/artist/${item.id}`)
+    if (entry.type === 'MusicArtist') {
+      router.push(`/(app)/(main)/artist/${entry.id}`)
       return
     }
-    router.push(`/(app)/(main)/playlist/${item.id}`)
+    if (
+      entry.type === 'MusicGenre' ||
+      entry.type === 'Genre' ||
+      genres.some((genre) => genre.id === entry.id)
+    ) {
+      router.push({
+        pathname: '/(app)/(main)/genre/[id]',
+        params: { id: entry.id, name: entry.name },
+      })
+      return
+    }
+    router.push(`/(app)/(main)/playlist/${entry.id}`)
   }
 
-  const shuffleAll = async () => {
+  const openGenre = (entry: LibraryItem) => {
+    router.push({
+      pathname: '/(app)/(main)/genre/[id]',
+      params: { id: entry.id, name: entry.name },
+    })
+  }
+
+  const shuffleLibrary = async () => {
     if (!context || !session || busy) return
-    setBusy('all')
-    const result = await fetchRandomSongs(context, session.userId, 100)
-    setBusy(null)
-    if (!result.ok || result.value.length === 0) return
-    playShuffled(toHeroTracks(result.value))
+    setBusy('library')
+    try {
+      const result = await fetchRandomSongs(context, session.userId, 100)
+      if (!result.ok || result.value.length === 0) return
+      playShuffled(toHeroTracks(result.value))
+    } finally {
+      setBusy(null)
+    }
   }
 
   const shuffleFavorites = async () => {
     if (!context || !session || busy) return
     setBusy('favorites')
-    const result = await fetchFavoriteTracks(context, session.userId)
-    setBusy(null)
-    if (!result.ok || result.value.length === 0) return
-    playShuffled(toHeroTracks(result.value))
+    try {
+      const result = await fetchFavoriteTracks(context, session.userId)
+      if (!result.ok || result.value.length === 0) return
+      playShuffled(toHeroTracks(result.value), true)
+    } finally {
+      setBusy(null)
+    }
   }
 
   const shuffleDownloads = () => {
-    if (busy) return
-    const tracks = Object.values(offlineIndex.entries)
-      .filter((entry) => entry.complete)
-      .map((entry) =>
-        toQueueTrack(
-          {
-            id: entry.itemId,
-            name: entry.title,
-            type: 'Audio',
-            artists: [entry.artist],
-            album: entry.album,
-            durationMs: entry.durationMs,
-          },
-          entry.artworkPath,
-        ),
-      )
-    if (tracks.length === 0) return
-    playShuffled(tracks)
-  }
-
-  if (loading) {
-    return (
-      <Screen padBottom={false} padHorizontal={false}>
-        <View style={styles.padded}>
-          <LoadingState />
-        </View>
-      </Screen>
+    if (busy || downloads.length === 0) return
+    playShuffled(
+      downloads.map((entry) =>
+        toQueueTrack(entry, offlineIndex.entries[entry.id]?.artworkPath),
+      ),
     )
   }
 
-  if (error) {
-    return (
-      <Screen padBottom={false} padHorizontal={false}>
-        <View style={styles.padded}>
-          <ErrorState message={error} onRetry={() => void load()} />
-        </View>
-      </Screen>
-    )
+  const openMix = (mix: HomeMix) => {
+    router.push(`/(app)/(main)/mix/${encodeURIComponent(mix.id)}`)
   }
 
   const empty =
     resume.length === 0 &&
-    listenNow.length === 0 &&
+    homeMixes.length === 0 &&
     albums.length === 0 &&
-    playlists.length === 0
+    playlists.length === 0 &&
+    favorites.length === 0 &&
+    favoriteArtists.length === 0 &&
+    genres.length === 0 &&
+    downloads.length === 0
 
   const profileUrl =
     context && session && !profileFailed
       ? userImageUrl(context, session.userId, undefined, 'thumb')
       : undefined
 
+  const continueItems = resume.filter(
+    (entry) => (entry.playbackPositionMs ?? 0) > 0,
+  )
+
+  const topBar = (
+    <View style={styles.header}>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel="Profile and settings"
+        scaleTo={motion.scale.button}
+        onPress={() => router.push('/(app)/settings')}
+        style={styles.avatarPress}
+        hitSlop={8}
+      >
+        {profileUrl ? (
+          <Image
+            source={{ uri: profileUrl }}
+            style={styles.avatar}
+            contentFit="cover"
+            recyclingKey={
+              session
+                ? accountScopeKey({
+                    serverUrl: session.serverUrl,
+                    userId: session.userId,
+                  })
+                : undefined
+            }
+            onError={() => setProfileFailed(true)}
+          />
+        ) : (
+          <View style={[styles.avatar, styles.avatarFallback]}>
+            <Text style={styles.avatarInitial}>
+              {(session?.userName ?? '?').slice(0, 1).toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </PressableScale>
+      <HomeGreeting />
+    </View>
+  )
+
+  const showEmpty = empty && !loading && !mixesPending && !catalogPending
+  const showError = Boolean(error) && showEmpty
+
   return (
     <Screen padBottom={false} padHorizontal={false}>
-      <View style={styles.header}>
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel="Profile and settings"
-          scaleTo={motion.scale.button}
-          onPress={() => router.push('/(app)/settings')}
-          style={styles.avatarPress}
-          hitSlop={8}
-        >
-          {profileUrl ? (
-            <Image
-              source={{ uri: profileUrl }}
-              style={styles.avatar}
-              contentFit="cover"
-              recyclingKey={session?.userId}
-              onError={() => setProfileFailed(true)}
-            />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text style={styles.avatarInitial}>
-                {(session?.userName ?? '?').slice(0, 1).toUpperCase()}
-              </Text>
-            </View>
-          )}
-        </PressableScale>
-      </View>
-      {empty ? (
-        <View style={styles.padded}>
-          <EmptyState title="Nothing here" message="Add music on your Jellyfin server." />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: scrollUnderChromePad(insets.bottom) },
+        ]}
+      >
+        <View style={styles.lead}>
+          {topBar}
+          {!showError && !showEmpty ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipRow}
+            >
+              <ActionChip
+                label="Shuffle"
+                icon="shuffle"
+                primary
+                busy={busy === 'library'}
+                onPress={() => void shuffleLibrary()}
+              />
+              <ActionChip
+                label="Favorites"
+                icon="heart.fill"
+                busy={busy === 'favorites'}
+                onPress={() => void shuffleFavorites()}
+              />
+              <ActionChip
+                label="Downloads"
+                icon="arrow.down.circle.fill"
+                disabled={downloads.length === 0}
+                onPress={shuffleDownloads}
+              />
+            </ScrollView>
+          ) : null}
         </View>
-      ) : (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.scroll,
-            { paddingBottom: scrollUnderChromePad(insets.bottom) },
-          ]}
-        >
-          <View style={styles.shuffleRow}>
-            <ShuffleChip
-              label={busy === 'all' ? 'Loading…' : 'Shuffle all'}
-              icon="shuffle"
-              primary
-              busy={busy === 'all'}
-              onPress={() => void shuffleAll()}
-            />
-            <ShuffleChip
-              label={busy === 'favorites' ? 'Loading…' : 'Favorites'}
-              icon="heart.fill"
-              busy={busy === 'favorites'}
-              onPress={() => void shuffleFavorites()}
-            />
-            <ShuffleChip
-              label="Downloads"
-              icon="arrow.down.circle.fill"
-              busy={busy !== null}
-              onPress={shuffleDownloads}
-            />
-          </View>
 
-          <Section
-            title="Continue Listening"
-            subtitle="Pick up where you left off"
-            items={resume}
-            onPressItem={openItem}
-            artFor={artFor}
-            large
-          />
-          <Section
-            title="Listen Now"
-            subtitle="An instant mix based on your listening"
-            items={listenNow}
-            onPressItem={openItem}
-            artFor={artFor}
-          />
-          <Section
-            title="Recently Added"
-            items={albums}
-            onPressItem={openItem}
-            artFor={artFor}
-          />
-          <Section
-            title="Recent Playlists"
-            items={playlists}
-            onPressItem={openItem}
-            artFor={artFor}
-          />
-        </ScrollView>
-      )}
+        {showError && error ? (
+          <View style={styles.padded}>
+            <ErrorState message={error} onRetry={() => void load()} />
+          </View>
+        ) : showEmpty ? (
+          <View style={styles.padded}>
+            <EmptyState title="Nothing here" message="Add music on your Jellyfin server." />
+          </View>
+        ) : (
+          <>
+            {homeMixes.length > 0 ? (
+              <Animated.View entering={settleEntering(motionOn)} style={styles.section}>
+                <Text style={styles.sectionTitle}>Your Mixes</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.rail}
+                >
+                  {homeMixes.map((mix) => {
+                    const arts = collageTracks(mix.tracks).map((track) => artFor(track))
+                    return (
+                      <PressableScale
+                        key={mix.id}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${mix.title}. ${mix.subtitle}`}
+                        scaleTo={motion.scale.card}
+                        onPress={() => openMix(mix)}
+                        style={[styles.mixCard, { width: MIX_CARD_W }]}
+                      >
+                        <View style={styles.mixArtWrap}>
+                          <MixCollage arts={arts} size={MIX_CARD_W} />
+                          <AccentGradient style={styles.mixBadge}>
+                            <Icon name={mix.icon} tintColor={colors.onAccent} size={14} />
+                          </AccentGradient>
+                        </View>
+                        <Text style={styles.mixTitle} numberOfLines={2}>
+                          {mix.title}
+                        </Text>
+                        <Text style={styles.mixSubtitle} numberOfLines={1}>
+                          {mix.subtitle}
+                        </Text>
+                      </PressableScale>
+                    )
+                  })}
+                </ScrollView>
+              </Animated.View>
+            ) : mixesPending ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Your Mixes</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.rail}
+                >
+                  {Array.from({ length: HOME_INSTANT_MIX_TARGET }, (_, index) => (
+                    <View
+                      key={`mix-skel-${index}`}
+                      style={[styles.mixCard, { width: MIX_CARD_W }]}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    >
+                      <View style={[styles.mixArtWrap, styles.mixSkeletonArt]} />
+                      <View style={styles.mixSkeletonLine} />
+                      <View style={[styles.mixSkeletonLine, styles.mixSkeletonLineShort]} />
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            <HomeRail
+              title="Your Favorite Artists"
+              items={favoriteArtists}
+              onPressItem={openItem}
+              artFor={artFor}
+              variant="artist"
+            />
+
+            {continueItems.length > 0 ? (
+              <HomeRail
+                title="Continue Listening"
+                items={continueItems}
+                onPressItem={(entry) => openItem(entry, { resume: true })}
+                artFor={artFor}
+                large
+              />
+            ) : null}
+
+            <HomeRail
+              title="Recently Added"
+              items={albums}
+              onPressItem={openItem}
+              artFor={artFor}
+            />
+
+            <HomeRail
+              title="Explore Your Genres"
+              items={genres}
+              onPressItem={openGenre}
+              artFor={artFor}
+              variant="genre"
+            />
+
+            <HomeRail
+              title="Playlists"
+              items={playlists}
+              onPressItem={openItem}
+              artFor={artFor}
+            />
+            <HomeRail
+              title="Favorites"
+              items={favorites}
+              onPressItem={openItem}
+              artFor={artFor}
+            />
+          </>
+        )}
+      </ScrollView>
     </Screen>
   )
 }
@@ -438,10 +1166,10 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'flex-start',
     alignItems: 'center',
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   avatarPress: {
     width: 44,
@@ -463,75 +1191,130 @@ const styles = StyleSheet.create({
   avatarInitial: {
     color: colors.text,
     fontWeight: '700',
-    fontSize: 16,
+    fontSize: 18,
+  },
+  greetingWrap: {
+    flex: 1,
+    height: 34,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  greeting: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    fontSize: 24,
+    lineHeight: 32,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+    color: colors.text,
   },
   scroll: {
     gap: spacing.xl,
+    paddingTop: spacing.xs,
+    alignItems: 'stretch',
   },
-  shuffleRow: {
-    flexDirection: 'row',
+  lead: {
+    alignSelf: 'stretch',
+  },
+  chipRow: {
     gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
-  shufflePress: {
-    flex: 1,
-    minWidth: 0,
+  chipPress: {
+    flexShrink: 0,
   },
-  shufflePrimary: {
-    minHeight: 52,
+  chipPrimary: {
+    minHeight: 34,
     borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
+    gap: 6,
   },
-  shufflePrimaryLabel: {
+  chipPrimaryLabel: {
     color: colors.onAccent,
     fontWeight: '700',
-    fontSize: 12,
-    textAlign: 'center',
+    fontSize: 13,
   },
-  shuffleSecondary: {
-    minHeight: 52,
+  chipSecondary: {
+    minHeight: 34,
     borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
+    gap: 6,
     backgroundColor: colors.elevated,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
-  shuffleLabel: {
+  chipDisabled: {
+    opacity: 0.4,
+  },
+  chipSecondaryLabel: {
     color: colors.text,
     fontWeight: '600',
-    fontSize: 12,
-    textAlign: 'center',
+    fontSize: 13,
   },
   section: {
-    gap: spacing.md,
-  },
-  sectionHead: {
-    gap: 2,
-    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
   },
   sectionTitle: {
-    ...typography.subtitle,
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.3,
     color: colors.text,
+    paddingHorizontal: spacing.md,
   },
   rail: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    alignItems: 'flex-start',
   },
   card: {
-    gap: 6,
+    gap: 8,
   },
   art: {
-    borderRadius: radii.sm,
-    backgroundColor: colors.elevated,
+    borderRadius: 6,
+    backgroundColor: colors.surface,
+  },
+  artCircle: {
+    borderRadius: 999,
   },
   artFallback: {
     backgroundColor: colors.elevated,
+  },
+  genreArt: {
+    borderRadius: 6,
+    overflow: 'hidden',
+    backgroundColor: colors.elevated,
+  },
+  genreImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  genreScrim: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  genreLabelWrap: {
+    position: 'absolute',
+    left: spacing.sm,
+    right: spacing.sm,
+    bottom: spacing.sm,
+    height: 44,
+    justifyContent: 'flex-start',
+  },
+  genreLabel: {
+    color: colors.text,
+    fontWeight: '700',
+    fontSize: 16,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+    includeFontPadding: false,
+    textShadowColor: 'rgba(0,0,0,0.85)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
   },
   cardTitle: {
     color: colors.text,
@@ -539,8 +1322,65 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: -0.1,
   },
+  cardTitleCenter: {
+    textAlign: 'center',
+  },
   cardSubtitle: {
     color: colors.textSecondary,
     fontSize: 12,
+    marginTop: -4,
+  },
+  mixCard: {
+    gap: 8,
+  },
+  mixArtWrap: {
+    position: 'relative',
+    width: MIX_CARD_W,
+    height: MIX_CARD_W,
+    overflow: 'hidden',
+  },
+  collage: {
+    borderRadius: 6,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    backgroundColor: colors.surface,
+  },
+  collageCell: {
+    overflow: 'hidden',
+  },
+  mixBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mixTitle: {
+    color: colors.text,
+    fontWeight: '700',
+    fontSize: 14,
+    letterSpacing: -0.1,
+  },
+  mixSubtitle: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    marginTop: -2,
+  },
+  mixSkeletonArt: {
+    borderRadius: 6,
+    backgroundColor: colors.elevated,
+  },
+  mixSkeletonLine: {
+    height: 12,
+    borderRadius: 4,
+    backgroundColor: colors.elevated,
+    marginTop: 2,
+  },
+  mixSkeletonLineShort: {
+    width: '62%',
   },
 })

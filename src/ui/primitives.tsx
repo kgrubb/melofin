@@ -19,11 +19,14 @@ export const Screen = ({
   centered = false,
   padBottom = true,
   padHorizontal = true,
+  padTop = true,
 }: {
   readonly children: React.ReactNode
   readonly centered?: boolean
   readonly padBottom?: boolean
   readonly padHorizontal?: boolean
+  /** Full-screen scenes pad the status bar. Sheets should pass false — they already sit below the page-sheet gap. */
+  readonly padTop?: boolean
 }) => {
   const insets = useSafeAreaInsets()
   return (
@@ -34,7 +37,7 @@ export const Screen = ({
           centered ? styles.screenCentered : null,
           !padHorizontal ? styles.screenFlushX : null,
           {
-            paddingTop: Math.max(insets.top, spacing.md),
+            paddingTop: padTop ? Math.max(insets.top, spacing.md) : 0,
             // Only vertical gap. Tab scenes use padBottom={false} so lists can
             // scroll under the floating glass chrome.
             paddingBottom: padBottom ? spacing.md : 0,

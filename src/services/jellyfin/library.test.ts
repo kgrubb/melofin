@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { artistAlbumsQuery } from '@/src/services/jellyfin/library'
+import {
+  artistAlbumsQuery,
+  artistAppearsOnAlbumsQuery,
+  artistContributingAlbumsQuery,
+  genreAlbumsByIdQuery,
+  genreAlbumsByNameQuery,
+  genreTracksQuery,
+} from '@/src/services/jellyfin/library'
 import {
   artworkUrl,
   audioAuthHeaders,
@@ -7,6 +14,7 @@ import {
   buildPlaybackStreamCandidates,
   buildUniversalStreamUrl,
   mapBaseItem,
+  resizeArtworkUrl,
   toQueueTrack,
   userImageUrl,
 } from '@/src/services/jellyfin/mappers'
@@ -20,6 +28,59 @@ describe('artistAlbumsQuery', () => {
       albumArtistIds: ['artist-9'],
       sortBy: ['ProductionYear', 'SortName'],
       sortOrder: ['Ascending'],
+    })
+    expect(artistAppearsOnAlbumsQuery('user-1', 'artist-9')).toEqual({
+      userId: 'user-1',
+      includeItemTypes: ['MusicAlbum'],
+      artistIds: ['artist-9'],
+      sortBy: ['ProductionYear', 'SortName'],
+      sortOrder: ['Ascending'],
+    })
+    expect(artistContributingAlbumsQuery('user-1', 'artist-9')).toEqual({
+      userId: 'user-1',
+      includeItemTypes: ['MusicAlbum'],
+      contributingArtistIds: ['artist-9'],
+      sortBy: ['ProductionYear', 'SortName'],
+      sortOrder: ['Ascending'],
+    })
+  })
+})
+
+describe('genre album queries', () => {
+  it('filters albums by genre id, name, and falls back to tracks', () => {
+    expect(genreAlbumsByIdQuery('u', 'g1')).toEqual({
+      userId: 'u',
+      includeItemTypes: ['MusicAlbum'],
+      genreIds: ['g1'],
+      sortBy: ['SortName'],
+      sortOrder: ['Ascending'],
+    })
+    expect(genreAlbumsByNameQuery('u', 'Hip Hop')).toEqual({
+      userId: 'u',
+      includeItemTypes: ['MusicAlbum'],
+      genres: ['Hip Hop'],
+      sortBy: ['SortName'],
+      sortOrder: ['Ascending'],
+    })
+    expect(genreTracksQuery('u', 'g1', 'Hip Hop')).toEqual({
+      userId: 'u',
+      includeItemTypes: ['Audio'],
+      sortBy: ['DateCreated'],
+      sortOrder: ['Descending'],
+      enableUserData: false,
+      imageTypeLimit: 1,
+      fields: ['ParentId'],
+      genres: ['Hip Hop'],
+    })
+    expect(genreTracksQuery('u', 'g1')).toEqual({
+      userId: 'u',
+      includeItemTypes: ['Audio'],
+      sortBy: ['DateCreated'],
+      sortOrder: ['Descending'],
+      enableUserData: false,
+      imageTypeLimit: 1,
+      fields: ['ParentId'],
+      genreIds: ['g1'],
     })
   })
 })
@@ -68,6 +129,38 @@ describe('library mappers', () => {
     expect(mapBaseItem({ Id: '2', Name: 'Song', Type: 'Audio' }).isFavorite).toBeUndefined()
   })
 
+  it('maps Genres and GenreItems onto library items', () => {
+    const item = mapBaseItem({
+      Id: '1',
+      Name: 'Song',
+      Type: 'Audio',
+      Genres: ['Hip Hop', 'Rap'],
+      GenreItems: [{ Id: 'g1', Name: 'Alternative' }],
+    })
+    expect(item.genres).toEqual(['Hip Hop', 'Rap', 'Alternative'])
+    expect(item.genreItems).toEqual([{ id: 'g1', name: 'Alternative' }])
+  })
+
+  it('maps playback position ticks to milliseconds', () => {
+    expect(
+      mapBaseItem({
+        Id: '1',
+        Name: 'Song',
+        Type: 'Audio',
+        RunTimeTicks: 200_000_000,
+        UserData: { PlaybackPositionTicks: 50_000_000 },
+      }).playbackPositionMs,
+    ).toBe(5000)
+    expect(
+      mapBaseItem({
+        Id: '2',
+        Name: 'Song',
+        Type: 'Audio',
+        UserData: { PlaybackPositionTicks: 0 },
+      }).playbackPositionMs,
+    ).toBeUndefined()
+  })
+
   it('maps playlist entry ids', () => {
     expect(
       mapBaseItem({
@@ -101,14 +194,13 @@ describe('library mappers', () => {
     expect(item.albumId).toBe('album')
   })
 
-  it('uses ParentId as albumId only when album primary art is present', () => {
+  it('uses ParentId as albumId for library audio, not playlist children', () => {
     expect(
       mapBaseItem({
         Id: 'song',
         Name: 'Song',
         Type: 'Audio',
         ParentId: 'album-parent',
-        AlbumPrimaryImageTag: 'tag',
       }).albumId,
     ).toBe('album-parent')
     expect(
@@ -117,6 +209,7 @@ describe('library mappers', () => {
         Name: 'Song',
         Type: 'Audio',
         ParentId: 'playlist-parent',
+        PlaylistItemId: 'entry-1',
       }).albumId,
     ).toBeUndefined()
   })
@@ -186,18 +279,28 @@ describe('library mappers', () => {
       accessToken: 't',
     } as JellyfinContext
     expect(artworkUrl(context, '1', 'tag')).toContain('Images/Primary')
-    expect(artworkUrl(context, '1', 'tag')).toContain('maxHeight=1200')
-    expect(artworkUrl(context, '1', 'tag')).toContain('quality=90')
+    expect(artworkUrl(context, '1', 'tag')).toContain('maxHeight=2048')
+    expect(artworkUrl(context, '1', 'tag')).toContain('maxWidth=2048')
+    expect(artworkUrl(context, '1', 'tag')).toContain('quality=96')
     expect(artworkUrl(context, '1', 'tag')).toContain('tag=tag')
-    expect(artworkUrl(context, '1', 'tag', 'thumb')).toContain('maxHeight=256')
-    expect(artworkUrl(context, '1', 'tag', 'card')).toContain('maxHeight=640')
+    expect(artworkUrl(context, '1', 'tag', 'thumb')).toContain('maxHeight=384')
+    expect(artworkUrl(context, '1', 'tag', 'card')).toContain('maxHeight=960')
     expect(artworkUrl(context, '1')).toContain('Images/Primary')
     expect(artworkUrl(context, '1')).not.toContain('tag=')
     expect(artworkUrl(context, '')).toBeUndefined()
     expect(userImageUrl(context, 'u1')).toContain('/Users/u1/Images/Primary')
     expect(userImageUrl(context, 'u1', 'ptag', 'thumb')).toContain('tag=ptag')
-    expect(userImageUrl(context, 'u1', undefined, 'thumb')).toContain('maxHeight=256')
+    expect(userImageUrl(context, 'u1', undefined, 'thumb')).toContain('maxHeight=384')
     expect(userImageUrl(context, '')).toBeUndefined()
+    expect(resizeArtworkUrl('https://jf/img?maxHeight=256&quality=90', 'hero')).toBe(
+      'https://jf/img?maxWidth=2048&maxHeight=2048&quality=96',
+    )
+    expect(
+      resizeArtworkUrl('https://jf/img?maxWidth=384&maxHeight=384&quality=90', 'hero'),
+    ).toBe('https://jf/img?maxWidth=2048&maxHeight=2048&quality=96')
+    expect(resizeArtworkUrl('https://jf/img?foo=1', 'hero')).toBe('https://jf/img?foo=1')
+    expect(resizeArtworkUrl('file:///melio/art', 'hero')).toBe('file:///melio/art')
+    expect(resizeArtworkUrl(undefined, 'hero')).toBeUndefined()
     expect(buildUniversalStreamUrl(context, '1', 'u')).toContain('UserId=u')
     expect(buildUniversalStreamUrl(context, '1', 'u')).toContain('/universal?')
     expect(buildUniversalStreamUrl(context, '1', 'u')).toContain('flac')
@@ -216,8 +319,12 @@ describe('library mappers', () => {
       ),
     ).not.toContain('api_key=')
     const candidates = buildPlaybackStreamCandidates(context, '1', 'u')
-    expect(candidates).toHaveLength(2)
-    expect(candidates[0]).toContain('/stream.mp3')
-    expect(candidates[1]).toContain('/universal?')
+    expect(candidates.length).toBeGreaterThanOrEqual(3)
+    expect(candidates[0]).toContain('/Audio/1/stream?')
+    expect(candidates[0]).toContain('static=true')
+    expect(candidates[0]).not.toContain('/stream.flac')
+    expect(candidates[candidates.length - 2]).toContain('/universal?')
+    expect(candidates[candidates.length - 1]).toContain('/stream.mp3')
+    expect(candidates[candidates.length - 1]).not.toContain('static=true')
   })
 })

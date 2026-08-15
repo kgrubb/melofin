@@ -10,6 +10,11 @@ export const REMOTE_WIFI_TIMEOUT_MS = 2_500
 export const REMOTE_CELLULAR_TIMEOUT_MS = 1_500
 export const STALL_FAILOVER_MS = 9_000
 export const POSITION_MOVE_MIN_MS = 400
+/** After play(), require the playhead to move or fail the candidate. */
+export const AUDIO_START_CONFIRM_MS = 700
+export const AUDIO_START_MIN_POSITION_MS = 80
+/** Prior-item EOF after a replace that never actually swapped sources. */
+export const STALE_PRIOR_ITEM_MS = 5_000
 
 export const remoteTimeoutMs = (network: PlaybackNetwork): number =>
   network === 'cellular' ? REMOTE_CELLULAR_TIMEOUT_MS : REMOTE_WIFI_TIMEOUT_MS
@@ -78,6 +83,37 @@ export const planSourceCandidates = (
   }
 }
 
+export const excludeFailedUris = (
+  uris: readonly string[],
+  failed: ReadonlySet<string>,
+): readonly string[] => uris.filter((uri) => !failed.has(uri))
+
+/**
+ * Candidate looked loaded but never produced audio — or is still the prior
+ * item sitting at EOF. Buffering is not a failure.
+ */
+export const shouldAbandonSilentStart = (input: {
+  readonly wantsPlay: boolean
+  readonly elapsedMs: number
+  readonly confirmWithinMs: number
+  readonly positionMs: number
+  readonly seekMs: number
+  readonly isBuffering: boolean
+  readonly playbackState?: string
+}): boolean => {
+  const state = (input.playbackState ?? '').toLowerCase()
+  if (state === 'failed') return true
+  if (!input.wantsPlay) return false
+  if (input.elapsedMs < input.confirmWithinMs) return false
+  if (input.isBuffering) return false
+  const expected = Math.max(0, input.seekMs)
+  if (expected < AUDIO_START_MIN_POSITION_MS) {
+    if (input.positionMs > STALE_PRIOR_ITEM_MS) return true
+    return input.positionMs < AUDIO_START_MIN_POSITION_MS
+  }
+  return input.positionMs < AUDIO_START_MIN_POSITION_MS
+}
+
 /** Stall when intending to play, not from cache, and position frozen long enough. */
 export const shouldFailoverStall = (input: {
   readonly wantsPlay: boolean
@@ -123,3 +159,40 @@ export const shouldAutoAdvanceOnLoadFailure = (input: {
   input.network === 'offline' ||
   !input.jfReachable ||
   input.allRemotesTimedOut
+
+/** True when the URI looks like Jellyfin Direct Play (static container), not forced MP3. */
+export const isDirectPlayRemoteUri = (uri: string): boolean => {
+  if (!uri.includes('/Audio/')) return false
+  if (uri.includes('/universal?')) return false
+  if (uri.includes('/stream.mp3') && !/static=true/i.test(uri)) return false
+  return uri.includes('/stream.') || /static=true/i.test(uri)
+}
+
+/**
+ * Prefer Direct Play remotes, then universal, then forced /stream.mp3.
+ * Dedupes while preserving first-seen order within each tier.
+ */
+export const orderRemotePlaybackUris = (
+  uris: readonly string[],
+): readonly string[] => {
+  const direct: string[] = []
+  const universal: string[] = []
+  const transcode: string[] = []
+  const seen = new Set<string>()
+  for (const uri of uris) {
+    if (seen.has(uri)) continue
+    seen.add(uri)
+    if (uri.includes('/universal?')) universal.push(uri)
+    else if (isDirectPlayRemoteUri(uri)) direct.push(uri)
+    else transcode.push(uri)
+  }
+  return [...direct, ...universal, ...transcode]
+}
+
+export const playMethodForResolvedUri = (
+  uri: string,
+  fromCache: boolean,
+): 'DirectPlay' | 'Transcode' => {
+  if (fromCache) return 'DirectPlay'
+  return isDirectPlayRemoteUri(uri) ? 'DirectPlay' : 'Transcode'
+}

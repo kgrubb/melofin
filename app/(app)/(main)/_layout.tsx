@@ -24,6 +24,7 @@ export default function MainLayout() {
       <Stack.Screen name="artist/[id]" options={collectionOptions} />
       <Stack.Screen name="playlist/[id]" options={collectionOptions} />
       <Stack.Screen name="genre/[id]" options={collectionOptions} />
+      <Stack.Screen name="mix/[id]" options={collectionOptions} />
     </Stack>
   )
 }

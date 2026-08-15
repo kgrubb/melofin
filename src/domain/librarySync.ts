@@ -86,11 +86,24 @@ export const formatLibrarySyncButton = (
   syncing: boolean,
   progress: LibrarySyncProgress,
 ): string => {
-  if (!syncing) return 'Sync now'
+  if (!syncing) return 'Sync Now'
   if (progress.phase === 'saving') return 'Saving…'
   const fraction = librarySyncFraction(progress)
   if (fraction != null) return `Syncing ${Math.round(fraction * 100)}%`
   return 'Syncing…'
+}
+
+/** False when a cached catalog belongs to another server or user. Missing userId is legacy. */
+export const libraryCacheBelongsToSession = (
+  cache: {
+    readonly serverUrl: string | null
+    readonly userId?: string | null
+  },
+  session: { readonly serverUrl: string; readonly userId: string },
+): boolean => {
+  if (cache.serverUrl && cache.serverUrl !== session.serverUrl) return false
+  if (cache.userId && cache.userId !== session.userId) return false
+  return true
 }
 
 export const librarySectionsEmpty = ({
@@ -108,3 +121,51 @@ export const librarySectionsEmpty = ({
   albums.length === 0 &&
   artists.length === 0 &&
   playlists.length === 0
+
+export type SongSyncPhase = 'delta' | 'full'
+
+export type SongSyncAfterDelta = 'skip' | 'upsertOk' | 'full'
+
+export type SongSyncFetchPlan = {
+  readonly pageSize: number
+  readonly concurrency: number
+}
+
+/** First sync / schema bump → full; otherwise try MinDateLastSaved delta. */
+export const songSyncPhase = ({
+  schemaStale,
+  songsSyncedAt,
+  localCount,
+}: {
+  readonly schemaStale: boolean
+  readonly songsSyncedAt: number | null
+  readonly localCount: number
+}): SongSyncPhase =>
+  schemaStale || songsSyncedAt == null || localCount === 0 ? 'full' : 'delta'
+
+/**
+ * After a delta pull (and optional upsert), decide whether counts agree.
+ * `localCount` is post-upsert when deltaLength > 0.
+ */
+export const songSyncAfterDelta = ({
+  remoteCount,
+  localCount,
+  deltaLength,
+}: {
+  readonly remoteCount: number
+  readonly localCount: number
+  readonly deltaLength: number
+}): SongSyncAfterDelta => {
+  if (deltaLength === 0 && remoteCount === localCount) return 'skip'
+  if (deltaLength > 0 && localCount === remoteCount) return 'upsertOk'
+  return 'full'
+}
+
+/** Stamp watermark from pull start, not end — overlap for clock skew / in-flight saves. */
+export const songDeltaWatermarkMs = (pullStartedAt: number): number =>
+  pullStartedAt - 60_000
+
+export const songSyncFetchPlan = (isWifi: boolean): SongSyncFetchPlan =>
+  isWifi
+    ? { pageSize: 400, concurrency: 2 }
+    : { pageSize: 200, concurrency: 1 }

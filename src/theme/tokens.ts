@@ -37,12 +37,15 @@ export const spacing = {
   xxl: 48,
 } as const
 
-/** Floating tab bar + mini player — scroll content under glass. */
+/** Floating tab bar + mini player. */
+const tabBarHeight = 62
 export const chrome = {
-  tabBarHeight: 74,
-  /** Distance from safe bottom to mini bottom edge (tab height + gap). */
-  miniBottomOffset: 82,
-  miniHeight: 60,
+  tabBarHeight,
+  tabBarMargin: 21,
+  tabBarInset: 4,
+  /** Tab platter + gap to the mini-player accessory. */
+  miniBottomOffset: tabBarHeight + spacing.sm,
+  miniHeight: 64,
 } as const
 
 /** Extra list/scroll padding so last rows clear the floating chrome. */

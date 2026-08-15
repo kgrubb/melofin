@@ -4,7 +4,7 @@ import {
   isListenNowTrack,
   listenNowSeed,
 } from '@/src/domain/listenNow'
-import type { LibraryItem } from '@/src/services/jellyfin/mappers'
+import type { LibraryItem } from '@/src/domain/libraryItem'
 
 const item = (
   id: string,

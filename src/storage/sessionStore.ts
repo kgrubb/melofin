@@ -1,9 +1,18 @@
 import { Platform } from 'react-native'
 import * as SecureStore from 'expo-secure-store'
+import {
+  emptyAccountsState,
+  removeAccountFromState,
+  sessionAccountId,
+  upsertAccount,
+  type AccountsState,
+  type StoredAccount,
+} from '@/src/domain/accounts'
 import { appError, err, ok, type Result } from '@/src/domain/result'
 
 const DEVICE_ID_KEY = 'melio.deviceId'
 const SESSION_KEY = 'melio.session'
+const ACCOUNTS_KEY = 'melio.accounts'
 
 export type StoredSession = {
   readonly serverUrl: string
@@ -12,6 +21,14 @@ export type StoredSession = {
   readonly userName: string
   readonly serverName: string
   readonly allowInsecureHttp: boolean
+}
+
+export type { AccountsState, StoredAccount }
+export {
+  emptyAccountsState,
+  removeAccountFromState,
+  sessionAccountId,
+  upsertAccount,
 }
 
 const memory = new Map<string, string>()
@@ -66,23 +83,35 @@ const webRemove = (key: string): void => {
 
 const isWebStorage = (): boolean => Platform.OS === 'web'
 
+const readKey = async (key: string): Promise<string | null> => {
+  if (isWebStorage()) return webGet(key)
+  return SecureStore.getItemAsync(key)
+}
+
+const writeKey = async (key: string, value: string): Promise<void> => {
+  if (isWebStorage()) {
+    webSet(key, value)
+    return
+  }
+  await SecureStore.setItemAsync(key, value)
+}
+
+const deleteKey = async (key: string): Promise<void> => {
+  if (isWebStorage()) {
+    webRemove(key)
+    return
+  }
+  await SecureStore.deleteItemAsync(key)
+}
+
 export const getOrCreateDeviceId = async (): Promise<Result<string>> => {
   try {
-    if (isWebStorage()) {
-      const existing = webGet(DEVICE_ID_KEY)
-      if (existing) return ok(existing)
-      const deviceId = makeId()
-      webSet(DEVICE_ID_KEY, deviceId)
-      return ok(deviceId)
-    }
-
-    const existing = await SecureStore.getItemAsync(DEVICE_ID_KEY)
+    const existing = await readKey(DEVICE_ID_KEY)
     if (existing) return ok(existing)
     const deviceId = makeId()
-    await SecureStore.setItemAsync(DEVICE_ID_KEY, deviceId)
+    await writeKey(DEVICE_ID_KEY, deviceId)
     return ok(deviceId)
   } catch (cause) {
-    // Last resort so auth never dies on storage quirks during preview.
     const fallback = memory.get(DEVICE_ID_KEY) ?? makeId()
     memory.set(DEVICE_ID_KEY, fallback)
     if (fallback) return ok(fallback)
@@ -90,14 +119,49 @@ export const getOrCreateDeviceId = async (): Promise<Result<string>> => {
   }
 }
 
+export const loadAccounts = async (): Promise<Result<AccountsState>> => {
+  try {
+    const raw = await readKey(ACCOUNTS_KEY)
+    if (!raw) {
+      const legacy = await loadSession()
+      if (legacy.ok && legacy.value) {
+        const migrated = upsertAccount(emptyAccountsState(), legacy.value)
+        await saveAccounts(migrated)
+        return ok(migrated)
+      }
+      return ok(emptyAccountsState())
+    }
+    const parsed = JSON.parse(raw) as AccountsState
+    if (!parsed || !Array.isArray(parsed.accounts)) {
+      return ok(emptyAccountsState())
+    }
+    return ok({
+      activeId: parsed.activeId ?? null,
+      accounts: parsed.accounts,
+    })
+  } catch (cause) {
+    return err(appError('storage', 'Unable to load accounts', cause))
+  }
+}
+
+export const saveAccounts = async (
+  state: AccountsState,
+): Promise<Result<void>> => {
+  try {
+    await writeKey(ACCOUNTS_KEY, JSON.stringify(state))
+    return ok(undefined)
+  } catch (cause) {
+    return err(appError('storage', 'Unable to save accounts', cause))
+  }
+}
+
 export const saveSession = async (session: StoredSession): Promise<Result<void>> => {
   try {
-    const raw = JSON.stringify(session)
-    if (isWebStorage()) {
-      webSet(SESSION_KEY, raw)
-      return ok(undefined)
+    await writeKey(SESSION_KEY, JSON.stringify(session))
+    const accounts = await loadAccounts()
+    if (accounts.ok) {
+      await saveAccounts(upsertAccount(accounts.value, session))
     }
-    await SecureStore.setItemAsync(SESSION_KEY, raw)
     return ok(undefined)
   } catch (cause) {
     if (isWebStorage()) {
@@ -110,9 +174,7 @@ export const saveSession = async (session: StoredSession): Promise<Result<void>>
 
 export const loadSession = async (): Promise<Result<StoredSession | null>> => {
   try {
-    const raw = isWebStorage()
-      ? webGet(SESSION_KEY)
-      : await SecureStore.getItemAsync(SESSION_KEY)
+    const raw = await readKey(SESSION_KEY)
     if (!raw) return ok(null)
     return ok(JSON.parse(raw) as StoredSession)
   } catch (cause) {
@@ -122,11 +184,7 @@ export const loadSession = async (): Promise<Result<StoredSession | null>> => {
 
 export const clearSession = async (): Promise<Result<void>> => {
   try {
-    if (isWebStorage()) {
-      webRemove(SESSION_KEY)
-      return ok(undefined)
-    }
-    await SecureStore.deleteItemAsync(SESSION_KEY)
+    await deleteKey(SESSION_KEY)
     return ok(undefined)
   } catch (cause) {
     return err(appError('storage', 'Unable to clear session', cause))

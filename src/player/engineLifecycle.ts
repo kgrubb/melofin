@@ -43,6 +43,16 @@ import {
   isMelioScrobbleEnabled,
   setLocalOutputEnabled,
 } from '@/src/player/outputPolicy'
+import {
+  clearNativeNextQueue,
+} from '@/src/player/nativeQueue'
+import { goNextWithAutoplay } from '@/src/player/autoplayContinuation'
+import {
+  fadePlayerVolume,
+  localCrossfadeSeconds,
+  startLocalCrossfade,
+  stopLocalCrossfade,
+} from '@/src/player/crossfadeLocal'
 import { queueReport, reportForCurrent, stopAnchoredScrobble } from '@/src/player/scrobbleBridge'
 import { postCapabilities } from '@/src/services/jellyfin/playbackReport'
 import { flushCompletedListens } from '@/src/services/jellyfin/playstateSync'
@@ -161,7 +171,49 @@ const advanceFromEnd = () => {
       if (isMelioScrobbleEnabled() && stateRef.scrobble) {
         void queueReport(() => stopAnchoredScrobble())
       }
-      usePlayerStore.getState().goNext()
+      const leaving = currentTrack(store)
+      const leavingKey = playingIdentity(leaving)
+      usePlayerStore.getState().notePlayedTrackId(leaving?.id)
+      const fadeSec = localCrossfadeSeconds()
+      const abortFade = () =>
+        !usePlayerStore.getState().isPlaying ||
+        playingIdentity(currentTrack(usePlayerStore.getState())) !== leavingKey
+      if (fadeSec > 0 && isLocalOutputEnabled()) {
+        const started = await startLocalCrossfade(fadeSec)
+        if (started) {
+          // Fade off the serial engine queue so skip/pause are not blocked.
+          waitForLoad = true
+          void (async () => {
+            try {
+              if (player) await fadePlayerVolume(player, 0, fadeSec, abortFade)
+              if (abortFade()) {
+                stopLocalCrossfade()
+                if (!usePlayerStore.getState().isPlaying && player) {
+                  try {
+                    player.volume = stateRef.playbackVolume
+                  } catch {
+                    // Ignore.
+                  }
+                }
+                return
+              }
+              await goNextWithAutoplay()
+            } finally {
+              if (
+                !(
+                  usePlayerStore.getState().isPlaying && isLocalOutputEnabled()
+                )
+              ) {
+                stateRef.advancing = false
+              }
+            }
+          })()
+          return
+        }
+      }
+      await goNextWithAutoplay()
+      // Crossfade player is stopped in afterSuccessfulLoad once the primary
+      // item is actually audible — killing it here left the next track silent.
       // Keep advancing until loadCurrent clears it so a slow replace cannot
       // double-fire EOF while native is still sitting on the prior item.
       waitForLoad =
@@ -200,19 +252,22 @@ const applyPlayPlan = (plan: TransportPlan) => {
 
     const current = activePlayer()
     if (!current) return
-    // Only resume must re-seek; track changes reset store position to 0 and
-    // should not inherit a stale progress-poll position from the prior item.
-    const resumeMs =
+    // Resume re-seeks the paused playhead. Start may also seek when playQueue
+    // requested a Continue Listening offset (store positionMs > 0); skip/next
+    // always reset positionMs to 0 first so they still begin at 0.
+    const seekMs =
       plan.kind === 'resume'
         ? Math.max(
             usePlayerStore.getState().positionMs,
             stateRef.lastPositionMs,
           )
-        : undefined
+        : plan.kind === 'start'
+          ? usePlayerStore.getState().positionMs
+          : 0
     const loaded = await loadCurrent(current, {
       play: plan.play,
       transportGen: gen,
-      ...(resumeMs != null && resumeMs > 0 ? { seekMs: resumeMs } : {}),
+      ...(seekMs > 0 ? { seekMs } : {}),
     })
     if (gen !== stateRef.transportGen) return
     if (!usePlayerStore.getState().isPlaying) return
@@ -334,6 +389,7 @@ export const startPlaybackEngine = async (): Promise<Engine> => {
 
     bindLocalOutputChange((enabled, wasEnabled) => {
       if (!enabled) {
+        clearNativeNextQueue()
         applyPause()
         return
       }

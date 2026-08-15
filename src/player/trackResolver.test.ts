@@ -56,7 +56,8 @@ describe('trackResolver', () => {
     )
     expect(resolved?.fromCache).toBe(true)
     expect(resolved?.uri).toBe('file:///data/42')
-    expect(resolved?.fallbackUris?.[0]).toContain('/Audio/42/stream.mp3')
+    expect(resolved?.fallbackUris?.[0]).toContain('/Audio/42/stream?')
+    expect(resolved?.fallbackUris?.[0]).toContain('static=true')
     expect(resolved?.headers?.['X-Emby-Token']).toBe('token')
     expect(resolved?.timeoutMsByUri[resolved.uri]).toBeGreaterThan(0)
   })
@@ -88,7 +89,8 @@ describe('trackResolver', () => {
       { fileExists: () => false },
     )
     expect(resolved?.fromCache).toBe(false)
-    expect(resolved?.uri).toContain('/Audio/42/stream.mp3')
+    expect(resolved?.uri).toContain('/Audio/42/stream?')
+    expect(resolved?.playMethod).toBe('DirectPlay')
   })
 
   it('drops remotes when Jellyfin is marked unreachable', () => {
@@ -148,7 +150,7 @@ describe('trackResolver', () => {
       { platform: 'web', jfReachable: true, network: 'wifiLike' },
     )
     expect(resolved?.fromCache).toBe(false)
-    expect(resolved?.uri).toContain('/Audio/42/stream.mp3')
+    expect(resolved?.uri).toContain('/Audio/42/stream?')
   })
 
   it('streams remotely when online without a complete cache entry', () => {
@@ -164,8 +166,11 @@ describe('trackResolver', () => {
       'user-1',
     )
     expect(resolved?.fromCache).toBe(false)
-    expect(resolved?.uri).toContain('/Audio/42/stream.mp3')
-    expect(resolved?.fallbackUris?.[0]).toContain('/Audio/42/universal?')
+    expect(resolved?.uri).toContain('/Audio/42/stream?')
+    expect(resolved?.playMethod).toBe('DirectPlay')
+    expect(resolved?.fallbackUris?.some((u) => u.includes('/universal?'))).toBe(
+      true,
+    )
     expect(resolved?.headers?.['X-Emby-Token']).toBe('token')
   })
 

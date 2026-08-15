@@ -1,8 +1,8 @@
-import type { LibraryItem } from '@/src/services/jellyfin/mappers'
+import type { LibraryItem } from '@/src/domain/libraryItem'
 
-export const LISTEN_NOW_TARGET = 24
-/** Instant Mix often returns only the seed — pad below this. */
-export const LISTEN_NOW_MIN = 8
+export const LISTEN_NOW_TARGET = 50
+/** Pad Instant Mix / Home mixes when thinner than this (Spotify-scale queues). */
+export const LISTEN_NOW_MIN = 30
 
 export const isListenNowTrack = (item: LibraryItem): boolean =>
   item.type === 'Audio' && item.id.length > 0

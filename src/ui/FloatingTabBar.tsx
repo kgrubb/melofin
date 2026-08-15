@@ -1,18 +1,28 @@
-import { useEffect, useState } from 'react'
-import { Platform, StyleSheet, Text, View, type ColorValue } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { Platform, StyleSheet, Text, View, type ColorValue, type LayoutChangeEvent } from 'react-native'
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { usePathname, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { usePlayerStore } from '@/src/store/player'
-import { Glass } from '@/src/theme/Glass'
-import { PressableScale } from '@/src/theme/motion'
+import { Glass, nativeLiquidGlass } from '@/src/theme/Glass'
+import { PressableScale, useMotionEnabled } from '@/src/theme/motion'
 import { Icon } from '@/src/ui/Icon'
-import { chrome, colors, motion, radii, spacing } from '@/src/theme/tokens'
+import { chrome, motion, spacing } from '@/src/theme/tokens'
 
-/** Opaque selection bubble fill (Liquid Glass selected tab). */
-const SELECTED_BUBBLE = 'rgba(255, 255, 255, 0.88)'
-const SELECTED_ICON = '#1A0B2E'
+const SELECTED_FROST = 'rgba(255, 255, 255, 0.16)'
+const UNSELECTED = 'rgba(255, 255, 255, 0.72)'
+const SELECTION_HEIGHT = chrome.tabBarHeight - chrome.tabBarInset * 2
+const PILL_INSET = 1
+
+const iosCurve =
+  Platform.OS === 'ios' ? ({ borderCurve: 'continuous' as const } satisfies object) : null
 
 type TabName = 'home' | 'search' | 'library' | 'downloads'
+
+type TabLayout = {
+  readonly x: number
+  readonly width: number
+}
 
 const TABS: readonly {
   readonly name: TabName
@@ -21,34 +31,10 @@ const TABS: readonly {
   readonly filled: string
   readonly href: `/(app)/(main)/(tabs)/${TabName}`
 }[] = [
-  {
-    name: 'home',
-    title: 'Home',
-    outline: 'house',
-    filled: 'house.fill',
-    href: '/(app)/(main)/(tabs)/home',
-  },
-  {
-    name: 'search',
-    title: 'Search',
-    outline: 'magnifyingglass',
-    filled: 'magnifyingglass',
-    href: '/(app)/(main)/(tabs)/search',
-  },
-  {
-    name: 'library',
-    title: 'Library',
-    outline: 'rectangle.stack',
-    filled: 'rectangle.stack.fill',
-    href: '/(app)/(main)/(tabs)/library',
-  },
-  {
-    name: 'downloads',
-    title: 'Downloads',
-    outline: 'arrow.down.circle',
-    filled: 'arrow.down.circle.fill',
-    href: '/(app)/(main)/(tabs)/downloads',
-  },
+  { name: 'home', title: 'Home', outline: 'house', filled: 'house.fill', href: '/(app)/(main)/(tabs)/home' },
+  { name: 'search', title: 'Search', outline: 'magnifyingglass', filled: 'magnifyingglass', href: '/(app)/(main)/(tabs)/search' },
+  { name: 'library', title: 'Library', outline: 'rectangle.stack', filled: 'rectangle.stack.fill', href: '/(app)/(main)/(tabs)/library' },
+  { name: 'downloads', title: 'Downloads', outline: 'arrow.down.circle', filled: 'arrow.down.circle.fill', href: '/(app)/(main)/(tabs)/downloads' },
 ]
 
 const tabFromPath = (pathname: string): TabName | null => {
@@ -59,63 +45,64 @@ const tabFromPath = (pathname: string): TabName | null => {
   return null
 }
 
-const TabGlyph = ({
-  outline,
-  filled,
-  color,
-  focused,
-}: {
-  readonly outline: string
-  readonly filled: string
-  readonly color: ColorValue
-  readonly focused: boolean
-}) => (
-  <View style={[styles.iconBubble, focused ? styles.iconBubbleSelected : null]}>
-    <Icon
-      name={focused ? filled : outline}
-      tintColor={focused ? SELECTED_ICON : color}
-      size={22}
-    />
-  </View>
-)
-
 export const FloatingTabBar = () => {
   const router = useRouter()
   const pathname = usePathname()
   const insets = useSafeAreaInsets()
+  const motionOn = useMotionEnabled()
   const [lastTab, setLastTab] = useState<TabName>('home')
+  const [layouts, setLayouts] = useState<Readonly<Record<string, TabLayout>>>({})
   const nowPlayingOpen = usePlayerStore((s) => s.nowPlayingOpen)
-
-  const onSheet =
-    pathname.includes('/settings') || pathname.includes('/queue')
-
+  const onSheet = pathname.includes('/settings') || pathname.includes('/queue')
   const pathTab = tabFromPath(pathname)
   useEffect(() => {
     if (pathTab) setLastTab(pathTab)
   }, [pathTab])
 
-  // Overlay routes (/player, settings, queue) must keep lastTab — falling back
-  // to 'home' made the selection thrash on every minimize.
-  const active: TabName = pathTab ?? lastTab
-
-  const bottom = Math.max(insets.bottom, spacing.sm)
+  const active = pathTab ?? lastTab
   const covered = nowPlayingOpen || onSheet
+  const liquid = nativeLiquidGlass()
+  const pillX = useSharedValue(0)
+  const pillW = useSharedValue(0)
+  const placed = useRef(false)
+
+  useEffect(() => {
+    const layout = layouts[active]
+    if (!layout) return
+    const x = layout.x + PILL_INSET
+    const width = Math.max(layout.width - PILL_INSET * 2, 1)
+    if (motionOn && placed.current) {
+      pillX.value = withSpring(x, motion.spring.selection)
+      pillW.value = withSpring(width, motion.spring.selection)
+      return
+    }
+    pillX.value = x
+    pillW.value = width
+    placed.current = true
+  }, [active, layouts, motionOn, pillW, pillX])
+
+  const pillStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pillX.value }],
+    width: pillW.value,
+  }))
 
   return (
     <View
       pointerEvents={covered ? 'none' : 'box-none'}
-      style={[styles.wrap, { bottom, height: chrome.tabBarHeight }]}
+      style={[styles.wrap, { bottom: Math.max(insets.bottom, spacing.sm) }]}
       accessibilityElementsHidden={covered}
       importantForAccessibility={covered ? 'no-hide-descendants' : 'auto'}
     >
       <Glass
-        style={styles.glass}
+        style={[styles.glass, liquid ? null : styles.clip]}
         contentStyle={styles.row}
-        intensity={Platform.OS === 'web' ? 40 : 18}
+        intensity={Platform.OS === 'web' ? 48 : 36}
+        isInteractive={liquid}
       >
+        <Animated.View pointerEvents="none" style={[styles.pill, pillStyle]} />
         {TABS.map((tab) => {
           const focused = active === tab.name
-          const color = focused ? colors.text : colors.textSecondary
+          const color: ColorValue = focused ? '#FFFFFF' : UNSELECTED
           return (
             <PressableScale
               key={tab.name}
@@ -127,15 +114,18 @@ export const FloatingTabBar = () => {
                 setLastTab(tab.name)
                 router.navigate(tab.href)
               }}
+              onLayout={(event: LayoutChangeEvent) => {
+                const { x, width } = event.nativeEvent.layout
+                setLayouts((prev) => {
+                  const existing = prev[tab.name]
+                  if (existing && existing.x === x && existing.width === width) return prev
+                  return { ...prev, [tab.name]: { x, width } }
+                })
+              }}
               style={styles.tab}
             >
-              <TabGlyph
-                outline={tab.outline}
-                filled={tab.filled}
-                color={color}
-                focused={focused}
-              />
-              <Text style={[styles.label, { color }]} numberOfLines={1}>
+              <Icon name={focused ? tab.filled : tab.outline} tintColor={color} size={25} />
+              <Text style={[styles.label, { color }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
                 {tab.title}
               </Text>
             </PressableScale>
@@ -149,45 +139,39 @@ export const FloatingTabBar = () => {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    left: spacing.md,
-    right: spacing.md,
+    left: chrome.tabBarMargin,
+    right: chrome.tabBarMargin,
+    height: chrome.tabBarHeight,
     zIndex: 30,
   },
   glass: {
-    borderRadius: radii.xl,
-    overflow: 'hidden',
     flex: 1,
+    borderRadius: chrome.tabBarHeight / 2,
   },
+  clip: { overflow: 'hidden' },
   row: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 4,
-    paddingBottom: 6,
-    paddingHorizontal: 4,
+    alignItems: 'stretch',
+    padding: chrome.tabBarInset,
+  },
+  pill: {
+    position: 'absolute',
+    top: chrome.tabBarInset,
+    bottom: chrome.tabBarInset,
+    left: 0,
+    overflow: 'hidden',
+    borderRadius: SELECTION_HEIGHT / 2,
+    backgroundColor: SELECTED_FROST,
+    ...iosCurve,
   },
   tab: {
     flex: 1,
+    zIndex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
+    minHeight: 44,
   },
-  label: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  iconBubble: {
-    width: 52,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: { borderCurve: 'continuous' as const },
-      default: {},
-    }),
-  },
-  iconBubbleSelected: {
-    backgroundColor: SELECTED_BUBBLE,
-  },
+  label: { fontSize: 10, fontWeight: '600' },
 })

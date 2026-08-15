@@ -101,3 +101,19 @@ export const deleteAudioCacheDir = async (): Promise<Result<void>> => {
     return err(appError('storage', 'Unable to clear audio cache', cause))
   }
 }
+
+/** Delete a relative directory under melio/ (e.g. scopes/<key>/audio). */
+export const deleteRelativeDir = async (
+  relativePath: string,
+): Promise<Result<void>> => {
+  try {
+    const parts = relativePath.split('/').filter(Boolean)
+    const dir = new Directory(Paths.document, 'melio', ...parts)
+    if (dir.exists) {
+      dir.delete()
+    }
+    return ok(undefined)
+  } catch (cause) {
+    return err(appError('storage', 'Unable to clear directory', cause))
+  }
+}

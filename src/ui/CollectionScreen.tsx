@@ -5,6 +5,8 @@ import { Image } from 'expo-image'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { formatCollectionDuration } from '@/src/domain/format'
+import { mergeAlbumLists, uniqueAlbumsFromTracks } from '@/src/domain/genreAlbums'
+import { collageTracks } from '@/src/domain/homeFeed'
 import { normalizePlaylistName, playlistStub } from '@/src/domain/playlists'
 import { backfillSongArtists } from '@/src/domain/songArtists'
 import {
@@ -25,6 +27,7 @@ import {
   renamePlaylist,
 } from '@/src/services/jellyfin/playlists'
 import { downloadTracks } from '@/src/offline/downloader'
+import { useHomeMixesStore } from '@/src/store/homeMixes'
 import { useLibraryStore } from '@/src/store/library'
 import { useSessionStore } from '@/src/store/session'
 import { usePlayerStore } from '@/src/store/player'
@@ -55,10 +58,43 @@ import { colors, motion, radii, scrollUnderChromePad, spacing, typography } from
 type ArtistSegment = 'albums' | 'songs'
 const ARTIST_SEGMENTS: readonly ArtistSegment[] = ['albums', 'songs']
 
-const kindLabel = (kind: 'album' | 'artist' | 'playlist'): string => {
+type CollectionKind = 'album' | 'artist' | 'playlist' | 'mix'
+
+const kindLabel = (kind: CollectionKind): string => {
   if (kind === 'album') return 'Album'
   if (kind === 'artist') return 'Artist'
+  if (kind === 'mix') return 'Mix'
   return 'Playlist'
+}
+
+/** Spotify / Apple Mix–style 2×2 artwork collage. */
+const MixCollage = ({
+  arts,
+  size,
+}: {
+  readonly arts: readonly (string | undefined)[]
+  readonly size: number
+}) => {
+  const cell = Math.floor(size / 2)
+  const tiles = [0, 1, 2, 3].map((index) => arts[index])
+  return (
+    <View style={{ width: size, height: size, flexDirection: 'row', flexWrap: 'wrap', overflow: 'hidden', borderRadius: radii.lg, backgroundColor: colors.elevated }}>
+      {tiles.map((uri, index) => (
+        <View key={`c-${index}`} style={{ width: cell, height: cell }}>
+          {uri ? (
+            <Image
+              source={{ uri }}
+              style={{ width: cell, height: cell }}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <View style={{ width: cell, height: cell, backgroundColor: colors.elevated }} />
+          )}
+        </View>
+      ))}
+    </View>
+  )
 }
 
 const CircleAction = ({
@@ -112,9 +148,11 @@ const CollectionHero = ({
   albumCount,
   durationMs,
   heroArt,
+  collageArts,
   downloading,
   shuffle,
   isActiveQueue,
+  keepOffline,
   onPlay,
   onShuffle,
   onDownload,
@@ -125,9 +163,11 @@ const CollectionHero = ({
   readonly albumCount?: number
   readonly durationMs: number
   readonly heroArt?: string
+  readonly collageArts?: readonly (string | undefined)[]
   readonly downloading: boolean
   readonly shuffle: boolean
   readonly isActiveQueue: boolean
+  readonly keepOffline: boolean
   readonly onPlay: () => void
   readonly onShuffle: () => void
   readonly onDownload: () => void
@@ -146,7 +186,9 @@ const CollectionHero = ({
 
   return (
     <View style={styles.hero}>
-      {heroArt ? (
+      {collageArts && collageArts.length > 0 ? (
+        <MixCollage arts={collageArts} size={220} />
+      ) : heroArt ? (
         <Image
           source={{ uri: heroArt }}
           style={styles.heroArt}
@@ -168,8 +210,16 @@ const CollectionHero = ({
         <Muted>{meta}</Muted>
         <View style={styles.heroActions}>
           <CircleAction
-            label={downloading ? 'Saving…' : 'Download'}
-            icon="arrow.down.circle.fill"
+            label={
+              downloading
+                ? 'Saving…'
+                : keepOffline
+                  ? 'Keep offline'
+                  : 'Download'
+            }
+            icon={
+              keepOffline ? 'arrow.down.circle' : 'arrow.down.circle.fill'
+            }
             onPress={onDownload}
             size={44}
             iconSize={30}
@@ -201,14 +251,16 @@ const CollectionHero = ({
 export const CollectionScreen = ({
   kind,
 }: {
-  readonly kind: 'album' | 'artist' | 'playlist'
+  readonly kind: CollectionKind
 }) => {
   const insets = useSafeAreaInsets()
   const router = useRouter()
   const params = useLocalSearchParams<{ id: string | string[] }>()
-  const id = Array.isArray(params.id) ? params.id[0] : params.id
+  const rawId = Array.isArray(params.id) ? params.id[0] : params.id
+  const id = rawId ? decodeURIComponent(rawId) : undefined
   const context = useSessionStore((s) => s.context)
   const session = useSessionStore((s) => s.session)
+  const cachedMix = useHomeMixesStore((s) => (id ? s.byId[id] : undefined))
   const playlists = useLibraryStore((s) => s.playlists)
   const upsertPlaylist = useLibraryStore((s) => s.upsertPlaylist)
   const removePlaylistFromCache = useLibraryStore((s) => s.removePlaylist)
@@ -238,16 +290,22 @@ export const CollectionScreen = ({
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back()
+    else if (kind === 'mix') router.replace('/(app)/(main)/(tabs)/home')
     else router.replace('/(app)/(main)/(tabs)/library')
-  }, [router])
+  }, [router, kind])
 
   const load = useCallback(async (opts?: { readonly silent?: boolean }) => {
-    if (!context || !session || !id) return
+    if (!id) return
+    if (kind === 'mix') return
+    if (!context || !session) return
     loadSeq.current += 1
     const seq = loadSeq.current
     if (!opts?.silent) {
       setLoading(true)
       setError(null)
+      setAlbums([])
+      setTracks([])
+      setCollection(null)
     }
 
     if (kind === 'artist') {
@@ -258,13 +316,26 @@ export const CollectionScreen = ({
       ])
       if (seq !== loadSeq.current) return
       if (!opts?.silent) setLoading(false)
-      if (!songResult.ok) {
+      if (!albumResult.ok && !songResult.ok) {
+        setCollection(meta.ok ? meta.value : null)
         if (!opts?.silent) setError(songResult.error.message)
         return
       }
-      setAlbums(albumResult.ok ? albumResult.value : [])
-      setTracks(backfillSongArtists(songResult.value, albumResult.ok ? albumResult.value : []))
+      const catalogAlbums = albumResult.ok ? albumResult.value : []
+      const albums = mergeAlbumLists(
+        catalogAlbums,
+        songResult.ok ? uniqueAlbumsFromTracks(songResult.value) : [],
+      )
+      setAlbums(albums)
+      if (songResult.ok) {
+        setTracks(backfillSongArtists(songResult.value, albums))
+      } else if (!opts?.silent) {
+        setTracks([])
+      }
       setCollection(meta.ok ? meta.value : null)
+      if (!songResult.ok && albums.length === 0 && !opts?.silent) {
+        setError(songResult.error.message)
+      }
       return
     }
 
@@ -277,6 +348,7 @@ export const CollectionScreen = ({
     if (seq !== loadSeq.current) return
     if (!opts?.silent) setLoading(false)
     if (!children.ok) {
+      setCollection(meta.ok ? meta.value : null)
       if (!opts?.silent) setError(children.error.message)
       else Alert.alert('Couldn’t refresh playlist', children.error.message)
       return
@@ -294,6 +366,33 @@ export const CollectionScreen = ({
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (kind !== 'mix' || !id) return
+    if (!cachedMix || cachedMix.tracks.length === 0) {
+      setTracks([])
+      setCollection(null)
+      setAlbums([])
+      setError('This mix is no longer available. Go back to Home to refresh.')
+      setLoading(false)
+      return
+    }
+    setError(null)
+    setAlbums([])
+    setTracks(cachedMix.tracks)
+    setCollection({
+      id: cachedMix.id,
+      name: cachedMix.title,
+      type: 'Mix',
+      artists: [],
+      overview: cachedMix.subtitle,
+      durationMs: cachedMix.tracks.reduce(
+        (sum, track) => sum + track.durationMs,
+        0,
+      ),
+    })
+    setLoading(false)
+  }, [kind, id, cachedMix])
 
   const buildQueueTracks = useCallback(
     () =>
@@ -330,33 +429,67 @@ export const CollectionScreen = ({
     playQueue(queueTracks, startIndex, source)
   }, [buildQueueTracks, isActiveQueue, togglePlaying, playQueue, source, shuffle])
 
-  const shuffleCollection = useCallback(() => {
-    if (isActiveQueue) {
-      toggleShuffle()
-      return
-    }
-    const queueTracks = buildQueueTracks()
-    if (queueTracks.length === 0) return
-    if (!usePlayerStore.getState().shuffle) {
-      usePlayerStore.getState().toggleShuffle()
-    }
-    const startIndex = Math.floor(Math.random() * queueTracks.length)
-    playQueue(queueTracks, startIndex, source)
-  }, [buildQueueTracks, isActiveQueue, toggleShuffle, playQueue, source])
-
   const downloadAll = useCallback(() => {
     if (!context || !session || downloading) return
     if (Platform.OS === 'web') return
     const queueTracks = buildQueueTracks()
+    if (queueTracks.length === 0) return
     setDownloading(true)
-    void downloadTracks(context, session.userId, queueTracks, 'user')
-      .then(async (result) => {
+    void (async () => {
+      try {
+        if (kind === 'album' || kind === 'playlist') {
+          const { createOrRefreshPack, upsertSyncPack } = await import(
+            '@/src/domain/syncPack'
+          )
+          const existing = useSettingsStore.getState().syncPacks.packs[
+            `${kind}:${id}`
+          ]
+          const pack = createOrRefreshPack({
+            kind,
+            collectionId: id!,
+            title: collection?.name ?? kindLabel(kind),
+            trackIds: queueTracks.map((t) => t.id),
+            now: Date.now(),
+            existing,
+          })
+          await useSettingsStore
+            .getState()
+            .setSyncPacks(
+              upsertSyncPack(useSettingsStore.getState().syncPacks, pack),
+            )
+          // Large packs prefer Wi‑Fi automatically (no new Settings row).
+          if (queueTracks.length >= 20) {
+            const { isWifiLikeConnection } = await import('@/src/services/network')
+            if (!(await isWifiLikeConnection())) {
+              Alert.alert(
+                'Waiting for Wi‑Fi',
+                'Large offline packs download over Wi‑Fi. Connect and try again.',
+              )
+              return
+            }
+          }
+        }
+        const result = await downloadTracks(
+          context,
+          session.userId,
+          queueTracks,
+          'user',
+        )
         if (result.ok) await setOfflineIndex(result.value)
-      })
-      .finally(() => {
+      } finally {
         setDownloading(false)
-      })
-  }, [context, session, downloading, buildQueueTracks, setOfflineIndex])
+      }
+    })()
+  }, [
+    context,
+    session,
+    downloading,
+    buildQueueTracks,
+    setOfflineIndex,
+    kind,
+    id,
+    collection?.name,
+  ])
 
   const requireSession = useCallback((): boolean => {
     if (context && session) return true
@@ -513,12 +646,24 @@ export const CollectionScreen = ({
   }
 
   const heroArt =
-    context && collection
+    kind !== 'mix' && context && collection
       ? artworkUrl(
           context,
           collection.imageItemId ?? collection.id,
           collection.imageTag,
           'hero',
+        )
+      : undefined
+
+  const collageArts =
+    kind === 'mix' && context
+      ? collageTracks(tracks).map((track) =>
+          artworkUrl(
+            context,
+            track.imageItemId ?? track.id,
+            track.imageTag,
+            'hero',
+          ),
         )
       : undefined
 
@@ -543,6 +688,11 @@ export const CollectionScreen = ({
         buildTrackActions({
           onPlayNext: () => playNextTracks([queueTrack]),
           onAddToQueue: () => enqueueTracks([queueTrack]),
+          onStartRadio: () => {
+            void import('@/src/player/startRadio').then(({ startRadioFromItem }) => {
+              void startRadioFromItem(item.id, item.artistId)
+            })
+          },
           onAddToPlaylist: () => {
             if (!requireSession()) return
             setPendingTrackId(item.id)
@@ -608,11 +758,13 @@ export const CollectionScreen = ({
           albumCount={kind === 'artist' ? albums.length : undefined}
           durationMs={totalDurationMs}
           heroArt={heroArt}
+          collageArts={collageArts}
           downloading={downloading}
           shuffle={shuffle}
           isActiveQueue={isActiveQueue}
+          keepOffline={kind === 'album' || kind === 'playlist'}
           onPlay={playAll}
-          onShuffle={shuffleCollection}
+          onShuffle={toggleShuffle}
           onDownload={downloadAll}
         />
         {kind === 'artist' ? (
@@ -632,11 +784,12 @@ export const CollectionScreen = ({
       albums.length,
       totalDurationMs,
       heroArt,
+      collageArts,
       downloading,
       shuffle,
       isActiveQueue,
       playAll,
-      shuffleCollection,
+      toggleShuffle,
       downloadAll,
       artistSegment,
     ],
@@ -694,7 +847,7 @@ export const CollectionScreen = ({
       </EdgeBackGesture>
     )
   }
-  if (error) {
+  if (error && !collection && albums.length === 0 && tracks.length === 0) {
     return (
       <EdgeBackGesture>
         <Screen padBottom={false}>
@@ -730,7 +883,9 @@ export const CollectionScreen = ({
             ListHeaderComponent={listHeader}
             ListEmptyComponent={
               <View style={styles.empty}>
-                {showAlbums ? (
+                {error ? (
+                  <ErrorState message={error} onRetry={() => void load()} />
+                ) : showAlbums ? (
                   <EmptyState
                     title="No albums"
                     message="This artist doesn’t have any albums on your server."
