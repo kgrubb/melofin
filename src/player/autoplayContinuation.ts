@@ -34,7 +34,7 @@ const tracksOf = <T,>(
     | null,
 ): readonly T[] => (result?.ok ? result.value : [])
 
-/** Single-flight Instant Mix refill; returns true if the queue has a next index. */
+/** Single-flight Instant Mix refill. True if the queue has a next index. */
 export const ensureAutoplayContinuation = async (): Promise<boolean> => {
   if (flight.current) return flight.current
 
@@ -191,8 +191,8 @@ export const maybeRefillAutoplay = (): void => {
   if (upcomingCount(store) >= AUTOPLAY_REFILL_AT) return
   void ensureAutoplayContinuation().then((ok) => {
     if (!ok) return
-    void import('@/src/player/nativeQueue').then(({ primeNextIfEnabled }) => {
-      void primeNextIfEnabled()
+    void import('@/src/player/nativeQueue').then(({ primeNextTrack }) => {
+      void primeNextTrack()
     })
   })
 }

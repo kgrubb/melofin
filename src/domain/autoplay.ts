@@ -30,7 +30,7 @@ export const shouldRefillAutoplay = (input: {
   return input.upcomingCount < AUTOPLAY_REFILL_AT
 }
 
-/** First batch prefers collection seed; later batches drift to current/recent. */
+/** First batch prefers collection seed. Later batches drift to current/recent. */
 export const autoplaySeedId = (input: AutoplaySeedInput): string | undefined => {
   if (!input.autoplayActive) {
     const source = input.queueSourceId?.trim()
@@ -43,11 +43,7 @@ export const autoplaySeedId = (input: AutoplaySeedInput): string | undefined => 
   if (current) return current
   const recent = input.recentTrackIds
   if (!recent || recent.length === 0) return undefined
-  for (let i = recent.length - 1; i >= 0; i -= 1) {
-    const id = recent[i]?.trim()
-    if (id) return id
-  }
-  return undefined
+  return recent.findLast((entry) => entry?.trim())?.trim()
 }
 
 export const filterAutoplayTracks = (
@@ -101,7 +97,7 @@ export const autoplayStripFromIndex = (
   return afterCurrent < trackCount ? afterCurrent : null
 }
 
-/** Drop Recommended tracks (store index ≥ anchor); keep the playing row. */
+/** Drop Recommended tracks (store index >= anchor). Keep the playing row. */
 export const stripAutoplayTracks = (
   state: QueueState,
   anchorIndex: number | null,
@@ -118,10 +114,10 @@ export const stripAutoplayTracks = (
   if (state.tracks.every((_, index) => keep(index))) return state
   const indexMap: number[] = []
   const tracks: QueueTrack[] = []
-  for (let i = 0; i < state.tracks.length; i += 1) {
+  for (const [i, track] of state.tracks.entries()) {
     if (!keep(i)) continue
     indexMap[i] = tracks.length
-    tracks.push(state.tracks[i]!)
+    tracks.push(track)
   }
   const currentIndex = indexMap[state.currentIndex] ?? 0
   const shuffleOrder = state.shuffle

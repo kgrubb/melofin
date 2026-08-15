@@ -2,7 +2,7 @@ import { ticksToMs } from '@/src/domain/jellyfin'
 
 export type LyricLine = {
   readonly text: string
-  /** Present when timed/synced; omitted for plain lyrics. */
+  /** Present when timed/synced. Omitted for plain lyrics. */
   readonly startMs?: number
 }
 
@@ -11,7 +11,7 @@ export type LyricsPayload = {
   readonly lines: readonly LyricLine[]
 }
 
-/** Genius/scrape chrome — drop the whole line. */
+/** Genius/scrape chrome. Drop the whole line. */
 const isBoilerplateLine = (text: string): boolean => {
   const t = text.trim()
   if (!t) return true
@@ -24,7 +24,7 @@ const isBoilerplateLine = (text: string): boolean => {
   if (/^see .+ live$/i.test(t)) return true
   if (/^translations?$/i.test(t)) return true
   // Genius page title lines: "What You Know Lyrics"
-  if (t.length <= 120 && /\blyrics$/i.test(t) && !/[.!?…"']/.test(t)) return true
+  if (t.length <= 120 && /\blyrics$/i.test(t) && !/[.!?..."']/.test(t)) return true
   return false
 }
 
@@ -33,7 +33,7 @@ const isBoilerplateLine = (text: string): boolean => {
  * Handles mashed one-liners from on-demand plugin fetches.
  */
 export const cleanLyricText = (raw: string): string => {
-  let text = raw
+  const decoded = raw
     .replace(/\u00a0/g, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
@@ -43,30 +43,38 @@ export const cleanLyricText = (raw: string): string => {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
     .trim()
-  if (!text) return ''
+  if (!decoded) return ''
 
-  // Leading "N Contributors" (often glued to the title with no space)
-  text = text.replace(/^\d{1,4}\s+contributors?/i, '').trim()
-  // Genius page title “… Lyrics” (capital L; avoid eating normal lyric lines)
-  text = text.replace(/^(?!\[)[^.\n!?]{1,100}?\bLyrics\b[\s|]*/, '').trim()
-  // Genius CTA glued on: ReadMore / Read More
-  text = text.replace(/^(?:read\s*more\b[\s|]*)+/i, '').trim()
-
-  // Truncate promo tails often appended to the last verse blob.
-  text = text.replace(/\byou might also like\b[\s\S]*$/i, '').trim()
-  text = text.replace(/\bsee .+? live\b[\s\S]*$/i, '').trim()
-  text = text.replace(/\bget tickets\b[\s\S]*$/i, '').trim()
-  // Genius always ends scrapes with "123Embed" / "1.2KEmbed"
-  text = text.replace(/\s*\d{1,3}(?:\.\d)?k?\s*embed\s*$/i, '').trim()
-  text = text.replace(/\s*\bembed\s*$/i, '').trim()
-
-  // Inline leftovers that sometimes sit between verses in a single blob.
-  text = text.replace(/\byou might also like\b/gi, '\n')
-  text = text.replace(/\b\d{1,3}(?:\.\d)?k?\s*embed\b/gi, '\n')
-  text = text.replace(/\bread\s*more\b/gi, '\n')
-  text = text.replace(/\b\d{1,4}\s+contributors?/gi, '\n')
-
-  return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+  return decoded
+    // Leading "N Contributors" (often glued to the title with no space)
+    .replace(/^\d{1,4}\s+contributors?/i, '')
+    .trim()
+    // Genius page title "... Lyrics" (capital L, avoid eating normal lyric lines)
+    .replace(/^(?!\[)[^.\n!?]{1,100}?\bLyrics\b[\s|]*/, '')
+    .trim()
+    // Genius CTA glued on: ReadMore / Read More
+    .replace(/^(?:read\s*more\b[\s|]*)+/i, '')
+    .trim()
+    // Truncate promo tails often appended to the last verse blob.
+    .replace(/\byou might also like\b[\s\S]*$/i, '')
+    .trim()
+    .replace(/\bsee .+? live\b[\s\S]*$/i, '')
+    .trim()
+    .replace(/\bget tickets\b[\s\S]*$/i, '')
+    .trim()
+    // Genius always ends scrapes with "123Embed" / "1.2KEmbed"
+    .replace(/\s*\d{1,3}(?:\.\d)?k?\s*embed\s*$/i, '')
+    .trim()
+    .replace(/\s*\bembed\s*$/i, '')
+    .trim()
+    // Inline leftovers that sometimes sit between verses in a single blob.
+    .replace(/\byou might also like\b/gi, '\n')
+    .replace(/\b\d{1,3}(?:\.\d)?k?\s*embed\b/gi, '\n')
+    .replace(/\bread\s*more\b/gi, '\n')
+    .replace(/\b\d{1,4}\s+contributors?/gi, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 /** Expand a cleaned blob that still contains newlines into separate lines. */
@@ -134,7 +142,7 @@ const finalizeLyrics = (
   while (lines.length > 0 && isBoilerplateLine(lines[lines.length - 1]!.text)) {
     lines.pop()
   }
-  // On-demand Genius misses often leave only chrome — treat as empty.
+  // On-demand Genius misses often leave only chrome. Treat as empty.
   if (lines.length > 0 && lines.every((line) => isBoilerplateLine(line.text))) {
     return { synced: false, lines: [] }
   }
@@ -150,14 +158,9 @@ export const activeLyricIndex = (
   positionMs: number,
 ): number => {
   if (lines.length === 0) return -1
-  let active = -1
-  for (let i = 0; i < lines.length; i += 1) {
-    const start = lines[i]?.startMs
-    if (start === undefined) continue
-    if (start <= positionMs) active = i
-    else break
-  }
-  return active
+  return lines.findLastIndex(
+    (line) => line.startMs !== undefined && line.startMs <= positionMs,
+  )
 }
 
 export const seekMsForLine = (line: LyricLine | undefined): number | null => {

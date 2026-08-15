@@ -85,7 +85,7 @@ export const applyLibraryView = <T extends LibraryViewItem>(
   filter: LibraryFilter,
 ): readonly T[] => sortLibraryItems(filterLibraryItems(items, filter), sort)
 
-/** Native Songs keyset paging is name + all; other views need SQL ORDER/WHERE. */
+/** Native Songs keyset paging is name + all. Other views need SQL ORDER/WHERE. */
 export const usesSongNameKeyset = (
   sort: LibrarySort,
   filter: LibraryFilter,

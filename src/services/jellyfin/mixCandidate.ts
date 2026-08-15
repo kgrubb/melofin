@@ -66,7 +66,7 @@ export const buildMixCandidate = async (
     }
   }
 
-  // Genre pads only when Instant Mix is thin/mono — avoids wasted round-trips.
+  // Genre pads only when Instant Mix is thin/mono. Avoids wasted round-trips.
   const knownGenres = (mixSeed.genres ?? []).slice(0, 3)
   const knownCanon = new Set(
     knownGenres.map(canonicalGenre).filter((key) => key.length > 0),

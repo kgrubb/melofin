@@ -100,7 +100,7 @@ const bindStatus = (provider: CastProvider) => {
       return
     }
     if (!isLocalAudible(useCastStore.getState().transfer.active.kind)) {
-      // Cast queue windows are finite — when a track ends near EOF while Melio
+      // Cast queue windows are finite. When a track ends near EOF while Melio
       // still wants playback, advance so syncTo loads the next window.
       const currentTrack = store.tracks[store.currentIndex]
       const sinkOnCurrent = status.queueEntryId
@@ -122,7 +122,7 @@ const bindStatus = (provider: CastProvider) => {
           store.goNext()
           return
         }
-        // Single-flight inside goNextWithAutoplay — ignore repeat near-EOF polls.
+        // Single-flight inside goNextWithAutoplay. Ignore repeat near-EOF polls.
         void goNextWithAutoplay()
         return
       }
@@ -143,18 +143,17 @@ const bindStatus = (provider: CastProvider) => {
         store.setPlaying(status.playing)
       }
       const current = store.tracks[store.currentIndex]
-      // Prefer queueEntryId; for media-id-only sinks (Jellyfin), stay put on same id
+      // Prefer queueEntryId. For media-id-only sinks (Jellyfin), stay put on same id
       // so duplicates don't snap to the first match.
-      let index = -1
-      if (status.queueEntryId) {
-        if (status.queueEntryId !== playingIdentity(current)) {
-          index = store.tracks.findIndex(
-            (track) => playingIdentity(track) === status.queueEntryId,
-          )
-        }
-      } else if (status.itemId && status.itemId !== current?.id) {
-        index = indexOfMediaIdInPlayOrder(store, status.itemId)
-      }
+      const index = status.queueEntryId
+        ? status.queueEntryId !== playingIdentity(current)
+          ? store.tracks.findIndex(
+              (track) => playingIdentity(track) === status.queueEntryId,
+            )
+          : -1
+        : status.itemId && status.itemId !== current?.id
+          ? indexOfMediaIdInPlayOrder(store, status.itemId)
+          : -1
       if (index >= 0 && index !== store.currentIndex) {
         // Chromecast autoplay within the window can advance past end-of-track sleep.
         if (store.sleep.endOfTrack && nextIndex(store) === index) {
@@ -238,7 +237,7 @@ export const transferTo = async (deviceId: string): Promise<void> => {
     return
   }
 
-  // AirPlay selection is system UI — just refresh route observation.
+  // AirPlay selection is system UI. Just refresh route observation.
   if (device.kind === 'airplay') return
 
   const prior = useCastStore.getState().transfer

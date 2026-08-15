@@ -1,17 +1,12 @@
 import type { LibraryItem } from '@/src/domain/libraryItem'
 
-/** Fill empty track artists from album rows or siblings (Jellyfin UI does the same). */
+/** Fill empty track artists from album rows or siblings. */
 export const backfillSongArtists = (
   songs: readonly LibraryItem[],
   albums: readonly LibraryItem[] = [],
 ): readonly LibraryItem[] => {
   if (songs.length === 0) return songs
-
-  let empty = 0
-  for (const song of songs) {
-    if (song.artists.length === 0) empty += 1
-  }
-  if (empty === 0) return songs
+  if (songs.every((song) => song.artists.length > 0)) return songs
 
   const albumById = new Map<string, LibraryItem>()
   const albumByName = new Map<string, readonly string[]>()
@@ -33,7 +28,6 @@ export const backfillSongArtists = (
     if (key && !siblingByAlbumName.has(key)) siblingByAlbumName.set(key, song.artists)
   }
 
-  let changed = false
   const next = songs.map((song) => {
     if (song.artists.length > 0) return song
     const key = song.album?.trim().toLowerCase()
@@ -47,7 +41,6 @@ export const backfillSongArtists = (
       (song.imageItemId ? siblingByAlbumId.get(song.imageItemId) : undefined) ??
       (key ? siblingByAlbumName.get(key) : undefined)
     if (!artists || artists.length === 0) return song
-    changed = true
     return {
       ...song,
       artists,
@@ -55,5 +48,5 @@ export const backfillSongArtists = (
       artistId: song.artistId ?? album?.artistId,
     }
   })
-  return changed ? next : songs
+  return next.some((song, i) => song !== songs[i]) ? next : songs
 }

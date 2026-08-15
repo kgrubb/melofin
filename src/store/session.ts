@@ -22,7 +22,7 @@ type SessionState = {
   readonly session: StoredSession | null
   readonly context: JellyfinContext | null
   readonly accounts: AccountsState
-  /** True while Settings → Add server is in the auth stack (AuthGate must not bounce). */
+  /** True while Settings -> Add server is in the auth stack (AuthGate must not bounce). */
   readonly addingAccount: boolean
   readonly hydrate: () => Promise<void>
   readonly setAuthenticated: (
@@ -177,16 +177,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   logout: async () => {
     const current = get().session
     await clearSession()
-    let accounts = get().accounts
-    if (current) {
-      accounts = removeAccountFromState(accounts, sessionAccountId(current))
-      await saveAccounts(accounts)
-    }
+    const accounts = current
+      ? removeAccountFromState(get().accounts, sessionAccountId(current))
+      : get().accounts
+    if (current) await saveAccounts(accounts)
     set({ session: null, context: null, hydrated: true, accounts })
     await resetPlayback()
   },
   markUnauthorized: async () => {
-    logger.warn('401 — clearing session')
+    logger.warn('401 clearing session')
     await get().logout()
   },
 }))

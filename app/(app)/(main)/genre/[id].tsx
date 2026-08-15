@@ -84,24 +84,34 @@ export default function GenreRoute() {
         return
       }
       if (genreResult.ok) setGenre(genreResult.value)
-      let albums = albumsResult.ok ? albumsResult.value : paintedRef.current
+      const initialAlbums = albumsResult.ok
+        ? albumsResult.value
+        : paintedRef.current
       const resolvedName =
         passedName ?? (genreResult.ok ? genreResult.value.name : undefined)
-      if (albums.length === 0 && resolvedName && resolvedName !== passedName) {
-        const retry = await fetchAlbumsByGenre(
-          context,
-          session.userId,
-          genreId,
-          resolvedName,
-          { onPartial: applyPartial, signal: ac.signal },
-        )
-        if (!live()) return
-        if (retry.ok) albums = retry.value
-        else if (!albumsResult.ok && retry.error.code !== 'cancelled') {
-          setError(retry.error.message)
-          return
-        }
+      const retry =
+        initialAlbums.length === 0 &&
+        resolvedName &&
+        resolvedName !== passedName
+          ? await fetchAlbumsByGenre(
+              context,
+              session.userId,
+              genreId,
+              resolvedName,
+              { onPartial: applyPartial, signal: ac.signal },
+            )
+          : null
+      if (retry && !live()) return
+      if (
+        retry &&
+        !retry.ok &&
+        !albumsResult.ok &&
+        retry.error.code !== 'cancelled'
+      ) {
+        setError(retry.error.message)
+        return
       }
+      const albums = retry?.ok ? retry.value : initialAlbums
       if (!live()) return
       setAlbums(albums)
       if (
@@ -165,7 +175,7 @@ export default function GenreRoute() {
               filling ? (
                 <View style={styles.footer}>
                   <ActivityIndicator color={colors.accent} />
-                  <Muted>Finding more albums…</Muted>
+                  <Muted>Finding more albums...</Muted>
                 </View>
               ) : null
             }

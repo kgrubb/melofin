@@ -49,7 +49,7 @@ export default function ServerScreen() {
   }
 
   const onCancelAdd = () => {
-    // Keep addingAccount true until we leave (auth); AuthGate clears it.
+    // Keep addingAccount true until we leave (auth). AuthGate clears it.
     router.replace('/(app)/settings')
   }
 
@@ -87,7 +87,7 @@ export default function ServerScreen() {
           </View>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <PrimaryButton
-            label={busy ? 'Checking…' : 'Continue'}
+            label={busy ? 'Checking...' : 'Continue'}
             onPress={() => void onContinue()}
             disabled={busy}
           />

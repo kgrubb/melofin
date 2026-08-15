@@ -1,12 +1,12 @@
 import type { AudioPlayer } from 'expo-audio'
 import { Platform } from 'react-native'
 import { melioAudioGraph } from 'melio-audio-graph'
+import type { LocalHandoffMode } from '@/src/domain/crossfade'
 import { isLocalOutputEnabled } from '@/src/player/outputPolicy'
 import { useSettingsStore } from '@/src/store/settings'
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-/** Ramp expo-audio volume toward `target` over `durationSec`. */
 export const fadePlayerVolume = async (
   player: AudioPlayer,
   target: number,
@@ -25,47 +25,42 @@ export const fadePlayerVolume = async (
   }
   const steps = Math.max(8, Math.floor(durationSec * 20))
   const stepMs = (durationSec * 1000) / steps
-  for (let i = 1; i <= steps; i += 1) {
+  const runStep = async (step: number): Promise<void> => {
+    if (step > steps) return
     if (shouldAbort?.()) return
-    const t = i / steps
+    const t = step / steps
     try {
       player.volume = start + (end - start) * t
     } catch {
       return
     }
     await sleep(stepMs)
+    return runStep(step + 1)
   }
+  await runStep(1)
 }
 
-/** Start native overlap. Caller fades primary and advances when overlap is done. */
-export const startLocalCrossfade = async (
-  durationSec: number,
+/** Start primed next: immediate (gapless) or faded (crossfade). */
+export const startLocalHandoff = async (
+  mode: LocalHandoffMode,
+  opts?: {
+    readonly crossfadeSeconds?: number
+    readonly volume?: number
+  },
 ): Promise<boolean> => {
-  if (Platform.OS === 'web') return false
-  if (!isLocalOutputEnabled()) return false
-  if (durationSec <= 0) return false
+  if (Platform.OS === 'web' || !isLocalOutputEnabled()) return false
   if (!melioAudioGraph.isAvailable()) return false
-  return melioAudioGraph.crossfadeToNext(durationSec)
+  if (mode === 'crossfade') {
+    const durationSec = opts?.crossfadeSeconds ?? 0
+    return durationSec > 0
+      ? melioAudioGraph.crossfadeToNext(durationSec)
+      : false
+  }
+  return melioAudioGraph.playNextImmediate(opts?.volume ?? 1)
 }
 
-/**
- * Local overlap crossfade: native plays primed next while primary fades out.
- * Returns true when native overlap started (caller should still advance queue).
- */
-export const runLocalCrossfade = async (
-  player: AudioPlayer | null,
-  durationSec: number,
-  shouldAbort?: () => boolean,
-): Promise<boolean> => {
-  const ok = await startLocalCrossfade(durationSec)
-  if (!ok) return false
-  if (player) await fadePlayerVolume(player, 0, durationSec, shouldAbort)
-  return !shouldAbort?.()
-}
-
-export const stopLocalCrossfade = (): void => {
-  melioAudioGraph.stopCrossfade()
-}
+export const localHandoffPositionSec = (): number =>
+  melioAudioGraph.handoffPositionSec()
 
 export const localCrossfadeSeconds = (): number =>
   useSettingsStore.getState().crossfadeSeconds

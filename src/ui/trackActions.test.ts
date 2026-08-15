@@ -18,7 +18,7 @@ describe('buildTrackActions', () => {
       'Play next',
       'Add to queue',
       'Start radio',
-      'Add to playlist…',
+      'Add to playlist...',
       'Favorite',
       'Mark as Played',
       'Extra',

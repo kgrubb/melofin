@@ -74,10 +74,13 @@ describe('downloadsView storage', () => {
   })
 
   it('splits download vs prefetch cache and clamps the meter', () => {
-    let index = emptyOfflineIndex(1000)
-    index = upsertEntry(index, entry('kept', { kind: 'user', sizeBytes: 400 }))
-    index = upsertEntry(index, entry('cache', { kind: 'prefetch', sizeBytes: 800 }))
-    index = upsertEntry(index, entry('pending', { complete: false, sizeBytes: 50 }))
+    const index = upsertEntry(
+      upsertEntry(
+        upsertEntry(emptyOfflineIndex(1000), entry('kept', { kind: 'user', sizeBytes: 400 })),
+        entry('cache', { kind: 'prefetch', sizeBytes: 800 }),
+      ),
+      entry('pending', { complete: false, sizeBytes: 50 }),
+    )
     const meter = storageMeter(index, new Set())
     expect(meter.downloadBytes).toBe(400)
     expect(meter.cacheBytes).toBe(800)
@@ -95,9 +98,8 @@ describe('downloadsView storage', () => {
   })
 
   it('treats pack-backed prefetch as a download, not cache', () => {
-    let index = emptyOfflineIndex(10_000)
-    index = upsertEntry(
-      index,
+    const index = upsertEntry(
+      emptyOfflineIndex(10_000),
       entry('in-pack', { kind: 'prefetch', sizeBytes: 200 }),
     )
     const meter = storageMeter(index, new Set(['in-pack']))

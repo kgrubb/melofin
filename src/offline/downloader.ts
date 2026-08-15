@@ -55,7 +55,7 @@ const sniffAudioExtension = (
   }
 }
 
-/** Lazy — avoids settings ↔ downloader require cycle. */
+/** Lazy load to avoid settings <-> downloader require cycle. */
 const downloadPreset = () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { useSettingsStore } = require('@/src/store/settings') as typeof import('@/src/store/settings')
@@ -134,14 +134,13 @@ const commitIndex = (
       scopeKey != null
         ? scopedOfflineIndexRelativePath(scopeKey)
         : LEGACY_INDEX_FILE
-    let base: OfflineIndex
-    if (isActive) {
-      base = state.memoryIndex ?? emptyOfflineIndex()
-    } else {
-      const stored = await readJsonFile<OfflineIndex>(file)
-      if (!stored.ok) throw stored.error
-      base = stored.value ?? emptyOfflineIndex()
-    }
+    const stored = isActive
+      ? null
+      : await readJsonFile<OfflineIndex>(file)
+    if (stored && !stored.ok) throw stored.error
+    const base = isActive
+      ? state.memoryIndex ?? emptyOfflineIndex()
+      : stored!.value ?? emptyOfflineIndex()
     const next = await mutate(base)
     const written = await writeJsonFile(file, next)
     if (!written.ok) throw written.error
@@ -203,7 +202,7 @@ const scopeFromIds = (scope?: {
 
 /**
  * Load the offline index for an account scope. Switching accounts swaps the
- * in-memory index — it does not delete the previous account's files.
+ * in-memory index. It does not delete the previous account's files.
  */
 export const loadOfflineIndex = async (scope?: {
   readonly serverUrl?: string
@@ -215,7 +214,7 @@ export const loadOfflineIndex = async (scope?: {
     if (state.memoryIndex && state.activeScopeKey === key) {
       return ok(state.memoryIndex)
     }
-    // Drop in-memory pointer only — prior scope already persisted on commit.
+    // Drop in-memory pointer only. Prior scope already persisted on commit.
     state.memoryIndex = null
     state.activeScopeKey = key
     state.hydratePromise = null
@@ -416,10 +415,15 @@ const downloadTrackUnlocked = async (
   try {
     const lyricsDirPromise = ensureDir(`scopes/${scopeKey}/lyrics`)
     const lyricsPromise = fetchLyrics(context, track.id)
-    let downloaded: Awaited<ReturnType<typeof File.downloadFileAsync>> | null =
-      null
-    let lastCause: unknown
-    for (const remote of remotes) {
+    type DownloadedFile = Awaited<ReturnType<typeof File.downloadFileAsync>>
+    const downloadFirst = async (
+      index: number,
+      lastCause?: unknown,
+    ): Promise<DownloadedFile> => {
+      const remote = remotes[index]
+      if (remote == null) {
+        throw lastCause ?? new Error('Track download failed')
+      }
       const destination = new File(
         Paths.document,
         'melio',
@@ -437,42 +441,42 @@ const downloadTrackUnlocked = async (
         const size = file.size ?? 0
         if (size < MIN_AUDIO_DOWNLOAD_BYTES) {
           if (file.exists) file.delete()
-          lastCause = new Error(`download too small (${size})`)
-          continue
+          return downloadFirst(
+            index + 1,
+            new Error(`download too small (${size})`),
+          )
         }
-        downloaded = file
-        break
+        return file
       } catch (cause) {
-        lastCause = cause
+        return downloadFirst(index + 1, cause)
       }
     }
-    if (!downloaded) {
-      throw lastCause ?? new Error('Track download failed')
-    }
+    const downloaded = await downloadFirst(0)
 
     const extension = sniffAudioExtension(downloaded)
-    let storedExt: string | undefined
-    if (extension) {
-      try {
-        downloaded.rename(`${track.id}.${extension}`)
-        storedExt = extension
-      } catch {
-        storedExt = undefined
-      }
-    }
+    const storedExt = extension
+      ? (() => {
+          try {
+            downloaded.rename(`${track.id}.${extension}`)
+            return extension
+          } catch {
+            return undefined
+          }
+        })()
+      : undefined
     const relative = scopedAudioRelativePath(scopeKey, track.id, storedExt)
     const sizeBytes = downloaded.size ?? 0
-    let lyricsPath: string | undefined
     const [lyricsDir, lyricsResult] = await Promise.all([lyricsDirPromise, lyricsPromise])
-    if (
+    const lyricsPath =
       lyricsDir.ok &&
       lyricsResult.ok &&
       lyricsResult.value.lines.length > 0
-    ) {
-      const relativeLyrics = scopedLyricsRelativePath(scopeKey, track.id)
-      const written = await writeJsonFile(relativeLyrics, lyricsResult.value)
-      if (written.ok) lyricsPath = relativeLyrics
-    }
+        ? await (async () => {
+            const relativeLyrics = scopedLyricsRelativePath(scopeKey, track.id)
+            const written = await writeJsonFile(relativeLyrics, lyricsResult.value)
+            return written.ok ? relativeLyrics : undefined
+          })()
+        : undefined
     return commitIndex(
       async (latest) => {
         const evictionIds = selectPrefetchEvictionsExcludingPacks(

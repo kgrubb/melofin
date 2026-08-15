@@ -207,7 +207,7 @@ export const dedupeById = <T extends { readonly id: string }>(
   })
 }
 
-/** Serial upserts into the Home mix fold. */
+/** Serial Home mix upserts. */
 export const createMixFoldQueue = (
   target: number,
   onChange: (mixes: readonly HomeMixCard[]) => void,

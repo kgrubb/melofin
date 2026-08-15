@@ -373,7 +373,7 @@ describe('queue', () => {
       new Set(['1', '2', '3']),
     )
     const orders = new Set<string>()
-    for (let i = 0; i < 40; i += 1) {
+    Array.from({ length: 40 }, () => {
       const shuffled = setShuffle(
         playItems(emptyQueue(), [track('1'), track('2'), track('3'), track('4')], 0),
         true,
@@ -381,7 +381,7 @@ describe('queue', () => {
       expect(shuffled.shuffleOrder[0]).toBe(0)
       expect(new Set(shuffled.shuffleOrder)).toEqual(new Set([0, 1, 2, 3]))
       orders.add(shuffled.shuffleOrder.join(','))
-    }
+    })
     expect(orders.size).toBeGreaterThan(1)
   })
 

@@ -14,7 +14,7 @@ import {
   type TransportPlan,
 } from '@/src/domain/playbackReport'
 import { newPlaySessionId } from '@/src/domain/playSessionId'
-import { currentTrack, playingIdentity } from '@/src/domain/queue'
+import { currentTrack, nextIndex, playingIdentity } from '@/src/domain/queue'
 import {
   acceptReportedPosition,
   beginSeekGuard,
@@ -43,16 +43,14 @@ import {
   isMelioScrobbleEnabled,
   setLocalOutputEnabled,
 } from '@/src/player/outputPolicy'
-import {
-  clearNativeNextQueue,
-} from '@/src/player/nativeQueue'
+import { clearNativeNextQueue } from '@/src/player/nativeQueue'
 import { goNextWithAutoplay } from '@/src/player/autoplayContinuation'
 import {
   fadePlayerVolume,
   localCrossfadeSeconds,
-  startLocalCrossfade,
-  stopLocalCrossfade,
+  startLocalHandoff,
 } from '@/src/player/crossfadeLocal'
+import { localHandoffMode } from '@/src/domain/crossfade'
 import { queueReport, reportForCurrent, stopAnchoredScrobble } from '@/src/player/scrobbleBridge'
 import { postCapabilities } from '@/src/services/jellyfin/playbackReport'
 import { flushCompletedListens } from '@/src/services/jellyfin/playstateSync'
@@ -61,12 +59,12 @@ import { useSessionStore } from '@/src/store/session'
 
 const PLAYER_OPTS = {
   keepAudioSessionActive: KEEP_AUDIO_SESSION_ACTIVE,
-  // 1s is enough for didJustFinish / status; position comes from our 500ms timer.
+  // 1s is enough for didJustFinish / status. Position comes from our 500ms timer.
   // Lower intervals spam Now Playing + the JS bridge for no UX gain.
   updateInterval: 1000,
 } as const
 
-/** Progress fill is Reanimated; 1s is enough for labels/lyrics/drift. */
+/** Progress fill is Reanimated. 1s is enough for labels/lyrics/drift. */
 const UI_POSITION_MIN_MS = 1000
 
 const activePlayer = (): AudioPlayer | null => stateRef.engine?.player ?? null
@@ -124,8 +122,22 @@ const lockScreenMetadata = (track: ReturnType<typeof currentTrack>) => {
     artist: track.artist,
     albumTitle: track.album,
     artworkUrl: track.artworkUrl,
-    // Jellyfin mp3 streams often leave native duration at 0/NaN — supply catalog length.
+    // Jellyfin mp3 streams often leave native duration at 0/NaN. Supply catalog length.
     duration: track.durationMs > 0 ? track.durationMs / 1000 : undefined,
+  }
+}
+
+/** Push Now Playing immediately (gapless handoff before primary replace). */
+const pushLockScreenTrack = (track: ReturnType<typeof currentTrack>) => {
+  if (Platform.OS === 'web' || !track) return
+  const meta = lockScreenMetadata(track)
+  if (!meta) return
+  const player = activePlayer()
+  if (!player) return
+  try {
+    player.updateLockScreenMetadata(meta)
+  } catch {
+    // Lock screen may be inactive.
   }
 }
 
@@ -138,10 +150,10 @@ const advanceFromEnd = () => {
   stateRef.lastAdvanceAt = now
 
   void enqueue(async () => {
-    let waitForLoad = false
-    try {
+    // true = hold advancing until loadCurrent / handoff finishes (EOF cannot double-fire).
+    const holdAdvancing = await (async (): Promise<boolean> => {
       const store = usePlayerStore.getState()
-      if (!store.isPlaying) return
+      if (!store.isPlaying) return false
       const player = activePlayer()
       // Sleep "end of track" wins over repeat-one so the timer actually stops.
       if (store.sleep.endOfTrack) {
@@ -151,7 +163,7 @@ const advanceFromEnd = () => {
         if (usePlayerStore.getState().consumeEndOfTrackSleep()) {
           applyPause(player)
         }
-        return
+        return false
       }
       if (store.repeat === 'one') {
         usePlayerStore.getState().setPositionMs(0)
@@ -165,7 +177,7 @@ const advanceFromEnd = () => {
           }
         }
         if (usePlayerStore.getState().isPlaying && player) safePlay(player)
-        return
+        return false
       }
       // Freeze stop on the finished track before advancing the live queue.
       if (isMelioScrobbleEnabled() && stateRef.scrobble) {
@@ -173,21 +185,39 @@ const advanceFromEnd = () => {
       }
       const leaving = currentTrack(store)
       const leavingKey = playingIdentity(leaving)
+      const nextKey = playingIdentity(store.tracks[nextIndex(store)])
       usePlayerStore.getState().notePlayedTrackId(leaving?.id)
       const fadeSec = localCrossfadeSeconds()
+      const handoff = localHandoffMode(fadeSec)
       const abortFade = () =>
         !usePlayerStore.getState().isPlaying ||
         playingIdentity(currentTrack(usePlayerStore.getState())) !== leavingKey
-      if (fadeSec > 0 && isLocalOutputEnabled()) {
-        const started = await startLocalCrossfade(fadeSec)
+
+      // Local gapless / crossfade: secondary covers next while primary replace()s.
+      if (isLocalOutputEnabled() && nextKey) {
+        const started = await startLocalHandoff(handoff, {
+          crossfadeSeconds: fadeSec,
+          volume: stateRef.playbackVolume,
+        })
         if (started) {
-          // Fade off the serial engine queue so skip/pause are not blocked.
-          waitForLoad = true
+          stateRef.handoffActive = true
+          stateRef.handoffForKey = nextKey
+          // Secondary is already audible — don't wait for primary replace for Now Playing.
+          pushLockScreenTrack(store.tracks[nextIndex(store)])
           void (async () => {
             try {
-              if (player) await fadePlayerVolume(player, 0, fadeSec, abortFade)
+              if (handoff === 'crossfade' && player) {
+                await fadePlayerVolume(player, 0, fadeSec, abortFade)
+              } else if (player) {
+                try {
+                  player.volume = 0
+                } catch {
+                  // Ignore.
+                }
+              }
               if (abortFade()) {
-                stopLocalCrossfade()
+                clearNativeNextQueue()
+                pushLockScreenTrack(currentTrack(usePlayerStore.getState()))
                 if (!usePlayerStore.getState().isPlaying && player) {
                   try {
                     player.volume = stateRef.playbackVolume
@@ -208,19 +238,13 @@ const advanceFromEnd = () => {
               }
             }
           })()
-          return
+          return true
         }
       }
       await goNextWithAutoplay()
-      // Crossfade player is stopped in afterSuccessfulLoad once the primary
-      // item is actually audible — killing it here left the next track silent.
-      // Keep advancing until loadCurrent clears it so a slow replace cannot
-      // double-fire EOF while native is still sitting on the prior item.
-      waitForLoad =
-        usePlayerStore.getState().isPlaying && isLocalOutputEnabled()
-    } finally {
-      if (!waitForLoad) stateRef.advancing = false
-    }
+      return usePlayerStore.getState().isPlaying && isLocalOutputEnabled()
+    })()
+    if (!holdAdvancing) stateRef.advancing = false
   })
 }
 
@@ -241,7 +265,7 @@ const applyPlayPlan = (plan: TransportPlan) => {
     if (gen !== stateRef.transportGen) return
 
     if (plan.mintSession) {
-      // Do not await Jellyfin stop — network latency must not block the next load.
+      // Do not await Jellyfin stop. Network latency must not block the next load.
       if (stateRef.scrobble) {
         void queueReport(() => stopAnchoredScrobble())
       }
@@ -253,7 +277,7 @@ const applyPlayPlan = (plan: TransportPlan) => {
     const current = activePlayer()
     if (!current) return
     // Resume re-seeks the paused playhead. Start may also seek when playQueue
-    // requested a Continue Listening offset (store positionMs > 0); skip/next
+    // requested a Continue Listening offset (store positionMs > 0). Skip/next
     // always reset positionMs to 0 first so they still begin at 0.
     const seekMs =
       plan.kind === 'resume'
@@ -427,6 +451,9 @@ export const startPlaybackEngine = async (): Promise<Engine> => {
         stateRef.lastPositionMs = 0
         stateRef.seekGuard = idleSeekGuard()
         stateRef.stallFailoverDone = false
+        if (state.isPlaying) {
+          pushLockScreenTrack(currentTrack(state))
+        }
       }
       const plan = planTransport({
         wasPlaying: prev.isPlaying,
@@ -570,6 +597,7 @@ export const startPlaybackEngine = async (): Promise<Engine> => {
         stateRef.scrobble = null
         stateRef.playingFromCache = false
         stateRef.stallFailoverDone = false
+        clearNativeNextQueue()
         if (getGlobalSlot()?.dispose === engine.dispose) {
           setGlobalSlot(null)
         }

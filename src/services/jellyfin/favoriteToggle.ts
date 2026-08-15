@@ -19,6 +19,6 @@ export const toggleFavoriteItem = async (opts: {
   if (result.ok) return true
   opts.onLocal?.(!next)
   usePlayerStore.getState().setTrackFavorite(opts.itemId, !next)
-  Alert.alert('Couldn’t update favorite', result.error.message)
+  Alert.alert("Couldn't update favorite", result.error.message)
   return false
 }

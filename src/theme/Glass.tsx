@@ -66,7 +66,7 @@ const useReduceTransparency = (): boolean => {
 
 /**
  * Tab bar / mini player / sheet chrome.
- * Use `Surface` for content cards/rows. iOS 26+: UIGlassEffect; older: dense BlurView.
+ * Use `Surface` for content cards/rows. iOS 26+: UIGlassEffect. Older: dense BlurView.
  */
 export const Glass = ({
   children,
@@ -144,7 +144,7 @@ export const Glass = ({
   )
 }
 
-/** Group adjacent glass controls so Liquid Glass morphs as one material. */
+/** GlassContainer for adjacent controls. */
 export const GlassCluster = ({
   children,
   style,

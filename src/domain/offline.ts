@@ -39,7 +39,7 @@ export const offlineRelativePath = (itemId: string): string => `audio/${itemId}`
 
 /**
  * Resolve a stored offline path to a playable URI.
- * Relative paths (audio/<id>) need `melioRootUri` (…/melio); absolute/file URIs pass through.
+ * Relative paths (audio/<id>) need `melioRootUri` (.../melio). Absolute/file URIs pass through.
  */
 export const resolveOfflineFileUri = (
   path: string,

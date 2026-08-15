@@ -26,7 +26,7 @@ import {
   shouldAutoAdvanceOnLoadFailure,
   shouldFailoverStall,
 } from '@/src/domain/playbackSource'
-import { currentTrack, prefetchTargets } from '@/src/domain/queue'
+import { currentTrack, playingIdentity, prefetchTargets } from '@/src/domain/queue'
 import { beginSeekGuard } from '@/src/domain/seekPosition'
 import { logger } from '@/src/logging/logger'
 import {
@@ -52,9 +52,10 @@ import { melioRootUri, offlineAudioExists } from '@/src/storage/jsonFile'
 import { maybeRefillAutoplay } from '@/src/player/autoplayContinuation'
 import {
   applyNativeEq,
-  primeNextIfEnabled,
+  clearNativeNextQueue,
+  primeNextTrack,
 } from '@/src/player/nativeQueue'
-import { stopLocalCrossfade } from '@/src/player/crossfadeLocal'
+import { localHandoffPositionSec } from '@/src/player/crossfadeLocal'
 import {
   getJellyfinReachable,
   markJellyfinReachable,
@@ -71,11 +72,18 @@ export const recoverLocalOutput = () => {
   }
 }
 
+const handoffSeekMs = (): number => {
+  if (!stateRef.handoffActive) return 0
+  const handoffSec = localHandoffPositionSec()
+  if (handoffSec <= 0.05) return 0
+  return Math.round(handoffSec * 1000)
+}
+
 const afterSuccessfulLoad = () => {
-  stopLocalCrossfade()
+  if (stateRef.handoffActive) clearNativeNextQueue()
   applyNativeEq(useSettingsStore.getState().eq)
   maybeRefillAutoplay()
-  void primeNextIfEnabled()
+  void primeNextTrack()
 }
 
 const applyPlaybackVolume = (player: AudioPlayer) => {
@@ -97,7 +105,7 @@ const snapshotStatus = (player: AudioPlayer): AudioStatus | null => {
 
 /**
  * After replace(), ignore the prior item's in-flight status. Do NOT wait for
- * duration — Jellyfin mp3 streams often leave duration at 0 for a long time.
+ * duration. Jellyfin mp3 streams often leave duration at 0 for a long time.
  * Never treat `playing` as loaded (that is the previous track).
  */
 const waitForLoaded = (
@@ -258,19 +266,27 @@ const tryLoadUri = async (
       return false
     }
 
-    applyPlaybackVolume(player)
-
-    const targetMs = Math.max(0, seekMs)
+    // Gapless/crossfade: seek primary to secondary playhead before play.
+    const seekBaseMs = Math.max(0, seekMs)
+    const targetMs =
+      stateRef.handoffActive
+        ? Math.max(seekBaseMs, handoffSeekMs())
+        : seekBaseMs
     if (targetMs > 0) {
       stateRef.seekGuard = beginSeekGuard(targetMs, Date.now())
       stateRef.lastPositionMs = targetMs
       usePlayerStore.getState().setPositionMs(targetMs)
+    }
+
+    applyPlaybackVolume(player)
+
+    if (targetMs > 0) {
       try {
         await player.seekTo(targetMs / 1000)
       } catch {
-        // Ignore — seek guard will retry from the progress timer.
+        // Ignore. Seek guard will retry from the progress timer.
       }
-      // Verify once; AVPlayer often ignores the first seek right after replace.
+      // Verify once. AVPlayer often ignores the first seek right after replace.
       await yieldMs(40)
       const landed = Math.round(player.currentTime * 1000)
       if (!Number.isFinite(landed) || Math.abs(landed - targetMs) > 1250) {
@@ -308,6 +324,9 @@ const tryLoadUri = async (
       return false
     }
 
+    // Drop secondary once primary is confirmed audible.
+    if (stateRef.handoffActive) clearNativeNextQueue()
+
     stateRef.loadedUri = uri
     return true
   } catch (cause) {
@@ -322,7 +341,7 @@ const tryLoadUri = async (
 }
 
 export const handleLoadFailure = () => {
-  stopLocalCrossfade()
+  if (stateRef.handoffActive) clearNativeNextQueue()
   const network = getPlaybackNetworkCached()
   const advance = shouldAutoAdvanceOnLoadFailure({
     network,
@@ -364,7 +383,7 @@ export const loadCurrent = async (
   stateRef.advancing = false
   stateRef.lastLoadAllRemotesFailed = false
   // Fresh track loads (no explicit seek) clear stall bookkeeping. Do NOT clear
-  // when seekMs happens to be 0 on a stall failover — that looped replaces.
+  // when seekMs happens to be 0 on a stall failover. That looped replaces.
   if (explicitSeekMs === undefined) {
     stateRef.lastPositionMs = 0
     stateRef.stallFailoverDone = false
@@ -382,10 +401,18 @@ export const loadCurrent = async (
     return false
   }
 
+  // Drop handoff if this load isn't the primed next track (e.g. manual skip).
+  if (
+    stateRef.handoffActive &&
+    stateRef.handoffForKey !== playingIdentity(track)
+  ) {
+    clearNativeNextQueue()
+  }
+
   const network = getPlaybackNetworkCached()
   const jfReachable = getJellyfinReachable()
   const streamPreset = resolveStreamPreset(settings.streamQuality, network)
-  // Apply track gain immediately — never block load on album metadata.
+  // Apply track gain immediately. Never block load on album metadata.
   stateRef.playbackVolume = volumeFromGainDb(
     pickNormalizationGain(
       settings.replayGainMode,
@@ -451,7 +478,10 @@ export const loadCurrent = async (
     usePlayerStore.getState().isPlaying &&
     isLocalOutputEnabled()
 
+  // Handoff must replace/seek-match even when the next track shares a URI
+  // (duplicate queue entries); otherwise we keep the finished primary item.
   if (
+    !stateRef.handoffActive &&
     !stateRef.forceReload &&
     !stateRef.failedUris.has(resolved.uri) &&
     stateRef.loadedUri === resolved.uri &&
@@ -459,7 +489,7 @@ export const loadCurrent = async (
   ) {
     const currentMs = Math.round(player.currentTime * 1000)
     // Only seek when explicitly requested (resume / stall). Never seekTo(0) on
-    // a bare same-URI short-circuit — that restarted songs after blips/resume.
+    // a bare same-URI short-circuit. That restarted songs after blips/resume.
     if (
       explicitSeekMs != null &&
       Number.isFinite(currentMs) &&

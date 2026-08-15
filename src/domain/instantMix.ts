@@ -6,7 +6,7 @@ import {
   LISTEN_NOW_TARGET,
 } from '@/src/domain/listenNow'
 
-/** Collapse “Hip-Hop” / “Hip Hop” / “hip_hop” for overlap checks. */
+/** Collapse "Hip-Hop" / "Hip Hop" / "hip_hop" for overlap checks. */
 export const normalizeGenre = (genre: string): string =>
   genre
     .trim()
@@ -36,7 +36,7 @@ const CANONICAL_ALIASES: Readonly<Record<string, string>> = {
   progressiverock: 'rock',
 }
 
-/** Map near-duplicate genre labels into one bucket (Rap ≈ Hip Hop). */
+/** Map near-duplicate genre labels into one bucket (Rap ~ Hip Hop). */
 export const canonicalGenre = (genre: string): string => {
   const normalized = normalizeGenre(genre)
   if (!normalized) return ''
@@ -49,16 +49,16 @@ export const genreTagSet = (
 ): ReadonlySet<string> =>
   new Set(genres.map(canonicalGenre).filter((tag) => tag.length > 0))
 
-/** Jaccard on genre tags; null if either side is empty. */
+/** Jaccard on genre tags. Null if either side is empty. */
 export const jaccardSimilarity = (
   left: ReadonlySet<string>,
   right: ReadonlySet<string>,
 ): number | null => {
   if (left.size === 0 || right.size === 0) return null
-  let intersection = 0
-  for (const tag of left) {
-    if (right.has(tag)) intersection += 1
-  }
+  const intersection = [...left].reduce(
+    (n, tag) => n + (right.has(tag) ? 1 : 0),
+    0,
+  )
   return intersection / (left.size + right.size - intersection)
 }
 
@@ -68,10 +68,7 @@ export const genreRecall = (
   track: ReadonlySet<string>,
 ): number | null => {
   if (seed.size === 0 || track.size === 0) return null
-  let hits = 0
-  for (const tag of track) {
-    if (seed.has(tag)) hits += 1
-  }
+  const hits = [...track].reduce((n, tag) => n + (seed.has(tag) ? 1 : 0), 0)
   return hits / track.size
 }
 
@@ -126,12 +123,12 @@ export const enrichSeedGenres = (
 
   const artistId = seedArtistId(seed)
   const artistNameKey = seedArtistNameKey(seed)
+  const sameArtist = mixTracks.filter((track) =>
+    matchesSeedArtist(artistId, artistNameKey, track),
+  )
   const counts = new Map<string, { genre: string; count: number }>()
-  let artistTracks = 0
-  for (const track of mixTracks) {
-    if (!matchesSeedArtist(artistId, artistNameKey, track)) continue
-    artistTracks += 1
-    // Primary tag only — secondary tags on one row must not widen the lane.
+  for (const track of sameArtist) {
+    // Primary tag only. Secondary tags on one row must not widen the lane.
     const primary = (track.genres ?? []).find((genre) => canonicalGenre(genre))
     if (!primary) continue
     const key = canonicalGenre(primary)
@@ -141,11 +138,11 @@ export const enrichSeedGenres = (
       count: (prev?.count ?? 0) + 1,
     })
   }
-  if (artistTracks === 0 || counts.size === 0) return []
+  if (sameArtist.length === 0 || counts.size === 0) return []
 
   // Ignore one-offs (e.g. a single holiday primary among rap rows).
   const minCount =
-    artistTracks === 1 ? 1 : Math.max(2, Math.ceil(artistTracks / 2))
+    sameArtist.length === 1 ? 1 : Math.max(2, Math.ceil(sameArtist.length / 2))
   const ranked = [...counts.values()].sort((a, b) => b.count - a.count)
   const dominant = ranked.filter((entry) => entry.count >= minCount)
   return (dominant.length > 0 ? dominant : ranked.slice(0, 1)).map(
@@ -163,25 +160,18 @@ export const filterInstantMixTracks = (
   const artistId = seedArtistId(seed)
   const artistNameKey = seedArtistNameKey(seed)
 
-  const scored: { track: LibraryItem; index: number; score: number }[] = []
-  let index = 0
-  for (const track of tracks) {
-    if (!isListenNowTrack(track)) continue
-    let score: number
-    if (matchesSeedArtist(artistId, artistNameKey, track)) {
-      score = 1
-    } else {
+  const scored = tracks
+    .filter(isListenNowTrack)
+    .flatMap((track, index) => {
       const tags = track.genres ?? []
-      // Instant Mix is already similarity-scoped; keep untagged neighbors when we
-      // have a genre lane (or a genre seed) so artist radios don't collapse.
-      score =
-        tags.length === 0 && (genreSeed || seedTags.size > 0)
+      const score = matchesSeedArtist(artistId, artistNameKey, track)
+        ? 1
+        : // Keep untagged neighbors when the seed already has genres.
+          tags.length === 0 && (genreSeed || seedTags.size > 0)
           ? 1
           : genreFitScoreAgainst(seedTags, tags)
-    }
-    if (score >= GENRE_FIT_MIN) scored.push({ track, index, score })
-    index += 1
-  }
+      return score >= GENRE_FIT_MIN ? [{ track, index, score }] : []
+    })
   scored.sort(
     (left, right) => right.score - left.score || left.index - right.index,
   )
@@ -292,7 +282,7 @@ const bucketByArtist = (tracks: readonly LibraryItem[]): ArtistBuckets => {
   return { order, tracks: map }
 }
 
-/** Round-robin artists; seed uses a tighter cap. Soften caps only if needed for minPlayable. */
+/** Round-robin artists. Seed uses a tighter cap. Soften caps only if needed for minPlayable. */
 export const diversifyMixTracks = (
   tracks: readonly LibraryItem[],
   target = LISTEN_NOW_TARGET,
@@ -317,24 +307,29 @@ export const diversifyMixTracks = (
     seedKey && key === seedKey ? Math.min(seedCap, roundCap) : roundCap
 
   const takeRound = (roundCap: number): boolean => {
-    let progressed = false
-    for (const key of order) {
-      if (out.length >= target) return progressed
-      if ((counts.get(key) ?? 0) >= capFor(key, roundCap)) continue
+    const skipSeen = (bucket: readonly LibraryItem[], c: number): number =>
+      c < bucket.length && seen.has(bucket[c]!.id) ? skipSeen(bucket, c + 1) : c
+
+    const step = (index: number, progressed: boolean): boolean => {
+      if (index >= order.length || out.length >= target) return progressed
+      const key = order[index]!
+      if ((counts.get(key) ?? 0) >= capFor(key, roundCap)) {
+        return step(index + 1, progressed)
+      }
       const bucket = buckets.get(key)
-      if (!bucket) continue
-      let cursor = cursors.get(key) ?? 0
-      while (cursor < bucket.length && seen.has(bucket[cursor]!.id)) cursor += 1
+      if (!bucket) return step(index + 1, progressed)
+      const cursor = skipSeen(bucket, cursors.get(key) ?? 0)
       cursors.set(key, cursor)
       const next = bucket[cursor]
-      if (!next) continue
+      if (!next) return step(index + 1, progressed)
       cursors.set(key, cursor + 1)
       seen.add(next.id)
       counts.set(key, (counts.get(key) ?? 0) + 1)
       out.push(next)
-      progressed = true
+      return step(index + 1, true)
     }
-    return progressed
+
+    return step(0, false)
   }
 
   while (out.length < target && takeRound(perArtistCap)) {
@@ -524,7 +519,7 @@ export const excludeTrackIds = (
 ): readonly LibraryItem[] =>
   tracks.filter((track) => track.id && !usedIds.has(track.id))
 
-/** Normalize for title dedupe (Hip-Hop vs Hip Hop; keep artist tokens like “!!!”). */
+/** Normalize for title dedupe (Hip-Hop vs Hip Hop, keep tokens like "!!!"). */
 export const mixTitleKey = (titleOrLabel: string): string => {
   const trimmed = titleOrLabel.trim()
   if (!trimmed) return ''

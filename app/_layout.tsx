@@ -32,12 +32,12 @@ const AuthGate = ({ children }: { readonly children: React.ReactNode }) => {
       router.replace('/(auth)/server')
       return
     }
-    // Allow Settings → Add server while still signed in.
+    // Allow Settings -> Add server while still signed in.
     if (session && inAuth && !addingAccount) {
       router.replace('/(app)/(main)/(tabs)/home')
       return
     }
-    // Left the auth stack after Add server — drop the gate flag.
+    // Left the auth stack after Add server. Drop the gate flag.
     if (session && !inAuth && addingAccount) {
       useSessionStore.getState().cancelAddAccount()
     }

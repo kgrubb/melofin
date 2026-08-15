@@ -12,3 +12,9 @@ export const crossfadeLabel = (seconds: CrossfadeSeconds): string => {
   if (seconds === 0) return 'Off'
   return `${seconds}s`
 }
+
+export type LocalHandoffMode = 'gapless' | 'crossfade'
+
+/** Crossfade Off uses gapless handoff; otherwise overlap fade. */
+export const localHandoffMode = (crossfadeSeconds: number): LocalHandoffMode =>
+  crossfadeSeconds > 0 ? 'crossfade' : 'gapless'

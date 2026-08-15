@@ -386,7 +386,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set({
         syncError:
           mode === 'wifiOnly' && trigger === 'open'
-            ? 'Library sync waits for Wi‑Fi'
+            ? 'Library sync waits for Wi-Fi'
             : null,
       })
       return false
@@ -468,7 +468,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const watermarkMs = songDeltaWatermarkMs(pullStartedAt)
     const fetchPlan = songSyncFetchPlan(isWifi)
 
-    // Delta for Sync Now and On open alike; full when schema/empty/mismatch.
+    // Delta for Sync Now and On open alike. Full when schema/empty/mismatch.
     if (
       songSyncPhase({
         schemaStale: songsSchemaStale,

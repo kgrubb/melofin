@@ -31,7 +31,7 @@ describe('playback report payloads', () => {
 })
 
 describe('planTransport scrobble intents', () => {
-  it('pause reports progress only — never mints a session', () => {
+  it('pause reports progress only and never mints a session', () => {
     const plan = planTransport({
       wasPlaying: true,
       isPlaying: false,
@@ -102,7 +102,7 @@ describe('planTransport scrobble intents', () => {
   })
 
   it('play after a paused skip starts fresh (session cleared by engine load)', () => {
-    // Engine clears playSessionId on load; the subsequent play sees no session.
+    // Engine clears playSessionId on load. The subsequent play sees no session.
     const plan = planTransport({
       wasPlaying: false,
       isPlaying: true,

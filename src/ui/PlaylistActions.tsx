@@ -97,7 +97,7 @@ export const PlaylistNameModal = ({
               </View>
               <View style={styles.actionHalf}>
                 <PrimaryButton
-                  label={busy ? 'Saving…' : 'Save'}
+                  label={busy ? 'Saving...' : 'Save'}
                   onPress={() => onSubmit(name)}
                   disabled={!canSave}
                 />

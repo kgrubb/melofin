@@ -18,9 +18,9 @@ import { getJellyfinReachable } from '@/src/services/jellyfin/reachabilityState'
 export type ResolveTrackOpts = {
   readonly network?: PlaybackNetwork
   readonly jfReachable?: boolean
-  /** Pass `Platform.OS` from RN call sites; default is non-web (prefer local). */
+  /** Pass `Platform.OS` from RN call sites. Default is non-web (prefer local). */
   readonly platform?: string
-  /** file://…/melio root for relative offline paths */
+  /** file://.../melio root for relative offline paths */
   readonly melioRootUri?: string
   /** When set, skip cache entries whose file is missing (instant remote fallback). */
   readonly fileExists?: (uri: string) => boolean
@@ -49,7 +49,7 @@ const cachedFileUri = (
   return uri
 }
 
-/** Prefer complete downloads (incl. prefetch) when the file exists; remotes as fallback. */
+/** Prefer complete downloads (incl. prefetch) when the file exists. Remotes as fallback. */
 export const resolveTrackSource = (
   track: QueueTrack,
   offlineIndex: OfflineIndex,

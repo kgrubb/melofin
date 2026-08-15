@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
   stackRaised: {
     zIndex: 40,
   },
-  /** Lets mini + tab Liquid Glass morph as one chrome material. */
+  /** GlassContainer wraps mini player + tab bar. */
   chromeCluster: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 20,

@@ -60,6 +60,10 @@ export const stateRef: {
   playbackVolume: number
   failedUris: Set<string>
   forceReload: boolean
+  /** Secondary covering next until primary seek-matches. */
+  handoffActive: boolean
+  /** playingIdentity the secondary was primed for. */
+  handoffForKey: string | null
 } = {
   engine: null,
   startPromise: null,
@@ -82,6 +86,8 @@ export const stateRef: {
   playbackVolume: 1,
   failedUris: new Set(),
   forceReload: false,
+  handoffActive: false,
+  handoffForKey: null,
 }
 
 export const enqueue = (task: () => Promise<void>) => {

@@ -39,7 +39,7 @@ import {
   type DownloadSegment,
 } from '@/src/domain/downloadsView'
 
-/** FlashList v2 enables this by default; it jumps the list when offline index publishes. */
+/** FlashList v2 enables this by default. It jumps the list when offline index publishes. */
 const LIST_SCROLL = { disabled: true } as const
 
 const queueTrackFromEntry = (entry: OfflineEntry): QueueTrack =>
@@ -160,7 +160,7 @@ export default function DownloadsScreen() {
 
   const deleteEntry = useCallback(
     (itemId: string, title: string) => {
-      Alert.alert('Remove Download?', `Remove “${title}” from this device.`, [
+      Alert.alert('Remove Download?', `Remove "${title}" from this device.`, [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
@@ -168,7 +168,7 @@ export default function DownloadsScreen() {
           onPress: () => {
             void removeDownloadedTrack(itemId).then((result) => {
               if (!result.ok) {
-                Alert.alert('Couldn’t remove download', result.error.message)
+                Alert.alert("Couldn't remove download", result.error.message)
                 return
               }
               void setOfflineIndex(result.value)
@@ -184,7 +184,7 @@ export default function DownloadsScreen() {
     (item: DownloadCollection) => {
       Alert.alert(
         'Remove from This Device?',
-        `Delete downloaded songs in “${item.title}”.`,
+        `Delete downloaded songs in "${item.title}".`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -199,7 +199,7 @@ export default function DownloadsScreen() {
                 for (const entry of ids) {
                   const result = await removeDownloadedTrack(entry.itemId)
                   if (!result.ok) {
-                    Alert.alert('Couldn’t remove download', result.error.message)
+                    Alert.alert("Couldn't remove download", result.error.message)
                     return
                   }
                   await setOfflineIndex(result.value)
@@ -345,7 +345,7 @@ export default function DownloadsScreen() {
                                 ).some((entry) => entry.complete)
                               ) {
                                 Alert.alert(
-                                  'Couldn’t remove downloads',
+                                  "Couldn't remove downloads",
                                   'Some files may still be on this device.',
                                 )
                                 return
@@ -353,7 +353,7 @@ export default function DownloadsScreen() {
                               await setSyncPacks(emptySyncPackIndex())
                             } catch {
                               Alert.alert(
-                                'Couldn’t remove downloads',
+                                "Couldn't remove downloads",
                                 'Some files may still be on this device.',
                               )
                             }

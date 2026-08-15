@@ -1,7 +1,8 @@
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
+index 320062e..2a0ef5d 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
-@@ -32,6 +32,8 @@
+@@ -32,6 +32,8 @@ import java.util.UUID
  
  private const val PLAYBACK_STATUS_UPDATE = "playbackStatusUpdate"
  private const val AUDIO_SAMPLE_UPDATE = "audioSampleUpdate"
@@ -10,16 +11,14 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/Au
  private const val SEEK_JUMP_INTERVAL_MS: Long = 10_000
  
  @UnstableApi
-@@ -120,8 +122,16 @@
-     if (isActiveForLockScreen) {
-       AudioControlsService.setActivePlayer(context, null)
+@@ -122,6 +124,14 @@ class AudioPlayer(
      }
-+  }
-+
-+  fun emitRemoteNextTrack() {
-+    emit(REMOTE_NEXT_TRACK, emptyMap<String, Any>())
    }
  
++  fun emitRemoteNextTrack() {
++    emit(REMOTE_NEXT_TRACK, emptyMap<String, Any>())
++  }
++
 +  fun emitRemotePreviousTrack() {
 +    emit(REMOTE_PREVIOUS_TRACK, emptyMap<String, Any>())
 +  }
@@ -28,20 +27,20 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/Au
      updateJob?.cancel()
      updateJob = flow {
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
+index 092af43..39fe093 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
-@@ -36,7 +36,9 @@
+@@ -36,7 +36,8 @@ class Metadata(
    @Field val title: String?,
    @Field val artist: String?,
    @Field val albumTitle: String?,
 -  @Field val artworkUrl: URL?
 +  @Field val artworkUrl: URL?,
-+  /** Authoritative duration in seconds when ExoPlayer duration is still unset. */
 +  @Field val duration: Double?
  ) : Record
  
  enum class AndroidOutputFormat(val value: String) : Enumerable {
-@@ -93,8 +95,10 @@
+@@ -93,8 +94,10 @@ enum class LockScreenButtons(val value: Int) : Enumerable {
  }
  
  class AudioLockScreenOptions(
@@ -55,9 +54,10 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/Au
  
  enum class InterruptionMode(val value: String) : Enumerable {
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
+index 04486e2..194e019 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
-@@ -17,6 +17,8 @@
+@@ -17,6 +17,8 @@ import android.os.IBinder
  import android.os.Looper
  import androidx.annotation.OptIn
  import androidx.core.app.NotificationCompat
@@ -66,14 +66,11 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
  import androidx.media3.common.Player
  import androidx.media3.common.util.UnstableApi
  import androidx.media3.session.CommandButton
-@@ -33,6 +35,26 @@
+@@ -33,6 +35,23 @@ import kotlinx.coroutines.cancel
  import kotlinx.coroutines.launch
  import java.net.URL
  
-+/**
-+ * Media3 sessions read duration from the player timeline. Jellyfin progressive
-+ * streams often leave that unset — fall back to metadata.duration (seconds).
-+ */
++// Fall back to metadata.duration (seconds) when Media3 timeline duration is unset.
 +private class DurationAwarePlayer(
 +  player: Player,
 +  private val overrideDurationMs: () -> Long
@@ -93,7 +90,7 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
  @OptIn(UnstableApi::class)
  class AudioControlsService : MediaSessionService() {
    private val binder = AudioControlsBinder()
-@@ -68,6 +90,10 @@
+@@ -68,6 +87,10 @@ class AudioControlsService : MediaSessionService() {
        ACTION_SEEK_BACKWARD -> withPlayerOnAppThread { player ->
          player.seekTo(player.currentPosition - SEEK_INTERVAL_MS)
        }
@@ -104,7 +101,7 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
      }
  
      // Ensure channel exists and update current notification
-@@ -135,10 +161,21 @@
+@@ -135,9 +158,20 @@ class AudioControlsService : MediaSessionService() {
    private fun updateSessionCustomLayout(isPlaying: Boolean) {
      val session = mediaSession ?: return
      val customLayout = mutableListOf<CommandButton>()
@@ -116,7 +113,7 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
 -    // Add seek backward button if enabled
 -    if (currentOptions?.showSeekBackward == true) {
 +    if (showPrevious) {
-       customLayout.add(
++      customLayout.add(
 +        CommandButton.Builder(CommandButton.ICON_PREVIOUS)
 +          .setDisplayName("Previous")
 +          .setEnabled(true)
@@ -124,11 +121,10 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
 +          .build()
 +      )
 +    } else if (showSeekBack) {
-+      customLayout.add(
+       customLayout.add(
          CommandButton.Builder(CommandButton.ICON_SKIP_BACK)
            .setDisplayName("Seek Backward")
-           .setEnabled(true)
-@@ -147,7 +184,6 @@
+@@ -147,7 +181,6 @@ class AudioControlsService : MediaSessionService() {
        )
      }
  
@@ -136,14 +132,14 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
      customLayout.add(
        CommandButton.Builder(if (isPlaying) CommandButton.ICON_PAUSE else CommandButton.ICON_PLAY)
          .setDisplayName(if (isPlaying) "Pause" else "Play")
-@@ -156,9 +192,16 @@
+@@ -156,8 +189,15 @@ class AudioControlsService : MediaSessionService() {
          .build()
      )
  
 -    // Add seek forward button if enabled
 -    if (currentOptions?.showSeekForward == true) {
 +    if (showNext) {
-       customLayout.add(
++      customLayout.add(
 +        CommandButton.Builder(CommandButton.ICON_NEXT)
 +          .setDisplayName("Next")
 +          .setEnabled(true)
@@ -151,11 +147,10 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
 +          .build()
 +      )
 +    } else if (showSeekForward) {
-+      customLayout.add(
+       customLayout.add(
          CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD)
            .setDisplayName("Seek Forward")
-           .setEnabled(true)
-@@ -222,7 +265,15 @@
+@@ -222,7 +262,15 @@ class AudioControlsService : MediaSessionService() {
      if (player != null) {
        mediaSession?.release()
  
@@ -172,7 +167,7 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
          .setCallback(AudioMediaSessionCallback())
          .build()
  
-@@ -331,6 +382,14 @@
+@@ -331,6 +379,14 @@ class AudioControlsService : MediaSessionService() {
      currentPlayer = null
    }
  
@@ -187,7 +182,7 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
    companion object {
      private const val CHANNEL_ID = "expo_audio_channel"
      private const val ACTION_PLAY = "expo.modules.audio.action.PLAY"
-@@ -339,6 +398,8 @@
+@@ -339,6 +395,8 @@ class AudioControlsService : MediaSessionService() {
  
      const val ACTION_SEEK_FORWARD = "expo.modules.audio.action.SEEK_FORWARD"
      const val ACTION_SEEK_BACKWARD = "expo.modules.audio.action.SEEK_REWIND"
@@ -197,9 +192,10 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
      const val SEEK_INTERVAL_MS = 10000L
  
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
+index 839aaef..a63a4c4 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
-@@ -35,6 +35,8 @@
+@@ -35,6 +35,8 @@ class AudioMediaSessionCallback : MediaSession.Callback {
            MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
              .add(SessionCommand(AudioControlsService.ACTION_SEEK_BACKWARD, Bundle.EMPTY))
              .add(SessionCommand(AudioControlsService.ACTION_SEEK_FORWARD, Bundle.EMPTY))
@@ -208,7 +204,7 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
              .build()
          )
          .build()
-@@ -56,6 +58,12 @@
+@@ -56,6 +58,12 @@ class AudioMediaSessionCallback : MediaSession.Callback {
        AudioControlsService.ACTION_SEEK_BACKWARD -> {
          session.player.seekTo(session.player.currentPosition - AudioControlsService.SEEK_INTERVAL_MS)
        }
@@ -222,51 +218,42 @@ diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/se
      return super.onCustomCommand(session, controller, command, args)
    }
 diff --git a/node_modules/expo-audio/build/Audio.types.d.ts b/node_modules/expo-audio/build/Audio.types.d.ts
+index 752f8d1..7c70605 100644
 --- a/node_modules/expo-audio/build/Audio.types.d.ts
 +++ b/node_modules/expo-audio/build/Audio.types.d.ts
-@@ -507,5 +507,7 @@
+@@ -507,5 +507,6 @@ export type AudioMetadata = {
      artist?: string;
      albumTitle?: string;
      artworkUrl?: string;
-+    /** Duration in seconds — used when the native player has not discovered one yet. */
 +    duration?: number;
  };
  //# sourceMappingURL=Audio.types.d.ts.map
 \ No newline at end of file
 diff --git a/node_modules/expo-audio/build/AudioConstants.d.ts b/node_modules/expo-audio/build/AudioConstants.d.ts
+index a290f9a..22c10e9 100644
 --- a/node_modules/expo-audio/build/AudioConstants.d.ts
 +++ b/node_modules/expo-audio/build/AudioConstants.d.ts
-@@ -10,5 +10,13 @@
+@@ -10,5 +10,7 @@ export type AudioLockScreenOptions = {
       * Whether the seek backward button should be displayed on the lock screen.
       */
      showSeekBackward?: boolean;
-+    /**
-+     * Whether the next track button should be displayed on the lock screen.
-+     */
 +    showNextTrack?: boolean;
-+    /**
-+     * Whether the previous track button should be displayed on the lock screen.
-+     */
 +    showPreviousTrack?: boolean;
  };
  //# sourceMappingURL=AudioConstants.d.ts.map
 \ No newline at end of file
 diff --git a/node_modules/expo-audio/build/AudioModule.types.d.ts b/node_modules/expo-audio/build/AudioModule.types.d.ts
+index b30a75a..7008304 100644
 --- a/node_modules/expo-audio/build/AudioModule.types.d.ts
 +++ b/node_modules/expo-audio/build/AudioModule.types.d.ts
-@@ -209,6 +209,18 @@
+@@ -209,6 +209,13 @@ export type AudioEvents = {
      playbackStatusUpdate(status: AudioStatus): void;
      /** Fired when audio sampling is enabled and new sample data is available. */
      audioSampleUpdate(data: AudioSample): void;
-+    /** Fired when the lock-screen / headset next-track command is received. */
 +    remoteNextTrack(): void;
-+    /** Fired when the lock-screen / headset previous-track command is received. */
 +    remotePreviousTrack(): void;
-+    /** Fired when the lock-screen / headset play command is received. */
 +    remotePlay(): void;
-+    /** Fired when the lock-screen / headset pause command is received. */
 +    remotePause(): void;
-+    /** Fired when the lock-screen seek / skip command is received. */
 +    remoteSeek(event: {
 +        seconds: number;
 +    }): void;
@@ -274,9 +261,10 @@ diff --git a/node_modules/expo-audio/build/AudioModule.types.d.ts b/node_modules
  export declare class AudioRecorder extends SharedObject<RecordingEvents> {
      /**
 diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-audio/ios/AudioModule.swift
+index 938f985..4cde066 100644
 --- a/node_modules/expo-audio/ios/AudioModule.swift
 +++ b/node_modules/expo-audio/ios/AudioModule.swift
-@@ -197,7 +197,11 @@
+@@ -197,7 +197,11 @@ public class AudioModule: Module {
        }
  
        Function("pause") { player in
@@ -288,7 +276,7 @@ diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-a
          if !player.keepAudioSessionActive {
            deactivateSession()
          }
-@@ -220,7 +224,7 @@
+@@ -220,7 +224,7 @@ public class AudioModule: Module {
        Function("updateLockScreenMetadata") { (player: AudioPlayer, metadata: Metadata?) in
          if player.isActiveForLockScreen {
            player.metadata = metadata
@@ -298,9 +286,10 @@ diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-a
        }
  
 diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-audio/ios/AudioPlayer.swift
+index 1dbce09..48e466f 100644
 --- a/node_modules/expo-audio/ios/AudioPlayer.swift
 +++ b/node_modules/expo-audio/ios/AudioPlayer.swift
-@@ -4,6 +4,11 @@
+@@ -4,6 +4,11 @@ import Combine
  private enum AudioConstants {
    static let playbackStatus = "playbackStatusUpdate"
    static let audioSample = "audioSampleUpdate"
@@ -312,16 +301,16 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
  }
  
  public class AudioPlayer: SharedRef<AVPlayer> {
-@@ -12,6 +17,8 @@
+@@ -12,6 +17,8 @@ public class AudioPlayer: SharedRef<AVPlayer> {
    var shouldCorrectPitch = true
    var pitchCorrectionQuality: AVAudioTimePitchAlgorithm = .timeDomain
    var isActiveForLockScreen = false
-+  /// Last play()/pause() command. Replace and item-EOF do not change this.
++  // Last play()/pause(); replace and item-EOF do not clear this.
 +  var nowPlayingPlaying = false
    var metadata: Metadata?
    var currentRate: Float = 0.0
    let interval: Double
-@@ -61,12 +68,13 @@
+@@ -61,12 +68,13 @@ public class AudioPlayer: SharedRef<AVPlayer> {
    }
  
    func play(at rate: Float) {
@@ -336,12 +325,10 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      }
    }
  
-@@ -115,8 +123,30 @@
-     } else {
-       MediaController.shared.setActivePlayer(nil)
+@@ -117,6 +125,28 @@ public class AudioPlayer: SharedRef<AVPlayer> {
      }
-+  }
-+
+   }
+ 
 +  func emitRemoteNextTrack() {
 +    self.emit(event: AudioConstants.remoteNextTrack, arguments: [:] as [String: Any])
 +  }
@@ -356,8 +343,8 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
 +
 +  func emitRemotePause() {
 +    self.emit(event: AudioConstants.remotePause, arguments: [:] as [String: Any])
-   }
- 
++  }
++
 +  func emitRemoteSeek(positionSeconds: Double) {
 +    self.emit(event: AudioConstants.remoteSeek, arguments: [
 +      "seconds": positionSeconds
@@ -367,7 +354,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
    func updateStatus(with dict: [String: Any]) {
      var arguments = currentStatus()
      arguments.merge(dict) { _, new in
-@@ -124,8 +154,8 @@
+@@ -124,8 +154,8 @@ public class AudioPlayer: SharedRef<AVPlayer> {
      }
      self.emit(event: AudioConstants.playbackStatus, arguments: arguments)
  
@@ -378,7 +365,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      }
    }
  
-@@ -139,6 +169,9 @@
+@@ -139,6 +169,9 @@ public class AudioPlayer: SharedRef<AVPlayer> {
      } ?? CMTime.positiveInfinity
  
      await ref.currentItem?.seek(to: time, toleranceBefore: toleranceBefore, toleranceAfter: toleranceAfter	)
@@ -388,7 +375,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
      updateStatus(with: [
        "currentTime": currentTime
      ])
-@@ -175,9 +208,12 @@
+@@ -175,9 +208,12 @@ public class AudioPlayer: SharedRef<AVPlayer> {
    }
  
    func replaceCurrentSource(source: AudioSource) {
@@ -402,7 +389,7 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
  
      // Remove the audio tap if it is active
      if samplingEnabled {
-@@ -188,10 +224,6 @@
+@@ -188,10 +224,6 @@ public class AudioPlayer: SharedRef<AVPlayer> {
      if wasSamplingEnabled {
        shouldInstallAudioTap = true
      }
@@ -414,14 +401,13 @@ diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-a
  
    private func playerIsBuffering() -> Bool {
 diff --git a/node_modules/expo-audio/ios/AudioRecords.swift b/node_modules/expo-audio/ios/AudioRecords.swift
+index f1759cd..70649ec 100644
 --- a/node_modules/expo-audio/ios/AudioRecords.swift
 +++ b/node_modules/expo-audio/ios/AudioRecords.swift
-@@ -51,11 +51,16 @@
+@@ -51,11 +51,14 @@ struct Metadata: Record {
    @Field var artist: String?
    @Field var albumTitle: String?
    @Field var artworkUrl: URL?
-+  /// Authoritative duration in seconds when AVPlayer has not discovered one yet
-+  /// (common for Jellyfin progressive mp3 streams).
 +  @Field var duration: Double?
  }
  
@@ -434,20 +420,20 @@ diff --git a/node_modules/expo-audio/ios/AudioRecords.swift b/node_modules/expo-
  
  enum BitRateStrategy: String, Enumerable {
 diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/expo-audio/ios/MediaController.swift
+index 2dd3fb2..9575553 100644
 --- a/node_modules/expo-audio/ios/MediaController.swift
 +++ b/node_modules/expo-audio/ios/MediaController.swift
-@@ -11,7 +11,9 @@
+@@ -11,7 +11,8 @@ class MediaController {
  
    private var currentArtworkUrl: URL?
    private var cachedArtwork: MPMediaItemArtwork?
 -  
 +  private var lastNowPlayingUpdateAt: TimeInterval = 0
-+  private var remoteCommandsEnabled = false
 +
    func setActivePlayer(_ player: AudioPlayer?, options: LockScreenOptions? = nil) {
      if let previous = activePlayer, previous.id != player?.id {
        previous.isActiveForLockScreen = false
-@@ -23,7 +25,7 @@
+@@ -23,7 +24,7 @@ class MediaController {
      DispatchQueue.main.async {
        if let player {
          self.enableRemoteCommands(options: options)
@@ -456,12 +442,11 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
        } else {
          self.disableRemoteCommands()
          self.clearNowPlayingInfo()
-@@ -31,15 +33,36 @@
+@@ -31,15 +32,46 @@ class MediaController {
      }
    }
  
 -  func updateNowPlayingInfo(for player: AudioPlayer) {
-+  /// - Parameter force: bypass the 1s throttle (play/pause/seek/metadata changes).
 +  func updateNowPlayingInfo(for player: AudioPlayer, force: Bool = false) {
      guard player.id == activePlayer?.id else {
        return
@@ -480,15 +465,26 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
 -    nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = player.isPlaying ? player.ref.rate : 1.0
 +    let nativeDuration = player.duration
 +    let metadataDuration = player.metadata?.duration ?? 0
-+    let duration: Double
-+    if nativeDuration.isFinite && nativeDuration > 0 {
-+      duration = nativeDuration
-+    } else if metadataDuration.isFinite && metadataDuration > 0 {
-+      duration = metadataDuration
-+    } else {
-+      duration = 0
-+    }
-+    let elapsed = player.currentTime.isFinite ? max(0, player.currentTime) : 0
++    // Gapless: metadata may update while AVPlayer is still on the prior item at EOF.
++    let atPriorEof =
++      force &&
++      nativeDuration.isFinite && nativeDuration > 0 &&
++      player.currentTime.isFinite &&
++      player.currentTime >= nativeDuration - 0.5
++    let preferMetadata =
++      force &&
++      metadataDuration.isFinite && metadataDuration > 0 &&
++      (atPriorEof || !(nativeDuration.isFinite && nativeDuration > 0))
++
++    let duration: Double =
++      preferMetadata
++      ? metadataDuration
++      : nativeDuration.isFinite && nativeDuration > 0
++        ? nativeDuration
++        : metadataDuration.isFinite && metadataDuration > 0 ? metadataDuration : 0
++    let rawElapsed = player.currentTime.isFinite ? max(0, player.currentTime) : 0
++    let elapsed: Double =
++      preferMetadata ? 0 : duration > 0 && rawElapsed > duration ? 0 : rawElapsed
 +    let rate: Float = player.nowPlayingPlaying ? (player.ref.rate > 0 ? player.ref.rate : 1.0) : 0.0
 +
 +    nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
@@ -497,7 +493,7 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
      nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
  
      if let userMetadata = player.metadata {
-@@ -53,21 +76,18 @@
+@@ -53,21 +85,24 @@ class MediaController {
          nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = album
        }
        if let artworkUrl = userMetadata.artworkUrl {
@@ -509,7 +505,16 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
 -          if let cachedArtwork {
 -            nowPlayingInfo[MPMediaItemPropertyArtwork] = cachedArtwork
 -            self.nowPlayingInfoCenter.nowPlayingInfo = nowPlayingInfo
+-          }
+-        }
+-        loadArtworkFromURL(url: artworkUrl) { [weak self] artwork in
+-          if let artwork {
+-            self?.cachedArtwork = artwork
+-            nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
+-            self?.nowPlayingInfoCenter.nowPlayingInfo = nowPlayingInfo
 +          currentArtworkUrl = artworkUrl
++          cachedArtwork = nil
++          nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtwork)
 +          loadArtworkFromURL(url: artworkUrl) { [weak self] artwork in
 +            guard let self, let artwork else { return }
 +            self.cachedArtwork = artwork
@@ -518,17 +523,14 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
 +            self.nowPlayingInfoCenter.nowPlayingInfo = info
            }
          }
--        loadArtworkFromURL(url: artworkUrl) { [weak self] artwork in
--          if let artwork {
--            self?.cachedArtwork = artwork
--            nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
--            self?.nowPlayingInfoCenter.nowPlayingInfo = nowPlayingInfo
--          }
--        }
++      } else {
++        currentArtworkUrl = nil
++        cachedArtwork = nil
++        nowPlayingInfo.removeValue(forKey: MPMediaItemPropertyArtwork)
        }
      } else {
        // Try to get the metadata from the provided asset
-@@ -107,6 +127,9 @@
+@@ -107,6 +142,9 @@ class MediaController {
    func clearNowPlayingInfo() {
      nowPlayingInfoCenter.nowPlayingInfo = nil
      activePlayer = nil
@@ -538,12 +540,10 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
    }
  
    private func loadArtworkFromURL(url: URL, completion: @escaping (MPMediaItemArtwork?) -> Void) {
-@@ -130,12 +153,15 @@
+@@ -130,12 +168,13 @@ class MediaController {
    }
  
    private func enableRemoteCommands(options: LockScreenOptions?) {
-+    // Idempotent — remove prior targets before re-adding so resume/track
-+    // changes do not stack duplicate handlers.
 +    disableRemoteCommands()
 +
      remoteCommandCenter.playCommand.addTarget { [weak self] _ in
@@ -556,7 +556,7 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
        return .success
      }
  
-@@ -143,8 +169,7 @@
+@@ -143,8 +182,7 @@ class MediaController {
        guard let player = self?.activePlayer else {
          return .commandFailed
        }
@@ -566,7 +566,7 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
        return .success
      }
  
-@@ -152,11 +177,10 @@
+@@ -152,11 +190,10 @@ class MediaController {
        guard let player = self?.activePlayer else {
          return .commandFailed
        }
@@ -580,7 +580,7 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
        }
        return .success
      }
-@@ -166,10 +190,8 @@
+@@ -166,10 +203,7 @@ class MediaController {
        let event = event as? MPChangePlaybackPositionCommandEvent else {
          return .commandFailed
        }
@@ -588,12 +588,11 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
 -      let seekTime = CMTime(seconds: event.positionTime, preferredTimescale: 1)
 -      player.ref.seek(to: seekTime)
 -
-+      // JS seekPlayback owns store + seek guard so progress polls do not fight.
 +      player.emitRemoteSeek(positionSeconds: event.positionTime)
        return .success
      }
  
-@@ -179,11 +201,8 @@
+@@ -179,11 +213,8 @@ class MediaController {
        let event = event as? MPSkipIntervalCommandEvent else {
          return .commandFailed
        }
@@ -607,7 +606,7 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
        return .success
      }
  
-@@ -193,11 +212,24 @@
+@@ -193,11 +224,24 @@ class MediaController {
        let event = event as? MPSkipIntervalCommandEvent else {
          return .commandFailed
        }
@@ -635,7 +634,7 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
        return .success
      }
      
-@@ -205,8 +237,14 @@
+@@ -205,8 +249,12 @@ class MediaController {
      remoteCommandCenter.pauseCommand.isEnabled = true
      remoteCommandCenter.togglePlayPauseCommand.isEnabled = true
      remoteCommandCenter.changePlaybackPositionCommand.isEnabled = true
@@ -645,27 +644,26 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
 +    let showPrevious = options?.showPreviousTrack ?? false
 +    remoteCommandCenter.nextTrackCommand.isEnabled = showNext
 +    remoteCommandCenter.previousTrackCommand.isEnabled = showPrevious
-+    // Prefer track skip over ±10s when both are requested.
 +    remoteCommandCenter.skipForwardCommand.isEnabled = (options?.showSeekForward ?? false) && !showNext
 +    remoteCommandCenter.skipBackwardCommand.isEnabled = (options?.showSeekBackward ?? false) && !showPrevious
-+    remoteCommandsEnabled = true
    }
  
    private func disableRemoteCommands() {
-@@ -216,13 +254,18 @@
+@@ -216,13 +264,16 @@ class MediaController {
      remoteCommandCenter.changePlaybackPositionCommand.isEnabled = false
      remoteCommandCenter.skipForwardCommand.isEnabled = false
      remoteCommandCenter.skipBackwardCommand.isEnabled = false
-+    remoteCommandCenter.nextTrackCommand.isEnabled = false
-+    remoteCommandCenter.previousTrackCommand.isEnabled = false
-     
-     // Remove event targets
+-    
+-    // Remove event targets
 -    remoteCommandCenter.playCommand.removeTarget(self);
 -    remoteCommandCenter.pauseCommand.removeTarget(self);
 -    remoteCommandCenter.togglePlayPauseCommand.removeTarget(self);
 -    remoteCommandCenter.changePlaybackPositionCommand.removeTarget(self);
 -    remoteCommandCenter.skipForwardCommand.removeTarget(self);
 -    remoteCommandCenter.skipBackwardCommand.removeTarget(self);
++    remoteCommandCenter.nextTrackCommand.isEnabled = false
++    remoteCommandCenter.previousTrackCommand.isEnabled = false
++
 +    remoteCommandCenter.playCommand.removeTarget(nil)
 +    remoteCommandCenter.pauseCommand.removeTarget(nil)
 +    remoteCommandCenter.togglePlayPauseCommand.removeTarget(nil)
@@ -674,52 +672,5 @@ diff --git a/node_modules/expo-audio/ios/MediaController.swift b/node_modules/ex
 +    remoteCommandCenter.skipBackwardCommand.removeTarget(nil)
 +    remoteCommandCenter.nextTrackCommand.removeTarget(nil)
 +    remoteCommandCenter.previousTrackCommand.removeTarget(nil)
-+    remoteCommandsEnabled = false
    }
  }
-diff --git a/node_modules/expo-audio/src/Audio.types.ts b/node_modules/expo-audio/src/Audio.types.ts
---- a/node_modules/expo-audio/src/Audio.types.ts
-+++ b/node_modules/expo-audio/src/Audio.types.ts
-@@ -550,4 +550,6 @@
-   artist?: string;
-   albumTitle?: string;
-   artworkUrl?: string;
-+  /** Duration in seconds — used when the native player has not discovered one yet. */
-+  duration?: number;
- };
-diff --git a/node_modules/expo-audio/src/AudioConstants.ts b/node_modules/expo-audio/src/AudioConstants.ts
---- a/node_modules/expo-audio/src/AudioConstants.ts
-+++ b/node_modules/expo-audio/src/AudioConstants.ts
-@@ -11,4 +11,12 @@
-    * Whether the seek backward button should be displayed on the lock screen.
-    */
-   showSeekBackward?: boolean;
-+  /**
-+   * Whether the next track button should be displayed on the lock screen.
-+   */
-+  showNextTrack?: boolean;
-+  /**
-+   * Whether the previous track button should be displayed on the lock screen.
-+   */
-+  showPreviousTrack?: boolean;
- };
-diff --git a/node_modules/expo-audio/src/AudioModule.types.ts b/node_modules/expo-audio/src/AudioModule.types.ts
---- a/node_modules/expo-audio/src/AudioModule.types.ts
-+++ b/node_modules/expo-audio/src/AudioModule.types.ts
-@@ -259,6 +259,16 @@
-   playbackStatusUpdate(status: AudioStatus): void;
-   /** Fired when audio sampling is enabled and new sample data is available. */
-   audioSampleUpdate(data: AudioSample): void;
-+  /** Fired when the lock-screen / headset next-track command is received. */
-+  remoteNextTrack(): void;
-+  /** Fired when the lock-screen / headset previous-track command is received. */
-+  remotePreviousTrack(): void;
-+  /** Fired when the lock-screen / headset play command is received. */
-+  remotePlay(): void;
-+  /** Fired when the lock-screen / headset pause command is received. */
-+  remotePause(): void;
-+  /** Fired when the lock-screen seek / skip command is received. */
-+  remoteSeek(event: { seconds: number }): void;
- };
- 
- export declare class AudioRecorder extends SharedObject<RecordingEvents> {

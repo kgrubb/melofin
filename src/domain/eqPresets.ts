@@ -1,4 +1,4 @@
-/** Ten-band EQ presets; gains in dB (−24…+24). */
+/** Ten-band EQ presets. Gains in dB (-24...+24). */
 
 export const EQ_BAND_HZ = [
   32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16_000,
@@ -24,7 +24,7 @@ export type EqPresetId = 'flat' | 'bassBoost' | 'trebleBoost' | 'vocal' | 'custo
 export type EqSettings = {
   readonly enabled: boolean
   readonly presetId: EqPresetId
-  /** Active curve when enabled; ignored when disabled (unity). */
+  /** Active curve when enabled. Ignored when disabled (unity). */
   readonly gainsDb: EqGains
 }
 

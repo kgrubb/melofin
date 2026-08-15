@@ -67,7 +67,7 @@ const DeviceRow = ({
       {active ? (
         <Icon name="checkmark" size={18} tintColor={colors.accent} />
       ) : transferring ? (
-        <Text style={styles.busy}>…</Text>
+        <Text style={styles.busy}>...</Text>
       ) : null}
     </Surface>
   </PressableScale>

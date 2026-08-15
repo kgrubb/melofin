@@ -36,7 +36,7 @@ describe('librarySync', () => {
 
   it('labels modes and formats empty sections', () => {
     expect(librarySyncModeLabel('onOpen')).toBe('On open')
-    expect(librarySyncModeLabel('wifiOnly')).toBe('Wi‑Fi only')
+    expect(librarySyncModeLabel('wifiOnly')).toBe('Wi-Fi only')
     expect(librarySyncModeLabel('manual')).toBe('Manual')
     expect(
       librarySectionsEmpty({ songs: [], albums: [], artists: [], playlists: [] }),
@@ -53,7 +53,7 @@ describe('librarySync', () => {
         songsLoaded: 0,
         songsTotal: 0,
       }),
-    ).toBe('Updating collections…')
+    ).toBe('Updating collections...')
     expect(
       formatLibrarySyncProgress({
         phase: 'songs',
@@ -81,7 +81,7 @@ describe('librarySync', () => {
         songsLoaded: 1000,
         songsTotal: 1000,
       }),
-    ).toBe('Saving…')
+    ).toBe('Saving...')
     expect(
       librarySyncFraction({
         phase: 'collections',

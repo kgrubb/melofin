@@ -1,4 +1,4 @@
-/** Prefer a finite positive duration; fall back when native duration is unknown. */
+/** Prefer a finite positive duration. Fall back when native is unknown. */
 export const effectiveDurationSec = (
   nativeDurationSec: number,
   fallbackDurationSec?: number,
@@ -32,7 +32,7 @@ export const mediaReachedEnd = ({
   readonly fallbackDurationSec?: number
   /**
    * Store scrubber position. After goNext this is 0 while native may still be
-   * sitting on the prior item's EOF — that must not count as end-of-track.
+   * sitting on the prior item's EOF. That must not count as end-of-track.
    */
   readonly uiPositionMs?: number
 }): boolean => {

@@ -22,8 +22,8 @@ describe('syncPack', () => {
       now: 10,
     })
     expect(pack.id).toBe(syncPackId('album', 'al1'))
-    let index = upsertSyncPack(emptySyncPackIndex(), pack)
-    expect(packTrackIdSet(index).has('b')).toBe(true)
+    const withPack = upsertSyncPack(emptySyncPackIndex(), pack)
+    expect(packTrackIdSet(withPack).has('b')).toBe(true)
     const progress = packProgress(pack, new Set(['a']))
     expect(progress.complete).toBe(1)
     expect(diffPackDownloads(pack.trackIds, new Set(['a']))).toEqual(['b', 'c'])
@@ -48,11 +48,11 @@ describe('syncPack', () => {
       150,
       200,
       0,
-      packTrackIdSet(index),
+      packTrackIdSet(withPack),
     )
     expect(evict).toEqual(['x'])
 
-    index = removeSyncPack(index, pack.id)
+    const index = removeSyncPack(withPack, pack.id)
     expect(index.packs[pack.id]).toBeUndefined()
     expect(parseSyncPackIndex({ packs: { [pack.id]: pack } }).packs[pack.id]?.title).toBe(
       'Album',

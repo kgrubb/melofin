@@ -14,7 +14,7 @@ export const libraryItemToQueueTrack = (
 
 /**
  * Build queue tracks in chunks so large libraries don't freeze the JS thread.
- * Invokes `onChunk` after each chunk (same buffer; store via map/copy if retaining).
+ * Invokes `onChunk` after each chunk (same buffer, store via map/copy if retaining).
  */
 export const materializeQueueTracks = (
   items: readonly LibraryItem[],
@@ -41,8 +41,7 @@ export const materializeQueueTracks = (
 
     const pump = (offset: number) => {
       const end = Math.min(offset + chunkSize, items.length)
-      for (let i = offset; i < end; i += 1) {
-        const item = items[i]!
+      for (const item of items.slice(offset, end)) {
         tracks.push(libraryItemToQueueTrack(item, artworkFor(item)))
       }
       options?.onChunk?.(tracks)
@@ -86,9 +85,8 @@ export const materializeQueueTracksFromPages = async (
 
   return new Promise((resolve, reject) => {
     const tracks: QueueTrack[] = []
-    let cursor: { sortName: string; id: string } | null = null
 
-    const pump = () => {
+    const pump = (cursor: { sortName: string; id: string } | null) => {
       void loadPage(cursor, pageSize)
         .then((page) => {
           if (page.length === 0) {
@@ -100,7 +98,7 @@ export const materializeQueueTracksFromPages = async (
           }
           options?.onChunk?.(tracks)
           const last = page[page.length - 1]!
-          cursor = {
+          const nextCursor = {
             sortName: last.name.toLocaleLowerCase(),
             id: last.id,
           }
@@ -108,11 +106,11 @@ export const materializeQueueTracksFromPages = async (
             resolve(tracks)
             return
           }
-          schedule(pump)
+          schedule(() => pump(nextCursor))
         })
         .catch(reject)
     }
 
-    pump()
+    pump(null)
   })
 }

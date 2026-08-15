@@ -5,8 +5,8 @@ package = JSON.parse(File.read(File.join(__dir__, '..', 'package.json')))
 Pod::Spec.new do |s|
   s.name           = 'MelioAudioGraph'
   s.version        = package['version']
-  s.summary        = 'AVAudioEngine queue + EQ for Melio'
-  s.description    = 'Gapless next-item priming and EQ insert behind the Melio player facade.'
+  s.summary        = 'Gapless/crossfade handoff for Melio'
+  s.description    = 'Secondary AVPlayer priming for gapless and crossfade handoff.'
   s.license        = 'MIT'
   s.author         = 'Melio'
   s.homepage       = 'https://github.com/local/melio'

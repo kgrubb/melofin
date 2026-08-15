@@ -200,9 +200,11 @@ const fetchAllItemPages = async (
   opts?: { readonly pageSize?: number; readonly signal?: AbortSignal },
 ): Promise<Result<readonly LibraryItem[]>> => {
   const items: LibraryItem[] = []
-  let startIndex = 0
   const pageSize = opts?.pageSize ?? LIBRARY_PAGE_SIZE
-  for (;;) {
+
+  const loop = async (
+    startIndex: number,
+  ): Promise<Result<readonly LibraryItem[]>> => {
     if (opts?.signal?.aborted) {
       return items.length > 0
         ? ok(dedupeLibraryItems(items))
@@ -234,8 +236,10 @@ const fetchAllItemPages = async (
     ) {
       return ok(dedupeLibraryItems(items))
     }
-    startIndex += page.value.items.length
+    return loop(startIndex + page.value.items.length)
   }
+
+  return loop(0)
 }
 
 export const fetchLatestAlbums = async (
@@ -299,8 +303,9 @@ export const fetchMusicGenres = async (
 ): Promise<Result<readonly LibraryItem[]>> => {
   try {
     const items: LibraryItem[] = []
-    let startIndex = 0
-    for (;;) {
+    const loop = async (
+      startIndex: number,
+    ): Promise<Result<readonly LibraryItem[]>> => {
       const response = await getMusicGenresApi(context.api).getMusicGenres({
         userId,
         startIndex,
@@ -313,13 +318,12 @@ export const fetchMusicGenres = async (
       const page = mapItems(response.data.Items)
       for (const item of page) items.push(item)
       const total = Number(response.data.TotalRecordCount ?? items.length)
-      if (
-        !shouldFetchNextPage(startIndex, page.length, total)
-      ) {
+      if (!shouldFetchNextPage(startIndex, page.length, total)) {
         return ok(dedupeLibraryItems(items))
       }
-      startIndex += page.length
+      return loop(startIndex + page.length)
     }
+    return await loop(0)
   } catch (cause) {
     return fail('Failed to load genres', cause)
   }
@@ -349,8 +353,10 @@ const deriveAlbumsFromGenreTrackPages = async (
 ): Promise<Result<readonly LibraryItem[]>> => {
   const seen = resume?.seen ?? new Set(catalog.map((album) => album.id))
   const derived = resume?.derived ?? []
-  let startIndex = resume?.startIndex ?? 0
-  for (;;) {
+
+  const loop = async (
+    startIndex: number,
+  ): Promise<Result<readonly LibraryItem[]>> => {
     if (signal?.aborted) return ok(publishGenreAlbums(catalog, derived))
     const page = await fetchItemsPage(
       context,
@@ -369,14 +375,13 @@ const deriveAlbumsFromGenreTrackPages = async (
       }
       return page
     }
-    let added = false
+    const before = derived.length
     for (const album of uniqueAlbumsFromTracks(page.value.items)) {
       if (seen.has(album.id)) continue
       seen.add(album.id)
       derived.push(album)
-      added = true
     }
-    if (added || startIndex === 0) {
+    if (derived.length > before || startIndex === 0) {
       publishGenreAlbums(catalog, derived, onPartial)
     }
     if (
@@ -389,8 +394,10 @@ const deriveAlbumsFromGenreTrackPages = async (
     ) {
       return ok(publishGenreAlbums(catalog, derived, onPartial))
     }
-    startIndex += page.value.items.length
+    return loop(startIndex + page.value.items.length)
   }
+
+  return loop(resume?.startIndex ?? 0)
 }
 
 export const fetchAlbumsByGenre = async (
@@ -714,7 +721,7 @@ export const fetchInstantMixFromGenre = async (
   }
 }
 
-/** Genre Instant Mix by name when the id isn’t in the catalog page. */
+/** Genre Instant Mix by name when the id isn't in the catalog page. */
 export const fetchInstantMixFromGenreName = async (
   context: JellyfinContext,
   userId: string,
@@ -777,7 +784,7 @@ export const fetchSongsByArtist = async (
   return ok(dedupeLibraryItems(page.value.items))
 }
 
-/** Full artist discography (ArtistIds filter — ParentId only returns children of the artist folder). */
+/** Full artist discography (ArtistIds filter. ParentId only returns children of the artist folder). */
 export const fetchSongsForArtist = async (
   context: JellyfinContext,
   userId: string,
@@ -924,7 +931,7 @@ export const fetchPlaylistTracks = async (
       return collect(startIndex + page.length, merged)
     } catch (cause) {
       if (acc.length > 0) return ok(dedupePlaylistTracks(acc))
-      // Some servers reject /Playlists/{id}/Items — fall back to parent Items query.
+      // Some servers reject /Playlists/{id}/Items. Fall back to parent Items query.
       const fallback = await fetchChildren(context, userId, playlistId)
       if (fallback.ok) return fallback
       return fail('Failed to load playlist tracks', cause)

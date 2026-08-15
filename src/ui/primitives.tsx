@@ -25,7 +25,7 @@ export const Screen = ({
   readonly centered?: boolean
   readonly padBottom?: boolean
   readonly padHorizontal?: boolean
-  /** Full-screen scenes pad the status bar. Sheets should pass false — they already sit below the page-sheet gap. */
+  /** Full-screen scenes pad the status bar. Sheets should pass false. They already sit below the page-sheet gap. */
   readonly padTop?: boolean
 }) => {
   const insets = useSafeAreaInsets()

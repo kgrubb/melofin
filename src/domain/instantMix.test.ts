@@ -287,7 +287,7 @@ describe('instantMix', () => {
         artists: ['Odesza'],
         genres: ['Electronic'],
       }),
-      // Untagged — keep for genre seeds (retrieval already scoped)
+      // Untagged. Keep for genre seeds (retrieval already scoped)
       item('sparse', {
         artists: ['Sparse'],
         artistId: 'sparse',
@@ -384,25 +384,25 @@ describe('instantMix', () => {
         artistId: 'kg',
         genres: ['Psychedelic Rock'],
       }),
-      // Untagged Instant Mix neighbor — keep when seed has a genre lane
+      // Untagged Instant Mix neighbor. Keep when seed has genres
       item('pond', {
         artists: ['Pond'],
         artistId: 'pond',
       }),
-      // Low genre fit (different lane) — filtered without a rap blacklist
+      // Low genre fit (Hip Hop vs psych)
       item('bh', {
         artists: ['BROCKHAMPTON'],
         artistId: 'bh',
         genres: ['Hip Hop'],
       }),
-      // Low genre fit — filtered without a holiday blacklist
+      // Low genre fit (Christmas vs psych)
       item('xmas', {
         artists: ['Wham'],
         artistId: 'wham',
         name: 'Last Christmas',
         genres: ['Christmas', 'Pop'],
       }),
-      // Partial overlap only — diluted tags stay under the keep floor
+      // Partial overlap only. Diluted tags stay under the keep floor
       item('weak', {
         artists: ['Weak Match'],
         artistId: 'weak',

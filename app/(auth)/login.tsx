@@ -91,7 +91,7 @@ export default function LoginScreen() {
       await setAuthenticated(session, context)
       setBusy(false)
       setSsoCapture(null)
-      // AuthGate owns the auth → app handoff (avoids double replace flicker).
+      // AuthGate owns the auth -> app handoff (avoids double replace flicker).
     },
     [setAuthenticated],
   )
@@ -222,7 +222,7 @@ export default function LoginScreen() {
             inset
           />
           <PrimaryButton
-            label={busy ? 'Signing in…' : 'Sign in'}
+            label={busy ? 'Signing in...' : 'Sign in'}
             onPress={() => void onPasswordLogin()}
             disabled={busy}
           />
@@ -234,7 +234,7 @@ export default function LoginScreen() {
           {providers.map((provider) => (
             <GlassButton
               key={provider}
-              label={busy ? `Continue with ${provider}…` : `Continue with ${provider}`}
+              label={busy ? `Continue with ${provider}...` : `Continue with ${provider}`}
               onPress={() => void onSso(provider)}
               disabled={busy}
             />
@@ -244,7 +244,7 @@ export default function LoginScreen() {
             <View style={styles.hint}>
               <Muted>
                 {Platform.OS === 'web'
-                  ? 'If Authentik opens but Melio doesn’t continue, finish with Quick Connect — browser SSO can’t always return tokens from the provider popup.'
+                  ? "If Authentik opens but Melio doesn't continue, finish with Quick Connect. Browser SSO can't always return tokens from the provider popup."
                   : 'SSO opens in the system browser so passkeys work. Melio finishes sign-in automatically after Authentik succeeds.'}
               </Muted>
             </View>

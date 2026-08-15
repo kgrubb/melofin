@@ -1,6 +1,6 @@
 import type { ExpoConfig, ConfigContext } from 'expo/config'
 
-// CommonJS — Expo evaluates app.config without TS path resolution.
+// CommonJS. Expo evaluates app.config without TS path resolution.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { CARPLAY_ENABLED } = require('./features') as typeof import('./features')
 

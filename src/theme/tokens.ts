@@ -86,7 +86,7 @@ export const typography = {
 
 export const motion = {
   spring: {
-    // Soft press — stiff springs thrash Blur/Liquid Glass composites.
+    // Soft press keeps Blur/glass from jittering.
     press: { damping: 22, stiffness: 260, mass: 0.6 },
     selection: { damping: 24, stiffness: 240, mass: 0.7 },
     sheet: { damping: 26, stiffness: 220, mass: 0.9 },

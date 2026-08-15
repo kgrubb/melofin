@@ -51,7 +51,7 @@ export const BackButton = ({
   </PressableScale>
 )
 
-/** Sheet grabber (tappable; swipe-down is primary). */
+/** Sheet grabber (tappable, swipe-down is primary). */
 export const CloseChip = ({ onPress }: PressProps) => (
   <PressableScale
     accessibilityRole="button"

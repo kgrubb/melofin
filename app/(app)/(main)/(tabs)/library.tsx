@@ -66,7 +66,7 @@ import { colors, motion, radii, scrollUnderChromePad, spacing, typography } from
 type Segment = 'songs' | 'albums' | 'artists' | 'genres' | 'playlists'
 
 const SEGMENTS: readonly Segment[] = ['songs', 'albums', 'artists', 'genres', 'playlists']
-/** Stable empty list — Zustand selectors must not return a fresh `[]` each call. */
+/** Stable empty list. Zustand selectors must not return a fresh `[]` each call. */
 const EMPTY_LIBRARY_ITEMS: readonly LibraryItem[] = []
 
 const PlaylistCard = ({
@@ -186,9 +186,9 @@ export default function LibraryScreen() {
     if (segment !== 'songs' || librarySort !== 'name' || libraryFilter !== 'all') {
       return
     }
-    let cancelled = false
+    const ac = new AbortController()
     void songAlphabetLetters().then((letters) => {
-      if (cancelled) return
+      if (ac.signal.aborted) return
       const map: Partial<Record<AlphabetIndexLetter, number>> = {}
       for (const letter of letters) {
         if (letter === '#' || (letter >= 'A' && letter <= 'Z')) {
@@ -198,7 +198,7 @@ export default function LibraryScreen() {
       setSongLetterMap(map)
     })
     return () => {
-      cancelled = true
+      ac.abort()
     }
   }, [libraryFilter, librarySort, segment, songAlphabetLetters, songsCount])
 
@@ -315,12 +315,12 @@ export default function LibraryScreen() {
 
   useEffect(() => {
     if (segment !== 'genres' || !context || !session) return
-    let cancelled = false
+    const ac = new AbortController()
     const load = async () => {
       setGenresLoading(true)
       setGenresError(null)
       const result = await fetchMusicGenres(context, session.userId)
-      if (cancelled) return
+      if (ac.signal.aborted) return
       if (!result.ok) {
         setGenresError(result.error.message)
         setGenres([])
@@ -331,7 +331,7 @@ export default function LibraryScreen() {
     }
     void load()
     return () => {
-      cancelled = true
+      ac.abort()
     }
   }, [segment, context, session])
 
@@ -458,7 +458,7 @@ export default function LibraryScreen() {
         seedTrackId ? [seedTrackId] : undefined,
       )
       if (!result.ok) {
-        Alert.alert('Couldn’t create playlist', result.error.message)
+        Alert.alert("Couldn't create playlist", result.error.message)
         return
       }
       await upsertPlaylist({
@@ -485,7 +485,7 @@ export default function LibraryScreen() {
         trackId,
       ])
       if (!result.ok) {
-        Alert.alert('Couldn’t add to playlist', result.error.message)
+        Alert.alert("Couldn't add to playlist", result.error.message)
         return
       }
       setPickerOpen(false)
@@ -555,7 +555,7 @@ export default function LibraryScreen() {
           ).then((result) => {
             if (!result.ok) {
               patchPlayed(item.id, Boolean(item.isPlayed))
-              Alert.alert('Couldn’t update', result.error.message)
+              Alert.alert("Couldn't update", result.error.message)
             }
           })
         },
@@ -645,7 +645,7 @@ export default function LibraryScreen() {
         />
       ) : null}
       {!genresLoading && !genresError && genres.length === 0 && segment === 'genres' ? (
-        <EmptyState title="No genres" message="Your server didn’t return any music genres." />
+        <EmptyState title="No genres" message="Your server didn't return any music genres." />
       ) : null}
       {!syncing && !syncError && displayItems.length === 0 && segment === 'playlists' ? (
         <View style={styles.emptyPlaylists}>

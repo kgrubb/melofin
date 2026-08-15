@@ -245,8 +245,8 @@ export default function SettingsScreen() {
           title="Streaming"
           footer={
             streamQuality.automatic
-              ? 'Automatic picks bitrate for you: High on Wi‑Fi, Normal on cellular. Turn off to set Wi‑Fi and cellular yourself (saves data or forces max quality).'
-              : 'Choose Wi‑Fi and cellular bitrates yourself. Downloads always use the Downloads preset.'
+              ? 'Automatic picks bitrate for you: High on Wi-Fi, Normal on cellular. Turn off to set Wi-Fi and cellular yourself (saves data or forces max quality).'
+              : 'Choose Wi-Fi and cellular bitrates yourself. Downloads always use the Downloads preset.'
           }
         >
           <SettingsRow
@@ -256,11 +256,11 @@ export default function SettingsScreen() {
           />
           {!streamQuality.automatic ? (
             <SettingsRow
-              title="Wi‑Fi"
+              title="Wi-Fi"
               detail={qualityName(streamQuality.wifi)}
               chevron
               onPress={() =>
-                pickPreset('Wi‑Fi', streamQuality.wifi, (preset) => {
+                pickPreset('Wi-Fi', streamQuality.wifi, (preset) => {
                   void setStreamQuality({ wifi: preset })
                 })
               }

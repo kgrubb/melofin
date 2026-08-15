@@ -61,7 +61,7 @@ type PlayerStore = QueueState & {
   /** Bumped on play/replace/reset so async queue expands can ignore stale work. */
   readonly queueGen: number
   readonly sleep: SleepTimerState
-  /** Session Autoplay — seeded from Settings on playQueue. */
+  /** Session Autoplay. Seeded from Settings on playQueue. */
   readonly autoplaySessionOn: boolean
   /** First index of Autoplay-recommended tracks, if any. */
   readonly autoplayAnchorIndex: number | null
@@ -135,7 +135,7 @@ const clearAutoplaySession = () =>
 
 /**
  * Bind the native engine on every transport intent.
- * Dynamic import avoids a store ↔ engine cycle; HMR can drop module state.
+ * Dynamic import avoids a store <-> engine cycle. HMR can drop module state.
  */
 const ensurePlaybackEngine = () => {
   void import('@/src/player/playlistEngine').then(({ startPlaybackEngine }) => {
@@ -150,8 +150,8 @@ const seekEngine = (positionMs: number) => {
 }
 
 const primeNativeNext = () => {
-  void import('@/src/player/nativeQueue').then(({ primeNextIfEnabled }) => {
-    void primeNextIfEnabled()
+  void import('@/src/player/nativeQueue').then(({ primeNextTrack }) => {
+    void primeNextTrack()
   })
 }
 
@@ -257,10 +257,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       prev.tracks.length === 0 || prev.currentIndex < 0
         ? 0
         : prev.currentIndex + 1
-    let autoplayAnchorIndex = prev.autoplayAnchorIndex
-    if (autoplayAnchorIndex != null && insertAt <= autoplayAnchorIndex) {
-      autoplayAnchorIndex += items.length
-    }
+    const autoplayAnchorIndex =
+      prev.autoplayAnchorIndex != null && insertAt <= prev.autoplayAnchorIndex
+        ? prev.autoplayAnchorIndex + items.length
+        : prev.autoplayAnchorIndex
     set({ ...playNext(prev, items), autoplayAnchorIndex })
     primeNativeNext()
   },
@@ -268,14 +268,16 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const prev = get()
     const prevIndex = prev.currentIndex
     const next = removeAt(prev, index)
-    let autoplayAnchorIndex = prev.autoplayAnchorIndex
-    if (autoplayAnchorIndex != null) {
-      if (index < autoplayAnchorIndex) autoplayAnchorIndex -= 1
-      else if (index === autoplayAnchorIndex) {
-        autoplayAnchorIndex =
-          autoplayAnchorIndex < next.tracks.length ? autoplayAnchorIndex : null
-      }
-    }
+    const autoplayAnchorIndex =
+      prev.autoplayAnchorIndex == null
+        ? null
+        : index < prev.autoplayAnchorIndex
+          ? prev.autoplayAnchorIndex - 1
+          : index === prev.autoplayAnchorIndex
+            ? prev.autoplayAnchorIndex < next.tracks.length
+              ? prev.autoplayAnchorIndex
+              : null
+            : prev.autoplayAnchorIndex
     set({
       ...next,
       positionMs: index === prevIndex ? 0 : prev.positionMs,
@@ -296,19 +298,23 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (next === prev) return
     const shuffled =
       prev.shuffle && prev.shuffleOrder.length === prev.tracks.length
-    let autoplayAnchorIndex = prev.autoplayAnchorIndex
-    if (!shuffled && autoplayAnchorIndex != null) {
-      const view = queueViewIndices(prev)
-      const fromStore = view[fromView]
-      const toStore = view[toView]
-      if (fromStore != null && toStore != null) {
-        autoplayAnchorIndex = storeIndexAfterViewMove(
-          autoplayAnchorIndex,
-          fromStore,
-          toStore,
-        )
-      }
-    }
+    const view =
+      !shuffled && prev.autoplayAnchorIndex != null
+        ? queueViewIndices(prev)
+        : null
+    const fromStore = view?.[fromView]
+    const toStore = view?.[toView]
+    const autoplayAnchorIndex =
+      view != null &&
+      prev.autoplayAnchorIndex != null &&
+      fromStore != null &&
+      toStore != null
+        ? storeIndexAfterViewMove(
+            prev.autoplayAnchorIndex,
+            fromStore,
+            toStore,
+          )
+        : prev.autoplayAnchorIndex
     set({ ...next, autoplayAnchorIndex })
     primeNativeNext()
   },
@@ -407,7 +413,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       return
     }
     const leaving = state.tracks[state.currentIndex]
-    // Always keep play intent — skip while "paused" should still load+play.
+    // Always keep play intent. Skip while "paused" should still load+play.
     set({
       ...skipTo(state, next),
       positionMs: 0,

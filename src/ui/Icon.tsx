@@ -15,14 +15,14 @@ type Props = {
   readonly size?: number
   readonly tintColor?: ColorValue
   readonly style?: StyleProp<ViewStyle>
-  /** SF Symbol weight; defaults to medium (semibold reads heavy on transport). */
+  /** SF Symbol weight. Defaults to medium (semibold reads heavy on transport). */
   readonly weight?: 'regular' | 'medium' | 'semibold'
 }
 
 const box = (size: number, style?: StyleProp<ViewStyle>) =>
   [{ width: size, height: size, alignItems: 'center' as const, justifyContent: 'center' as const }, style]
 
-/** Material play_arrow is outline-only; keep a solid triangle off-iOS. */
+/** Material play_arrow is outline-only. Keep a solid triangle off-iOS. */
 const SolidPlay = ({
   size,
   color,
@@ -74,7 +74,7 @@ const SolidPause = ({
   )
 }
 
-/** Vertical bar + triangle — track previous/next (not ±10s double-chevron). */
+/** Vertical bar + triangle for track previous/next (not +/-10s double-chevron). */
 const TrackSkip = ({
   direction,
   size,
@@ -254,8 +254,8 @@ const VectorFallback = ({
 /**
  * SDK 54 expo-symbols quirks:
  * - `name` must be a string SF Symbol (SDK 55 `{ ios, android, web }` objects
- *   fail native lookup → empty/white blobs).
- * - Native SF Symbol point size is stuck at ~17pt; wrap + scaleAspectFit so the
+ *   fail native lookup -> empty/white blobs).
+ * - Native SF Symbol point size is stuck at ~17pt. Wrap + scaleAspectFit so the
  *   glyph scales without the stretch that scaleToFill causes on chevrons.
  */
 export const Icon = ({

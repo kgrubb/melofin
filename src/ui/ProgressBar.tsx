@@ -21,7 +21,7 @@ const formatMs = (ms: number): string => {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
-/** 0–1 shared value that climbs linearly for the remaining track time. */
+/** 0-1 shared value that climbs linearly for the remaining track time. */
 const usePlaybackProgress = (
   positionMs: number,
   durationMs: number,
@@ -33,7 +33,7 @@ const usePlaybackProgress = (
 
   useEffect(() => {
     const ratio = scrubRatio(positionMs, durationMs)
-    // Engine syncs UI position ~500ms — ignore those ticks so the linear fill
+    // Engine syncs UI position ~500ms. Ignore those ticks so the linear fill
     // keeps running. Re-anchor on seeks/track jumps or play/pause edges.
     const jumped = isPlaybackJump(
       positionMs,
@@ -108,7 +108,7 @@ const useSmoothClock = (
       setSmoothMs(next)
     }
     tick()
-    // 1Hz is enough for time labels — do not recreate on engine position ticks.
+    // 1Hz is enough for time labels. Do not recreate on engine position ticks.
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [durationMs, isPlaying])
@@ -243,7 +243,7 @@ export const ScrubBar = ({
         return
       }
       // Pin the running fill to the seek target BEFORE clearing the scrub
-      // overlay — otherwise we flash to the pre-scrub animated ratio.
+      // overlay. Otherwise we flash to the pre-scrub animated ratio.
       progress.value = scrubRatio(ms, duration)
       scrubRatioSV.value = -1
       runOnJS(finishScrub)(ms)

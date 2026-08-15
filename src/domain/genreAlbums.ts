@@ -3,7 +3,7 @@ import type { LibraryItem } from '@/src/domain/libraryItem'
 const compareAlbumName = (left: LibraryItem, right: LibraryItem): number =>
   left.name.localeCompare(right.name)
 
-/** Fold tracks into unique albums — Jellyfin often tags genre on Audio only. */
+/** Dedupe tracks into albums. Jellyfin often tags genre on Audio only. */
 export const uniqueAlbumsFromTracks = (
   tracks: readonly LibraryItem[],
 ): readonly LibraryItem[] => {
@@ -31,7 +31,7 @@ export const uniqueAlbumsFromTracks = (
   return [...albums].sort(compareAlbumName)
 }
 
-/** Union album lists; `preferred` wins on id collision (real MusicAlbum DTOs). */
+/** Union album lists. `preferred` wins on id collision (real MusicAlbum DTOs). */
 export const mergeAlbumLists = (
   preferred: readonly LibraryItem[],
   extra: readonly LibraryItem[],

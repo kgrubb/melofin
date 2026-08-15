@@ -3,7 +3,7 @@ import type { LibraryItem } from '@/src/domain/libraryItem'
 import { accountScopeKey } from '@/src/domain/accountScope'
 import { readJsonFile, writeJsonFile } from '@/src/storage/jsonFile'
 
-/** Client-built Home Instant Mix — not a Jellyfin playlist id. */
+/** Client-built Home Instant Mix, not a Jellyfin playlist id. */
 export type CachedHomeMix = {
   readonly id: string
   readonly title: string
@@ -66,7 +66,7 @@ export const persistHomeMixes = async (
 type HomeMixesStore = {
   readonly byId: Readonly<Record<string, CachedHomeMix>>
   readonly setMixes: (mixes: readonly CachedHomeMix[]) => void
-  /** Merge one mix; leave siblings intact so an open detail stays valid. */
+  /** Merge one mix. Leave siblings intact so an open detail stays valid. */
   readonly upsertMix: (mix: CachedHomeMix) => void
   readonly clear: () => void
 }

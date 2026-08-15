@@ -9,9 +9,8 @@ export const scrubRatio = (positionMs: number, durationMs: number): number => {
 }
 
 /**
- * True when a store position tick is a real seek/skip rather than the engine's
- * periodic sync (~500ms). Compare against the interpolated expectation from the
- * last anchor so consecutive sync ticks (~500ms apart) are not treated as jumps.
+ * True for a real seek/skip, not the engine's ~500ms sync tick.
+ * Compares against the interpolated position from the last anchor.
  */
 export const isPlaybackJump = (
   positionMs: number,

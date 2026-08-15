@@ -2,7 +2,7 @@ import type { LibraryItem } from '@/src/services/jellyfin/library'
 import type { OfflineEntry } from '@/src/domain/offline'
 import type { QueueTrack } from '@/src/domain/queue'
 
-/** CarPlay list page size (“More…” for the rest). */
+/** CarPlay list page size ("More..." for the rest). */
 export const CARPLAY_PAGE_SIZE = 40
 
 export type CarPlayListSection = {
@@ -70,7 +70,7 @@ const pageItems = (
       ...rows,
       {
         id: `${morePrefix}:${offset + CARPLAY_PAGE_SIZE}`,
-        text: 'More…',
+        text: 'More...',
         detailText: `${items.length - offset - CARPLAY_PAGE_SIZE} more`,
       },
     ]

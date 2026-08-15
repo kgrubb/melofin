@@ -130,7 +130,7 @@ export default function PlayerScreen() {
   const [lyricsStatus, setLyricsStatus] = useState<
     'idle' | 'loading' | 'ready' | 'empty' | 'error'
   >('idle')
-  /** Square art sized to the smaller of the hero slot’s width/height. */
+  /** Square art sized to the smaller of the hero slot's width/height. */
   const [artSide, setArtSide] = useState(0)
 
   useEffect(() => {
@@ -152,13 +152,13 @@ export default function PlayerScreen() {
 
   useEffect(() => {
     if (!lyricsOpen || !track) return
-    let cancelled = false
+    const ac = new AbortController()
     const load = async () => {
       setLyricsStatus('loading')
       if (offlineLyricsPath) {
         const relative = offlineLyricsPath
         const cached = await readJsonFile<LyricsPayload>(relative)
-        if (cancelled) return
+        if (ac.signal.aborted) return
         if (cached.ok && cached.value && cached.value.lines.length > 0) {
           const cleaned = sanitizeLyricsPayload(cached.value)
           if (cleaned.lines.length > 0) {
@@ -174,7 +174,7 @@ export default function PlayerScreen() {
         return
       }
       const result = await fetchLyrics(context, track.id)
-      if (cancelled) return
+      if (ac.signal.aborted) return
       if (!result.ok) {
         setLyrics(null)
         setLyricsStatus('error')
@@ -191,7 +191,7 @@ export default function PlayerScreen() {
     }
     void load()
     return () => {
-      cancelled = true
+      ac.abort()
     }
   }, [lyricsOpen, track, context, offlineLyricsPath])
 
@@ -366,7 +366,7 @@ export default function PlayerScreen() {
     opacity: interpolate(progress.value, [0, 1], [0, 0.55], Extrapolation.CLAMP),
   }))
 
-  /** Vertical sheet dismiss — never non-uniform scale (no squish). */
+  /** Vertical sheet dismiss (translate + fade). */
   const sheetStyle = useAnimatedStyle(() => {
     const p = progress.value
     return {
@@ -799,7 +799,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: 'rgba(255,255,255,0.28)',
   },
-  /** Art + meta shrink; controls stay pinned and never cover metadata. */
+  /** Art + meta shrink. Controls stay pinned and never cover metadata. */
   body: {
     flex: 1,
     width: '100%',

@@ -22,7 +22,7 @@ export type LegacyMigrationPlan = {
 
 /**
  * If legacy unscoped audio matches the current session, rewrite paths into
- * scopes/<scopeKey>/audio/<id>. Mismatch → leave legacy, start empty scoped index.
+ * scopes/<scopeKey>/audio/<id>. Mismatch -> leave legacy, start empty scoped index.
  */
 export const planLegacyOfflineMigration = (input: {
   readonly index: OfflineIndex

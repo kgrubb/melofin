@@ -10,7 +10,7 @@ export type SeekDecision = {
   readonly accept: boolean
   readonly positionMs: number
   readonly guard: SeekGuard
-  /** Native never reached the target — caller should re-issue seekTo. */
+  /** Native never reached the target. Caller should re-issue seekTo. */
   readonly retrySeek: boolean
 }
 
@@ -36,12 +36,12 @@ const MAX_SEEK_RETRIES = 3
 /** Near-start reports that should not wipe a mid-track UI position. */
 const SPURIOUS_START_MS = 500
 const MID_TRACK_MS = 2000
-/** Drop this far toward the start without a seek → likely replace/reset glitch. */
+/** Drop this far toward the start without a seek -> likely replace/reset glitch. */
 const BACKWARD_JUMP_MS = 2000
 
 /**
  * Progress polls often keep reporting the pre-seek time (or 0) until the
- * native player settles — accepting those makes the scrubber flash/snap back.
+ * native player settles. Accepting those makes the scrubber flash/snap back.
  */
 export const acceptReportedPosition = (
   guard: SeekGuard,
@@ -69,7 +69,7 @@ export const acceptReportedPosition = (
         retrySeek: false,
       }
     }
-    // Native reset near 0 mid-track — hold UI and re-seek to the known position.
+    // Native reset near 0 mid-track. Hold UI and re-seek to the known position.
     if (reported < SPURIOUS_START_MS && uiPositionMs > MID_TRACK_MS) {
       return {
         accept: false,
@@ -103,7 +103,7 @@ export const acceptReportedPosition = (
   }
 
   if (now >= guard.until) {
-    // Never accept a stale pre-seek report — that snaps scrubbing backwards.
+    // Never accept a stale pre-seek report. That snaps scrubbing backwards.
     if (guard.retries >= MAX_SEEK_RETRIES) {
       return {
         accept: true,

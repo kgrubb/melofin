@@ -1,7 +1,7 @@
 {
   "name": "melio-audio-graph",
   "version": "1.0.0",
-  "description": "AVAudioEngine queue + EQ insert for Melio gapless/EQ",
+  "description": "Next-URI priming + gapless/crossfade secondary player for Melio",
   "main": "index.ts",
   "types": "index.ts",
   "scripts": {},

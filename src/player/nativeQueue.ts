@@ -3,6 +3,7 @@ import { effectiveEqGains, type EqSettings } from '@/src/domain/eqPresets'
 import { nextIndex } from '@/src/domain/queue'
 import { resolveTrackSource } from '@/src/player/trackResolver'
 import { isLocalOutputEnabled } from '@/src/player/outputPolicy'
+import { stateRef } from '@/src/player/engineState'
 import { getPlaybackNetworkCached } from '@/src/services/network'
 import { getJellyfinReachable } from '@/src/services/jellyfin/reachabilityState'
 import { bitrateForPreset, resolveStreamPreset } from '@/src/domain/streamQuality'
@@ -12,8 +13,10 @@ import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
 import { Platform } from 'react-native'
 
-/** Clear native next queue + stop crossfade player. */
+/** Stop secondary handoff player and clear handoff bookkeeping. */
 export const clearNativeNextQueue = (): void => {
+  stateRef.handoffActive = false
+  stateRef.handoffForKey = null
   melioAudioGraph.clearNext()
 }
 
@@ -22,34 +25,24 @@ export const applyNativeEq = (eq: EqSettings | undefined): void => {
     melioAudioGraph.resetEq()
     return
   }
-  const settings = eq ?? useSettingsStore.getState().eq
-  melioAudioGraph.setEqGains(effectiveEqGains(settings))
+  melioAudioGraph.setEqGains(
+    effectiveEqGains(eq ?? useSettingsStore.getState().eq),
+  )
 }
 
-/**
- * When gapless and/or crossfade is on and local output is active, resolve the
- * next queue URI and hand it to the native graph for pre-buffering.
- */
-export const primeNextIfEnabled = async (): Promise<void> => {
+/** Pre-buffer next queue URI for local gapless / crossfade handoff. */
+export const primeNextTrack = async (): Promise<void> => {
   if (Platform.OS === 'web') return
   if (!isLocalOutputEnabled()) {
-    clearNativeNextQueue()
-    return
-  }
-  const settings = useSettingsStore.getState()
-  if (settings.gaplessPlayback === false && settings.crossfadeSeconds === 0) {
     clearNativeNextQueue()
     return
   }
 
   const queue = usePlayerStore.getState()
   const next = nextIndex(queue)
-  if (next < 0) {
-    clearNativeNextQueue()
-    return
-  }
-  const track = queue.tracks[next]
+  const track = next >= 0 ? queue.tracks[next] : undefined
   const session = useSessionStore.getState()
+  const settings = useSettingsStore.getState()
   if (!track || !session.session || !session.context) {
     clearNativeNextQueue()
     return

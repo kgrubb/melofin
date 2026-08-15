@@ -13,7 +13,7 @@ export type LibraryItem = {
   readonly imageItemId?: string
   readonly mediaSourceId?: string
   readonly childCount?: number
-  /** Jellyfin playlist entry id (PlaylistItemId); required for remove/reorder. */
+  /** Jellyfin playlist entry id (PlaylistItemId). Required for remove/reorder. */
   readonly playlistEntryId?: string
   readonly isFavorite?: boolean
   readonly hasLyrics?: boolean
@@ -27,6 +27,6 @@ export type LibraryItem = {
   readonly normalizationGain?: number
   /** Jellyfin Genres / GenreItems names when returned. */
   readonly genres?: readonly string[]
-  /** GenreItems with ids — enough to open a genre tile without a catalog crawl. */
+  /** GenreItems with ids. Enough to open a genre tile without a catalog crawl. */
   readonly genreItems?: readonly { readonly id: string; readonly name: string }[]
 }

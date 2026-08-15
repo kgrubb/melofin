@@ -4,7 +4,7 @@ import { nextIndex, type QueueState } from '@/src/domain/queue'
 export type PlaybackNetwork = 'offline' | 'cellular' | 'wifiLike'
 
 export const FILE_LOAD_TIMEOUT_MS = 250
-/** Cap for the first remote candidate — fail over before a long hang. */
+/** Cap for the first remote candidate. Fail over before a long hang. */
 export const REMOTE_FIRST_TIMEOUT_MS = 1_800
 export const REMOTE_WIFI_TIMEOUT_MS = 2_500
 export const REMOTE_CELLULAR_TIMEOUT_MS = 1_500
@@ -89,7 +89,7 @@ export const excludeFailedUris = (
 ): readonly string[] => uris.filter((uri) => !failed.has(uri))
 
 /**
- * Candidate looked loaded but never produced audio — or is still the prior
+ * Candidate looked loaded but never produced audio, or is still the prior
  * item sitting at EOF. Buffering is not a failure.
  */
 export const shouldAbandonSilentStart = (input: {

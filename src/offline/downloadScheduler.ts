@@ -6,7 +6,7 @@ export type DownloadScheduler = {
   readonly resume: () => void
 }
 
-/** Limits how many download tasks run at once; FIFO for the rest. */
+/** Limits how many download tasks run at once. FIFO for the rest. */
 export const createDownloadScheduler = (concurrency: number): DownloadScheduler => {
   const limit = Math.max(1, Math.floor(concurrency))
   const waiting: (() => void)[] = []

@@ -28,7 +28,7 @@ const Native = loadCastButton()
 
 /**
  * Native Cast button. Required on iOS 14+ so the user can grant Local Network
- * permission; custom device lists stay empty until that happens once.
+ * permission. Custom device lists stay empty until that happens once.
  */
 export const CastRouteButton = ({ style }: Props) => {
   if (!Native) {

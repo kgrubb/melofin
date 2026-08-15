@@ -30,7 +30,7 @@ const loadNative = (): ComponentType<NativeProps> | null => {
   }
 }
 
-/** System AVRoutePickerView host. Stub when the native module isn’t linked yet. */
+/** System AVRoutePickerView host. Stub when the native module isn't linked yet. */
 export const AirPlayRouteButton = ({ style }: Props) => {
   const NativeAirPlay = loadNative()
   if (!NativeAirPlay) {

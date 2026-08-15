@@ -283,12 +283,12 @@ const ActionChip = ({
     {primary ? (
       <AccentGradient style={styles.chipPrimary}>
         <Icon name={icon} tintColor={colors.onAccent} size={16} />
-        <Text style={styles.chipPrimaryLabel}>{busy ? '…' : label}</Text>
+        <Text style={styles.chipPrimaryLabel}>{busy ? '...' : label}</Text>
       </AccentGradient>
     ) : (
       <View style={[styles.chipSecondary, disabled ? styles.chipDisabled : null]}>
         <Icon name={icon} tintColor={colors.text} size={16} />
-        <Text style={styles.chipSecondaryLabel}>{busy ? '…' : label}</Text>
+        <Text style={styles.chipSecondaryLabel}>{busy ? '...' : label}</Text>
       </View>
     )}
   </PressableScale>
@@ -299,11 +299,11 @@ const HomeGreeting = () => {
   const seen = useRef(false)
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined
+    const handle: { timer?: ReturnType<typeof setTimeout> } = {}
     const tick = () => setNow(new Date())
     const arm = () => {
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => {
+      if (handle.timer) clearTimeout(handle.timer)
+      handle.timer = setTimeout(() => {
         tick()
         arm()
       }, msUntilNextHomeGreeting(new Date()))
@@ -315,7 +315,7 @@ const HomeGreeting = () => {
     })
     arm()
     return () => {
-      if (timer) clearTimeout(timer)
+      if (handle.timer) clearTimeout(handle.timer)
       sub.remove()
     }
   }, [])
@@ -496,11 +496,13 @@ export default function HomeScreen() {
       const listenTracks = [...nextRecent, ...nextFavorites]
       const listenedGenreNames = listeningGenreNames(listenTracks)
       const genresFromTracks = listeningGenresFromTracks(listenTracks, 16)
-      let nextGenres = preferListeningGenres(
-        genresFromTracks,
-        listenedGenreNames,
-        16,
-      )
+      const genresBox = {
+        current: preferListeningGenres(
+          genresFromTracks,
+          listenedGenreNames,
+          16,
+        ),
+      }
 
       const listenFailed =
         !recent.ok && !f.ok && !likedArtists.ok && !resumeEarly.ok
@@ -514,57 +516,51 @@ export default function HomeScreen() {
           12,
         ),
       )
-      if (nextGenres.length > 0) setGenres(nextGenres)
+      if (genresBox.current.length > 0) setGenres(genresBox.current)
       paintedUserRef.current = scopeKey
       setCatalogPending(true)
       setLoading(false)
       if (!listenFailed) setError(null)
 
       const live = () => isCurrent() && !gate.cancelled
-      let catalogLeft = 3
-      const settleCatalog = () => {
-        catalogLeft -= 1
-        if (catalogLeft <= 0 && isCurrent()) setCatalogPending(false)
-      }
-      void albumsP
-        .then((result) => {
-          if (!live() || !result.ok) return
-          setAlbums(withArtistsFromTracks(result.value, listenTracks))
-        })
-        .finally(settleCatalog)
-      void playlistsP
-        .then((result) => {
-          if (!live() || !result.ok) return
-          setPlaylists(result.value)
-        })
-        .finally(settleCatalog)
-      void genresP
-        .then((result) => {
-          if (!live()) return
-          const preview = result.ok ? result.value : []
-          nextGenres = preferListeningGenres(
-            foldGenreCatalog([preview, genresFromTracks]),
+      void albumsP.then((result) => {
+        if (!live() || !result.ok) return
+        setAlbums(withArtistsFromTracks(result.value, listenTracks))
+      })
+      void playlistsP.then((result) => {
+        if (!live() || !result.ok) return
+        setPlaylists(result.value)
+      })
+      void genresP.then((result) => {
+        if (!live()) return
+        const preview = result.ok ? result.value : []
+        genresBox.current = preferListeningGenres(
+          foldGenreCatalog([preview, genresFromTracks]),
+          listenedGenreNames,
+          16,
+        )
+        if (genresBox.current.length > 0) setGenres(genresBox.current)
+        if (!listeningGenresNeedCatalog(listenedGenreNames, genresBox.current)) {
+          return
+        }
+        void fetchMusicGenresPreview(
+          context,
+          session.userId,
+          HOME_GENRE_CATALOG_LIMIT,
+          { enableImages: false },
+        ).then((more) => {
+          if (!live() || !more.ok) return
+          genresBox.current = preferListeningGenres(
+            foldGenreCatalog([preview, more.value, genresFromTracks]),
             listenedGenreNames,
             16,
           )
-          if (nextGenres.length > 0) setGenres(nextGenres)
-          if (!listeningGenresNeedCatalog(listenedGenreNames, nextGenres)) return
-          void fetchMusicGenresPreview(
-            context,
-            session.userId,
-            HOME_GENRE_CATALOG_LIMIT,
-            { enableImages: false },
-          ).then((more) => {
-            if (!live() || !more.ok) return
-            nextGenres = preferListeningGenres(
-              foldGenreCatalog([preview, more.value, genresFromTracks]),
-              listenedGenreNames,
-              16,
-            )
-            if (nextGenres.length > 0) setGenres(nextGenres)
-          })
+          if (genresBox.current.length > 0) setGenres(genresBox.current)
         })
-        .finally(settleCatalog)
+      })
+      void Promise.allSettled([albumsP, playlistsP, genresP]).then(() => {
+        if (isCurrent()) setCatalogPending(false)
+      })
 
       const cached = await cachedP
       if (!isCurrent()) return
@@ -698,7 +694,7 @@ export default function HomeScreen() {
             ),
           emptyJobs,
         )
-        const genreJobs = nextGenres
+        const genreJobs = genresBox.current
           .reduce<JobAcc>(
             (acc, genre) =>
               pushJob(
@@ -936,6 +932,17 @@ export default function HomeScreen() {
     router.push(`/(app)/(main)/mix/${encodeURIComponent(mix.id)}`)
   }
 
+  const shuffleMix = (mix: HomeMix) => {
+    const tracks = toHeroTracks(mix.tracks)
+    if (tracks.length === 0) return
+    playQueue(
+      tracks,
+      Math.floor(Math.random() * tracks.length),
+      { kind: 'mix', id: mix.id },
+      true,
+    )
+  }
+
   const empty =
     resume.length === 0 &&
     homeMixes.length === 0 &&
@@ -1066,9 +1073,21 @@ export default function HomeScreen() {
                       >
                         <View style={styles.mixArtWrap}>
                           <MixCollage arts={arts} size={MIX_CARD_W} />
-                          <AccentGradient style={styles.mixBadge}>
-                            <Icon name={mix.icon} tintColor={colors.onAccent} size={14} />
-                          </AccentGradient>
+                          <PressableScale
+                            accessibilityRole="button"
+                            accessibilityLabel={`Shuffle play ${mix.title}`}
+                            scaleTo={motion.scale.button}
+                            hitSlop={8}
+                            onPress={(event) => {
+                              event.stopPropagation()
+                              shuffleMix(mix)
+                            }}
+                            style={styles.mixBadgePress}
+                          >
+                            <AccentGradient style={styles.mixBadge}>
+                              <Icon name={mix.icon} tintColor={colors.onAccent} size={14} />
+                            </AccentGradient>
+                          </PressableScale>
                         </View>
                         <Text style={styles.mixTitle} numberOfLines={2}>
                           {mix.title}
@@ -1347,10 +1366,12 @@ const styles = StyleSheet.create({
   collageCell: {
     overflow: 'hidden',
   },
-  mixBadge: {
+  mixBadgePress: {
     position: 'absolute',
     bottom: 8,
     right: 8,
+  },
+  mixBadge: {
     width: 36,
     height: 36,
     borderRadius: 18,

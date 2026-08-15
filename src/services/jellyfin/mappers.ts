@@ -42,18 +42,15 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
   const runTimeTicks = Number(item.RunTimeTicks ?? 0)
   const artistPairs = nameIdPairs(item.ArtistItems ?? item.artistItems)
   const albumArtistPairs = nameIdPairs(item.AlbumArtists ?? item.albumArtists)
-  let artists = stringList(item.Artists ?? item.artists)
-  if (artists.length === 0) {
-    artists = artistPairs.map((entry) => entry.name).filter((name) => name.length > 0)
-  }
-  if (artists.length === 0) {
-    artists = albumArtistPairs
-      .map((entry) => entry.name)
-      .filter((name) => name.length > 0)
-  }
-  if (artists.length === 0) {
-    artists = stringList(item.AlbumArtist ?? item.albumArtist)
-  }
+  const artists =
+    [
+      stringList(item.Artists ?? item.artists),
+      artistPairs.map((entry) => entry.name).filter((name) => name.length > 0),
+      albumArtistPairs
+        .map((entry) => entry.name)
+        .filter((name) => name.length > 0),
+      stringList(item.AlbumArtist ?? item.albumArtist),
+    ].find((list) => list.length > 0) ?? []
   const id = String(item.Id ?? '')
   const imageTags = item.ImageTags
   const mediaSources = item.MediaSources
@@ -190,7 +187,7 @@ export const toQueueTrack = (
 
 type ArtworkSize = 'thumb' | 'card' | 'hero'
 
-/** Pixel caps — hero must exceed @3x Now Playing (~390–430pt). */
+/** Pixel caps. Hero must exceed @3x Now Playing (~390-430pt). */
 export const ARTWORK_MAX_PX: Record<ArtworkSize, number> = {
   thumb: 384,
   card: 960,
@@ -228,14 +225,13 @@ export const resizeArtworkUrl = (
   if (!uri || uri.startsWith('file:') || uri.startsWith('/')) return uri
   const px = ARTWORK_MAX_PX[size]
   if (!uri.includes('maxHeight=') && !uri.includes('maxWidth=')) return uri
-  let next = uri
+  const resized = uri
     .replace(/maxHeight=\d+/g, `maxHeight=${px}`)
     .replace(/maxWidth=\d+/g, `maxWidth=${px}`)
     .replace(/quality=\d+/g, 'quality=96')
-  if (!next.includes('maxWidth=')) {
-    next = next.replace(/([?&])maxHeight=/, `$1maxWidth=${px}&maxHeight=`)
-  }
-  return next
+  return resized.includes('maxWidth=')
+    ? resized
+    : resized.replace(/([?&])maxHeight=/, `$1maxWidth=${px}&maxHeight=`)
 }
 
 /** Jellyfin user primary image (profile photo). */
@@ -269,7 +265,7 @@ export const buildUniversalStreamUrl = (
   return `${context.serverUrl}/Audio/${itemId}/universal?${params.toString()}`
 }
 
-/** Forced MP3 transcoder path — last-resort failover for decode failures. */
+/** Forced MP3 transcoder path. Last-resort failover for decode failures. */
 export const buildAudioStreamUrl = (
   context: JellyfinContext,
   itemId: string,

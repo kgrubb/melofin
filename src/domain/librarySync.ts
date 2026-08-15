@@ -30,7 +30,7 @@ export const idleSyncProgress = (): LibrarySyncProgress => IDLE_SYNC_PROGRESS
 
 export const librarySyncModeLabel = (mode: LibrarySyncMode): string => {
   if (mode === 'onOpen') return 'On open'
-  if (mode === 'wifiOnly') return 'Wi‑Fi only'
+  if (mode === 'wifiOnly') return 'Wi-Fi only'
   return 'Manual'
 }
 
@@ -59,21 +59,21 @@ export const formatLibrarySyncedAt = (syncedAt: number | null): string => {
 export const formatLibrarySyncProgress = (
   progress: LibrarySyncProgress,
 ): string => {
-  if (progress.phase === 'collections') return 'Updating collections…'
-  if (progress.phase === 'saving') return 'Saving to device…'
+  if (progress.phase === 'collections') return 'Updating collections...'
+  if (progress.phase === 'saving') return 'Saving to device...'
   if (progress.phase === 'songs') {
     const loaded = progress.songsLoaded
     const total = progress.songsTotal
     if (total > 0) {
       return `Songs ${loaded.toLocaleString()} of ${total.toLocaleString()}`
     }
-    if (loaded > 0) return `Songs ${loaded.toLocaleString()}…`
-    return 'Fetching songs…'
+    if (loaded > 0) return `Songs ${loaded.toLocaleString()}...`
+    return 'Fetching songs...'
   }
-  return 'Syncing…'
+  return 'Syncing...'
 }
 
-/** 0–1 when song paging has a known total; otherwise null (indeterminate). */
+/** 0-1 when song paging has a known total, otherwise null (indeterminate). */
 export const librarySyncFraction = (
   progress: LibrarySyncProgress,
 ): number | null => {
@@ -87,10 +87,10 @@ export const formatLibrarySyncButton = (
   progress: LibrarySyncProgress,
 ): string => {
   if (!syncing) return 'Sync Now'
-  if (progress.phase === 'saving') return 'Saving…'
+  if (progress.phase === 'saving') return 'Saving...'
   const fraction = librarySyncFraction(progress)
   if (fraction != null) return `Syncing ${Math.round(fraction * 100)}%`
-  return 'Syncing…'
+  return 'Syncing...'
 }
 
 /** False when a cached catalog belongs to another server or user. Missing userId is legacy. */
@@ -131,7 +131,7 @@ export type SongSyncFetchPlan = {
   readonly concurrency: number
 }
 
-/** First sync / schema bump → full; otherwise try MinDateLastSaved delta. */
+/** First sync / schema bump -> full, otherwise try MinDateLastSaved delta. */
 export const songSyncPhase = ({
   schemaStale,
   songsSyncedAt,
@@ -161,7 +161,7 @@ export const songSyncAfterDelta = ({
   return 'full'
 }
 
-/** Stamp watermark from pull start, not end — overlap for clock skew / in-flight saves. */
+/** Stamp watermark from pull start, not end, for clock skew / in-flight save overlap. */
 export const songDeltaWatermarkMs = (pullStartedAt: number): number =>
   pullStartedAt - 60_000
 

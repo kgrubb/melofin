@@ -37,7 +37,7 @@ export const defaultStreamQuality = (): StreamQualitySettings => ({
 export const isQualityPreset = (value: unknown): value is QualityPreset =>
   value === 'low' || value === 'normal' || value === 'high'
 
-/** Automatic: cellular→Normal, wifi→High (or explicit wifi/cellular when auto off). */
+/** Automatic: cellular->Normal, wifi->High (or explicit wifi/cellular when auto off). */
 export const resolveStreamPreset = (
   settings: StreamQualitySettings,
   network: PlaybackNetwork,

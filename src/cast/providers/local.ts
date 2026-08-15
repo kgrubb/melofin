@@ -50,7 +50,7 @@ export const localProvider: CastProvider = {
   syncTo: async () => ok(undefined),
   subscribeStatus: (cb) => {
     const tick = () => {
-      // Local status comes from playlistEngine / player store — no-op pump.
+      // Local status comes from playlistEngine / player store. No-op pump.
       const status: CastStatus = {
         playing: false,
         positionMs: 0,

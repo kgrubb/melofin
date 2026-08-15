@@ -42,7 +42,7 @@ export type SongPageSink = (
 
 /**
  * Stream song pages. Wi-Fi pairs Limit offsets when the sibling start is inside
- * total; a short/failed sibling drops to sequential and re-pairs after a full
+ * total. A short/failed sibling drops to sequential and re-pairs after a full
  * page. Returns items loaded.
  */
 export const forEachSongPage = async (
@@ -153,7 +153,7 @@ export const fetchSongsProgressive = async (
   },
   totalHint?: number,
 ): Promise<Result<readonly LibraryItem[]>> => {
-  // Mutable buffer: immutable concat per page is O(n²) on large catalogs.
+  // Mutable buffer: immutable concat per page is O(n^2) on large catalogs.
   const items: LibraryItem[] = []
   const result = await forEachSongPage(
     context,

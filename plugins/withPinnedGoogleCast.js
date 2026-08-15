@@ -21,16 +21,16 @@ const withPinnedGoogleCast = (config) =>
       if (idx < 0) return mod
       // Insert after the first `target 'Melio' do` line.
       const lines = src.split('\n')
-      const out = []
-      let inserted = false
-      for (const line of lines) {
-        out.push(line)
-        if (!inserted && /^\s*target ['"]Melio['"]\s+do\s*$/.test(line)) {
-          out.push(PIN.trimEnd())
-          inserted = true
-        }
-      }
-      if (inserted) fs.writeFileSync(podfile, out.join('\n'))
+      const targetIdx = lines.findIndex((line) =>
+        /^\s*target ['"]Melio['"]\s+do\s*$/.test(line),
+      )
+      if (targetIdx < 0) return mod
+      const next = [
+        ...lines.slice(0, targetIdx + 1),
+        PIN.trimEnd(),
+        ...lines.slice(targetIdx + 1),
+      ]
+      fs.writeFileSync(podfile, next.join('\n'))
       return mod
     },
   ])

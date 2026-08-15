@@ -26,10 +26,10 @@ export const rememberPlaybackNetwork = (state: NetInfoState): PlaybackNetwork =>
   return cache.network
 }
 
-/** Updated by NetInfo listener — safe to read during load. */
+/** Updated by NetInfo listener. Safe to read during load. */
 export const getPlaybackNetworkCached = (): PlaybackNetwork => cache.network
 
-/** Wi‑Fi-only library sync: interface type only (not isInternetReachable). */
+/** Wi-Fi-only library sync: interface type only (not isInternetReachable). */
 export const isWifiLikeConnection = async (): Promise<boolean> => {
   if (Platform.OS === 'web') {
     const state = await NetInfo.fetch()

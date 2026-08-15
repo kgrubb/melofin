@@ -15,9 +15,7 @@ export const buildAlphabetIndex = (
   items: readonly { readonly name: string }[],
 ): AlphabetIndexMap => {
   const map: Partial<Record<AlphabetIndexLetter, number>> = {}
-  for (let i = 0; i < items.length; i += 1) {
-    const item = items[i]
-    if (!item) continue
+  for (const [i, item] of items.entries()) {
     const letter = alphabetIndexLetter(item.name)
     if (map[letter] === undefined) map[letter] = i
   }

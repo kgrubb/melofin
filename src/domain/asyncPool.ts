@@ -1,4 +1,4 @@
-/** Bounded concurrency; results stay in input order. */
+/** Bounded concurrency. Results stay in input order. */
 export const mapPool = async <T, R>(
   items: readonly T[],
   concurrency: number,

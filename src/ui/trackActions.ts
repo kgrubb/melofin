@@ -12,7 +12,7 @@ export type TrackActionHandlers = {
   readonly extra?: readonly TrackActionButton[]
 }
 
-/** Menu order: Play next → queue → radio → playlist → favorite → played → extras. */
+/** Menu order: Play next -> queue -> radio -> playlist -> favorite -> played -> extras. */
 export const buildTrackActions = (
   handlers: TrackActionHandlers,
 ): readonly TrackActionButton[] => {
@@ -24,7 +24,7 @@ export const buildTrackActions = (
     actions.push({ text: 'Start radio', onPress: handlers.onStartRadio })
   }
   if (handlers.onAddToPlaylist) {
-    actions.push({ text: 'Add to playlist…', onPress: handlers.onAddToPlaylist })
+    actions.push({ text: 'Add to playlist...', onPress: handlers.onAddToPlaylist })
   }
   if (handlers.onToggleFavorite) {
     actions.push({

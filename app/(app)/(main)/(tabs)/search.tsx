@@ -88,7 +88,7 @@ export default function SearchScreen() {
         [pendingTrackId],
       )
       if (!result.ok) {
-        Alert.alert('Couldn’t add to playlist', result.error.message)
+        Alert.alert("Couldn't add to playlist", result.error.message)
         return
       }
       setPickerOpen(false)
@@ -106,7 +106,7 @@ export default function SearchScreen() {
     try {
       const result = await createPlaylist(context, session.userId, name, [pendingTrackId])
       if (!result.ok) {
-        Alert.alert('Couldn’t create playlist', result.error.message)
+        Alert.alert("Couldn't create playlist", result.error.message)
         return
       }
       await upsertPlaylist({
@@ -187,7 +187,7 @@ export default function SearchScreen() {
         accessibilityLabel="Search"
         value={term}
         onChangeText={setTerm}
-        placeholder="Songs, albums, artists…"
+        placeholder="Songs, albums, artists..."
         autoCapitalize="none"
         containerStyle={styles.field}
         inset
@@ -197,7 +197,7 @@ export default function SearchScreen() {
           title={settledTerm ? 'No results' : 'Search'}
           message={
             settledTerm
-              ? `Nothing matched “${settledTerm}”.`
+              ? `Nothing matched "${settledTerm}".`
               : 'Type to search your library.'
           }
         />

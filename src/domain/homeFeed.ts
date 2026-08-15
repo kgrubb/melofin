@@ -10,7 +10,7 @@ export const mixSeedKey = (item: LibraryItem): string => {
   return `item:${item.id}`
 }
 
-/** Prefer Audio seeds so album/playlist rows don’t crowd out songs. */
+/** Prefer Audio seeds so album/playlist rows don't crowd out songs. */
 export const assembleMixSeeds = (
   candidates: readonly LibraryItem[],
   limit = 3,
@@ -34,7 +34,7 @@ export const assembleMixSeeds = (
 
 export const recentMixTitle = (): string => 'Recently played'
 
-/** Split collabs on / | ; keep commas in names. */
+/** Split collabs on / | but keep commas in names. */
 export const primaryArtistName = (
   artists: readonly string[],
   fallback = '',
@@ -94,7 +94,7 @@ export const favoritesMixTitle = (): string => 'Favorites mix'
 export const isNumberedMixTitle = (title: string): boolean =>
   /^mix\s*\d+$/i.test(title.trim())
 
-/** Don’t split genre labels on apostrophes. */
+/** Don't split genre labels on apostrophes. */
 export const titleCaseGenreLabel = (label: string): string => {
   const trimmed = label.trim()
   if (!trimmed) return ''

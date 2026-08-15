@@ -1,7 +1,7 @@
 const byteToHex = (value: number): string =>
   value.toString(16).padStart(2, '0')
 
-/** Hermes does not provide `crypto.randomUUID` — keep playstate IDs working. */
+/** Hermes does not provide `crypto.randomUUID`. Keep playstate IDs working. */
 export const newPlaySessionId = (): string => {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
     return globalThis.crypto.randomUUID()

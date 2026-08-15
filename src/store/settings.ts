@@ -56,16 +56,11 @@ type Settings = {
   readonly replayGainMode: ReplayGainMode
   readonly librarySort: LibrarySort
   readonly libraryFilter: LibraryFilter
-  /**
-   * Legacy preference — ignored for playback until AVAudioEngine queue ships.
-   * Kept so older settings.json round-trips without noisy resets.
-   */
-  readonly gaplessPlayback: boolean
   /** Keep playing similar tracks when a queue ends (default on). */
   readonly autoplayEnabled: boolean
-  /** Local overlap fade seconds; 0 = off. */
+  /** Local overlap fade seconds; 0 = off (gapless still applies). */
   readonly crossfadeSeconds: CrossfadeSeconds
-  /** Kept for round-trip; EQ UI hidden until native insert lands. */
+  /** Kept for round-trip. EQ UI hidden until native insert lands. */
   readonly eq: EqSettings
   readonly syncPacks: SyncPackIndex
 }
@@ -81,7 +76,6 @@ const defaultSettings = (): Settings => ({
   replayGainMode: 'off',
   librarySort: 'name',
   libraryFilter: 'all',
-  gaplessPlayback: false,
   autoplayEnabled: true,
   crossfadeSeconds: 0,
   eq: defaultEqSettings(),
@@ -104,7 +98,6 @@ const snapshot = (
   replayGainMode: patch.replayGainMode ?? state.replayGainMode,
   librarySort: patch.librarySort ?? state.librarySort,
   libraryFilter: patch.libraryFilter ?? state.libraryFilter,
-  gaplessPlayback: patch.gaplessPlayback ?? state.gaplessPlayback,
   autoplayEnabled: patch.autoplayEnabled ?? state.autoplayEnabled,
   crossfadeSeconds: patch.crossfadeSeconds ?? state.crossfadeSeconds,
   eq: patch.eq ?? state.eq,
@@ -157,7 +150,6 @@ type SettingsState = Settings & {
   readonly setReplayGainMode: (mode: ReplayGainMode) => Promise<void>
   readonly setLibrarySort: (sort: LibrarySort) => Promise<void>
   readonly setLibraryFilter: (filter: LibraryFilter) => Promise<void>
-  readonly setGaplessPlayback: (enabled: boolean) => Promise<void>
   readonly setAutoplayEnabled: (enabled: boolean) => Promise<void>
   readonly setCrossfadeSeconds: (seconds: CrossfadeSeconds) => Promise<void>
   readonly setEq: (patch: Partial<EqSettings>) => Promise<void>
@@ -177,12 +169,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     setOfflineIndexPublishHandler((index) => {
       set({ offlineIndex: index })
     })
-    const settings = await readJsonFile<Partial<Settings>>(SETTINGS_FILE)
+    const settings = await readJsonFile<Partial<Settings> & {
+      readonly gaplessPlayback?: boolean
+    }>(SETTINGS_FILE)
     const defaults = defaultSettings()
     const loaded = settings.ok && settings.value ? settings.value : {}
+    const { gaplessPlayback: _legacyGapless, ...loadedClean } = loaded
     set({
       ...defaults,
-      ...loaded,
+      ...loadedClean,
       syncMode:
         loaded.syncMode === 'onOpen' ||
         loaded.syncMode === 'wifiOnly' ||
@@ -199,10 +194,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       libraryFilter: isLibraryFilter(loaded.libraryFilter)
         ? loaded.libraryFilter
         : defaults.libraryFilter,
-      gaplessPlayback:
-        typeof loaded.gaplessPlayback === 'boolean'
-          ? loaded.gaplessPlayback
-          : defaults.gaplessPlayback,
       autoplayEnabled:
         typeof loaded.autoplayEnabled === 'boolean'
           ? loaded.autoplayEnabled
@@ -213,7 +204,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       offlineIndex: emptyOfflineIndex(),
       hydrated: true,
     })
-    // Session hydrate may race; activate when already signed in.
+    // Session hydrate may race. Activate when already signed in.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { useSessionStore } = require('@/src/store/session') as typeof import('@/src/store/session')
     const session = useSessionStore.getState().session
@@ -273,10 +264,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     await persistSettings(snapshot(get(), { libraryFilter }))
     set({ libraryFilter })
   },
-  setGaplessPlayback: async (gaplessPlayback) => {
-    await persistSettings(snapshot(get(), { gaplessPlayback }))
-    set({ gaplessPlayback })
-  },
   setAutoplayEnabled: async (autoplayEnabled) => {
     await persistSettings(snapshot(get(), { autoplayEnabled }))
     set({ autoplayEnabled })
@@ -292,15 +279,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const normalized = normalizeCrossfadeSeconds(crossfadeSeconds)
     await persistSettings(snapshot(get(), { crossfadeSeconds: normalized }))
     set({ crossfadeSeconds: normalized })
-    if (normalized > 0) {
-      void import('@/src/player/nativeQueue').then(({ primeNextIfEnabled }) => {
-        void primeNextIfEnabled()
-      })
-    } else {
-      void import('@/src/player/nativeQueue').then(({ clearNativeNextQueue }) => {
-        clearNativeNextQueue()
-      })
-    }
+    void import('@/src/player/nativeQueue').then(({ primeNextTrack }) => {
+      void primeNextTrack()
+    })
   },
   setEq: async (patch) => {
     const eq = parseEqSettings({ ...get().eq, ...patch })

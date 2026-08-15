@@ -212,7 +212,7 @@ const CollectionHero = ({
           <CircleAction
             label={
               downloading
-                ? 'Saving…'
+                ? 'Saving...'
                 : keepOffline
                   ? 'Keep offline'
                   : 'Download'
@@ -350,7 +350,7 @@ export const CollectionScreen = ({
     if (!children.ok) {
       setCollection(meta.ok ? meta.value : null)
       if (!opts?.silent) setError(children.error.message)
-      else Alert.alert('Couldn’t refresh playlist', children.error.message)
+      else Alert.alert("Couldn't refresh playlist", children.error.message)
       return
     }
     setAlbums([])
@@ -457,13 +457,13 @@ export const CollectionScreen = ({
             .setSyncPacks(
               upsertSyncPack(useSettingsStore.getState().syncPacks, pack),
             )
-          // Large packs prefer Wi‑Fi automatically (no new Settings row).
+          // Large packs prefer Wi-Fi automatically (no new Settings row).
           if (queueTracks.length >= 20) {
             const { isWifiLikeConnection } = await import('@/src/services/network')
             if (!(await isWifiLikeConnection())) {
               Alert.alert(
-                'Waiting for Wi‑Fi',
-                'Large offline packs download over Wi‑Fi. Connect and try again.',
+                'Waiting for Wi-Fi',
+                'Large offline packs download over Wi-Fi. Connect and try again.',
               )
               return
             }
@@ -503,7 +503,7 @@ export const CollectionScreen = ({
     try {
       const result = await renamePlaylist(context, id, name)
       if (!result.ok) {
-        Alert.alert('Couldn’t rename playlist', result.error.message)
+        Alert.alert("Couldn't rename playlist", result.error.message)
         return
       }
       const nextName = normalizePlaylistName(name)
@@ -542,7 +542,7 @@ export const CollectionScreen = ({
             try {
               const result = await deletePlaylist(context, id)
               if (!result.ok) {
-                Alert.alert('Couldn’t delete playlist', result.error.message)
+                Alert.alert("Couldn't delete playlist", result.error.message)
                 return
               }
               await removePlaylistFromCache(id)
@@ -572,7 +572,7 @@ export const CollectionScreen = ({
       try {
         const result = await removeTracksFromPlaylist(context, id, [entryId])
         if (!result.ok) {
-          Alert.alert('Couldn’t remove track', result.error.message)
+          Alert.alert("Couldn't remove track", result.error.message)
           return
         }
         setTracks((prev) => prev.filter((track) => track.playlistEntryId !== entryId))
@@ -596,7 +596,7 @@ export const CollectionScreen = ({
         [pendingTrackId],
       )
       if (!result.ok) {
-        Alert.alert('Couldn’t add to playlist', result.error.message)
+        Alert.alert("Couldn't add to playlist", result.error.message)
         return
       }
       setPickerOpen(false)
@@ -615,7 +615,7 @@ export const CollectionScreen = ({
     try {
       const result = await createPlaylist(context, session.userId, name, [pendingTrackId])
       if (!result.ok) {
-        Alert.alert('Couldn’t create playlist', result.error.message)
+        Alert.alert("Couldn't create playlist", result.error.message)
         return
       }
       await upsertPlaylist({
@@ -888,7 +888,7 @@ export const CollectionScreen = ({
                 ) : showAlbums ? (
                   <EmptyState
                     title="No albums"
-                    message="This artist doesn’t have any albums on your server."
+                    message="This artist doesn't have any albums on your server."
                   />
                 ) : (
                   <Muted>No tracks in this {kind}.</Muted>

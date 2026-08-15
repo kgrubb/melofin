@@ -2,7 +2,7 @@ import { castError } from '@/src/cast/errors'
 import type { CastError } from '@/src/cast/types'
 import { err, ok, type Result } from '@/src/domain/result'
 
-/** Cast receivers must fetch the URL themselves — never hand them file://. */
+/** Cast receivers must fetch the URL themselves. Never hand them file://. */
 export const castableUrl = (uri: string): Result<string, CastError> => {
   const trimmed = uri.trim()
   if (!trimmed) {

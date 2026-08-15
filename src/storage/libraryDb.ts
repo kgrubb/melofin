@@ -129,7 +129,7 @@ const openDb = async (): Promise<SqlDatabase | null> => {
         await ensureSongColumns(sql)
         return sql
       } catch {
-        // Expo Go / missing native binary — Songs stay in-memory/JSON until a rebuild.
+        // Expo Go / missing native binary. Songs stay in-memory/JSON until a rebuild.
         return null
       }
     })()
@@ -216,7 +216,11 @@ const insertSongs = async (
   songs: readonly LibraryItem[],
   table = 'songs',
 ): Promise<void> => {
-  for (let i = 0; i < songs.length; i += INSERT_CHUNK) {
+  const starts = Array.from(
+    { length: Math.ceil(songs.length / INSERT_CHUNK) },
+    (_, k) => k * INSERT_CHUNK,
+  )
+  for (const i of starts) {
     const chunk = songs.slice(i, i + INSERT_CHUNK)
     await Promise.all(chunk.map((song) => insertSong(db, song, table)))
   }
@@ -266,7 +270,7 @@ export const withIncomingSongReplace = async (
     try {
       await db.execAsync(`DELETE FROM ${INCOMING}`)
     } catch {
-      // Best-effort cleanup; live songs still intact.
+      // Best-effort cleanup. Live songs still intact.
     }
     throw cause
   }
@@ -279,7 +283,7 @@ export const countSongs = async (): Promise<number> => {
   return Number(row?.c ?? 0)
 }
 
-/** @deprecated Prefer keyset pages; kept for web migration / rare full reads. */
+/** @deprecated Prefer keyset pages. Kept for web migration / rare full reads. */
 export const loadAllSongs = async (): Promise<readonly LibraryItem[]> => {
   const db = await openDb()
   if (!db) return []
@@ -392,7 +396,11 @@ export const loadSongsByIds = async (
   if (!db || ids.length === 0) return []
   const byId = new Map<string, LibraryItem>()
   const chunkSize = 200
-  for (let i = 0; i < ids.length; i += chunkSize) {
+  const starts = Array.from(
+    { length: Math.ceil(ids.length / chunkSize) },
+    (_, k) => k * chunkSize,
+  )
+  for (const i of starts) {
     const chunk = ids.slice(i, i + chunkSize)
     const placeholders = chunk.map(() => '?').join(',')
     const rows = await db.getAllAsync<Record<string, unknown>>(
@@ -415,7 +423,7 @@ export const songCursorOf = (song: LibraryItem): SongCursor => ({
   id: song.id,
 })
 
-/** Page of the full A–Z song list starting at a section-index letter. */
+/** Page of the full A-Z song list starting at a section-index letter. */
 export const loadSongsFromLetter = async (
   letter: string,
   limit: number,
@@ -423,7 +431,7 @@ export const loadSongsFromLetter = async (
   const db = await openDb()
   if (!db) return []
   const safeLimit = Math.max(1, Math.min(limit, 500))
-  // `#` is the leading non a–z block — open the catalog from the top.
+  // `#` is the leading non a-z block. Open the catalog from the top.
   if (letter === '#') {
     return loadSongsAfter(null, safeLimit)
   }

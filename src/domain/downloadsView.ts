@@ -13,11 +13,9 @@ export const bytesFromGb = (gb: number): number => Math.round(gb * BYTES_PER_GB)
 
 export const nearestBudgetGb = (budgetBytes: number): DownloadBudgetGb => {
   const gb = budgetBytes / BYTES_PER_GB
-  let best: DownloadBudgetGb = DOWNLOAD_BUDGET_GB[0]
-  for (const option of DOWNLOAD_BUDGET_GB) {
-    if (Math.abs(option - gb) < Math.abs(best - gb)) best = option
-  }
-  return best
+  return DOWNLOAD_BUDGET_GB.reduce((best, option) =>
+    Math.abs(option - gb) < Math.abs(best - gb) ? option : best,
+  )
 }
 
 export const formatStorageBytes = (bytes: number): string => {
@@ -48,16 +46,18 @@ export const storageMeter = (
   index: OfflineIndex,
   packTrackIds: ReadonlySet<string>,
 ): StorageMeter => {
-  let downloadBytes = 0
-  let cacheBytes = 0
-  for (const entry of Object.values(index.entries)) {
-    if (!entry.complete) continue
-    if (entry.kind === 'user' || packTrackIds.has(entry.itemId)) {
-      downloadBytes += entry.sizeBytes
-    } else {
-      cacheBytes += entry.sizeBytes
-    }
-  }
+  const { downloadBytes, cacheBytes } = Object.values(index.entries).reduce(
+    (acc, entry) => {
+      if (!entry.complete) return acc
+      if (entry.kind === 'user' || packTrackIds.has(entry.itemId)) {
+        acc.downloadBytes += entry.sizeBytes
+      } else {
+        acc.cacheBytes += entry.sizeBytes
+      }
+      return acc
+    },
+    { downloadBytes: 0, cacheBytes: 0 },
+  )
   const usedBytes = downloadBytes + cacheBytes
   const budgetBytes = Math.max(0, index.budgetBytes)
   const overBudget = budgetBytes > 0 && usedBytes > budgetBytes
@@ -144,16 +144,13 @@ const collectionFromTracks = (input: {
   readonly collectionId?: string
   readonly packId?: string
 }): DownloadCollection => {
-  let completeCount = 0
-  let sizeBytes = 0
-  let artworkUrl: string | undefined
-  for (const trackId of input.trackIds) {
+  const complete = input.trackIds.flatMap((trackId) => {
     const entry = input.byId[trackId]
-    if (!entry?.complete) continue
-    completeCount += 1
-    sizeBytes += entry.sizeBytes
-    if (!artworkUrl && entry.artworkPath) artworkUrl = entry.artworkPath
-  }
+    return entry?.complete ? [entry] : []
+  })
+  const completeCount = complete.length
+  const sizeBytes = complete.reduce((n, entry) => n + entry.sizeBytes, 0)
+  const artworkUrl = complete.find((entry) => entry.artworkPath)?.artworkPath
   const totalCount = input.trackIds.length
   const progress = totalCount <= 0 ? 0 : completeCount / totalCount
   const sizePart = sizeBytes > 0 ? formatStorageBytes(sizeBytes) : undefined

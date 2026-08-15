@@ -8,8 +8,9 @@ type MelioAudioGraphNative = {
     uri: string,
     headers?: Record<string, string>,
   ) => Promise<boolean>
+  readonly playNextImmediate: (volume: number) => Promise<boolean>
   readonly crossfadeToNext: (durationSec: number) => Promise<boolean>
-  readonly stopCrossfade: () => void
+  readonly handoffPositionSec: () => number
   readonly setEqGains: (gainsDb: MelioEqGains) => void
   readonly resetEq: () => void
   readonly isAvailable: () => boolean
@@ -27,12 +28,10 @@ const loadNative = (): MelioAudioGraphNative | null => {
   }
 }
 
-/** Crossfade / next-URI priming. */
 export const melioAudioGraph = {
   isAvailable: (): boolean => {
-    const mod = loadNative()
     try {
-      return Boolean(mod?.isAvailable())
+      return Boolean(loadNative()?.isAvailable())
     } catch {
       return false
     }
@@ -51,10 +50,16 @@ export const melioAudioGraph = {
     const mod = loadNative()
     if (!mod) return false
     try {
-      return await mod.setNextUri(
-        uri,
-        headers ? { ...headers } : undefined,
-      )
+      return await mod.setNextUri(uri, headers ? { ...headers } : undefined)
+    } catch {
+      return false
+    }
+  },
+  playNextImmediate: async (volume = 1): Promise<boolean> => {
+    const mod = loadNative()
+    if (!mod) return false
+    try {
+      return await mod.playNextImmediate(volume)
     } catch {
       return false
     }
@@ -68,11 +73,12 @@ export const melioAudioGraph = {
       return false
     }
   },
-  stopCrossfade: (): void => {
+  handoffPositionSec: (): number => {
     try {
-      loadNative()?.stopCrossfade()
+      const value = loadNative()?.handoffPositionSec()
+      return typeof value === 'number' && Number.isFinite(value) ? value : 0
     } catch {
-      // Ignore.
+      return 0
     }
   },
   setEqGains: (gainsDb: MelioEqGains): void => {

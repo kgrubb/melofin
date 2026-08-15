@@ -159,7 +159,7 @@ const queueItems = async (snapshot: PlaybackSnapshot) => {
   return built.filter((item): item is NonNullable<typeof item> => item != null)
 }
 
-/** Never Cast ALL — window is ≤20; Melio owns full-queue wrap via syncTo. */
+/** Never Cast ALL. Window is <=20. Melio owns full-queue wrap via syncTo. */
 const castRepeatMode = (mod: CastSdk, repeat: PlaybackSnapshot['repeat']) => {
   const modes = mod.MediaRepeatMode
   if (!modes) return undefined

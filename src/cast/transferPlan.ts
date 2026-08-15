@@ -1,7 +1,7 @@
 import type { TransferState } from '@/src/cast/transferMachine'
 import { LOCAL_DEVICE_ID } from '@/src/cast/types'
 
-/** Chromecast / Jellyfin remote need reachability; AirPlay is system-routed. */
+/** Chromecast / Jellyfin remote need reachability. AirPlay is system-routed. */
 export const shouldBlockRemoteTransfer = (
   online: boolean,
   deviceId: string,
