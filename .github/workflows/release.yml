@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:coverage
+
+  release:
+    name: Release please
+    needs: quality
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4.4.0
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  ios:
+    name: EAS iOS production
+    needs: release
+    if: needs.release.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_ASC_API_KEY_P8: ${{ secrets.EXPO_ASC_API_KEY_P8 }}
+      EXPO_ASC_API_KEY_ID: ${{ secrets.EXPO_ASC_API_KEY_ID }}
+      EXPO_ASC_API_KEY_ISSUER_ID: ${{ secrets.EXPO_ASC_API_KEY_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - run: npm ci
+      - name: Skip when Expo is not configured
+        if: env.EXPO_TOKEN == ''
+        run: |
+          echo 'Set repository secret EXPO_TOKEN to build and submit iOS via EAS.'
+          echo 'Optional App Store submit: EXPO_ASC_API_KEY_ID, EXPO_ASC_API_KEY_ISSUER_ID, EXPO_ASC_API_KEY_P8.'
+      - name: EAS production build
+        if: env.EXPO_TOKEN != ''
+        run: npx --yes eas-cli@16 build --platform ios --profile production --non-interactive --wait
+      - name: Write App Store Connect API key
+        if: env.EXPO_TOKEN != '' && env.EXPO_ASC_API_KEY_P8 != '' && env.EXPO_ASC_API_KEY_ID != '' && env.EXPO_ASC_API_KEY_ISSUER_ID != ''
+        run: |
+          mkdir -p "${RUNNER_TEMP}/asc"
+          printf '%s' "${EXPO_ASC_API_KEY_P8}" > "${RUNNER_TEMP}/asc/AuthKey.p8"
+      - name: EAS App Store submit
+        if: env.EXPO_TOKEN != '' && env.EXPO_ASC_API_KEY_P8 != '' && env.EXPO_ASC_API_KEY_ID != '' && env.EXPO_ASC_API_KEY_ISSUER_ID != ''
+        env:
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc/AuthKey.p8
+        run: npx --yes eas-cli@16 submit --platform ios --profile production --latest --non-interactive

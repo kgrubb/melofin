@@ -9,7 +9,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   owner: 'kgrubb',
   name: 'Melio',
   slug: 'melio',
-  version: '1.0.0',
+  version: '1.0.0', // x-release-please-version
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'melio',
@@ -17,7 +17,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'app.melio.player',
+    buildNumber: '1',
     infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
       UIBackgroundModes: ['audio'],
       NSLocalNetworkUsageDescription:
         'Melio uses the local network to reach your Jellyfin server and find Cast or AirPlay speakers.',

@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/kgrubb/melio/actions/workflows/ci.yml"><img src="https://github.com/kgrubb/melio/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/kgrubb/melio/actions/workflows/release.yml"><img src="https://github.com/kgrubb/melio/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="GPL-3.0" /></a>
   <img src="https://img.shields.io/badge/platform-iOS-black.svg" alt="iOS" />
   <img src="https://img.shields.io/badge/Expo-SDK%2054-000020.svg?logo=expo" alt="Expo SDK 54" />
@@ -58,7 +59,9 @@ npx expo start --dev-client
 
 Or open `ios/Melio.xcworkspace` in Xcode after prebuild.
 
-### EAS (optional)
+### EAS
+
+Development client:
 
 ```bash
 npm i -g eas-cli@latest
@@ -67,7 +70,13 @@ eas build -p ios --profile development
 npx expo start --dev-client
 ```
 
+Production iOS builds run from the [Release](https://github.com/kgrubb/melio/actions/workflows/release.yml) workflow after a version tag is cut. Set `EXPO_TOKEN` on the repo. To submit to App Store Connect as well, add `EXPO_ASC_API_KEY_ID`, `EXPO_ASC_API_KEY_ISSUER_ID`, and `EXPO_ASC_API_KEY_P8`.
+
 EAS Update is off for v1.
+
+## Releases
+
+Merges to `main` open a `[release vX.Y.Z]` PR from conventional commit titles (`feat` / `fix` / `perf` / breaking). Merging that PR tags the version, writes the changelog, publishes a GitHub Release, and kicks off the EAS production iOS build. See [CONTRIBUTING.md](./CONTRIBUTING.md#releases).
 
 ## CarPlay
 
@@ -91,8 +100,8 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full checklist and offline smok
 
 | Doc | What it covers |
 | --- | --- |
-| [CHANGELOG.md](./CHANGELOG.md) | What shipped and what is unreleased |
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | How to land a change |
+| [CHANGELOG.md](./CHANGELOG.md) | What shipped (written by CI) |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | How to land a change, including conventional PR titles |
 
 ## Contributing
 

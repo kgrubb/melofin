@@ -38,7 +38,7 @@ Expo Go is not supported. Use a development build.
 - Prefer `const`. Avoid `let` and other mutables unless required for a hot path. Prefer `for...of` / indexed helpers over `for (let i…)`. No `for...in`.
 - Pin new dependency versions in `package.json`. Default to not adding packages. Ask in an issue if you need something heavy or that overlaps an existing module.
 - Avoid TrackPlayer, expo-av, AsyncStorage, lodash/ramda, uuid/nanoid, date libs, app-wide axios, React Query/SWR, immer, analytics SDKs, Redux/MobX, and UI kits.
-- Update [CHANGELOG.md](./CHANGELOG.md) for user-visible changes.
+- Do not edit [CHANGELOG.md](./CHANGELOG.md). CI writes it from conventional PR titles when a release is cut.
 - `patches/expo-audio+1.1.1.patch`: lock-screen next/prev, catalog duration, and JS-owned remote play/pause/seek. Drop it when upgrading past Expo SDK 54 if upstream covers those.
 
 ## Branch and commits
@@ -46,8 +46,19 @@ Expo Go is not supported. Use a development build.
 1. Fork (or create a branch from latest `main`)
 2. Use a short branch name: `fix/...`, `feat/...`, `docs/...`
 3. Keep commits focused. Prefer small PRs over kitchen-sink ones.
+4. **Squash-merge** so the PR title becomes the git commit on `main`.
 
-Commit messages can be conventional (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`) but clarity matters more than strict prefixes.
+PR titles must be [conventional](https://www.conventionalcommits.org/):
+
+```
+feat: add sleep timer presets
+fix: keep lock-screen skip from double-firing
+perf: skip artwork decode on the mini player
+docs: explain EAS production secrets
+chore: pin vitest
+```
+
+`feat` bumps minor. `fix` and `perf` bump patch. `BREAKING CHANGE:` or `feat!:` / `fix!:` bumps major. `chore`, `docs`, `ci`, `test`, `refactor`, and `style` do not open a version bump by themselves.
 
 ## Checks before you open a PR
 
@@ -70,12 +81,19 @@ When you touch library sync, downloads, or playback failover:
 ## Pull requests
 
 - Target `main`
+- Use a conventional title (CI checks it)
 - Describe what changed and why
 - Link related issues
 - Call out risk areas (playback, offline, casting, CarPlay)
 - Include screenshots or a short screen recording for UI changes when you can
 
 Maintainers review for correctness, regressions, and fit with the architecture above.
+
+## Releases
+
+Merges to `main` run [release-please](https://github.com/googleapis/release-please). If there are unreleased `feat` / `fix` / `perf` / breaking changes, it opens or updates a PR titled `[release vX.Y.Z]` that bumps `package.json`, `app.config.ts`, and `CHANGELOG.md`. Merging that PR tags `vX.Y.Z`, creates the GitHub Release, then (when `EXPO_TOKEN` is set) starts an EAS iOS production build. App Store submit additionally needs `EXPO_ASC_API_KEY_ID`, `EXPO_ASC_API_KEY_ISSUER_ID`, and `EXPO_ASC_API_KEY_P8`.
+
+The release PR is opened with `GITHUB_TOKEN`, so GitHub will not run CI on it. Quality still runs on the merge to `main` before the tag is created. Do not edit the changelog or version files on that PR.
 
 ## Code of conduct
 
