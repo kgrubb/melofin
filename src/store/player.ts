@@ -34,6 +34,7 @@ import {
   type SleepTimerState,
 } from '@/src/domain/sleepTimer'
 import { useSettingsStore } from '@/src/store/settings'
+import { clearNativeNextQueue } from '@/src/player/nativeHandoff'
 
 export type QueueSource = {
   readonly kind: 'album' | 'artist' | 'playlist' | 'mix'
@@ -435,6 +436,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     set({ ...skipTo(get(), prev), positionMs: 0, isPlaying: true })
   },
   reset: () => {
+    clearNativeNextQueue()
     set({
       ...emptyQueue(),
       isPlaying: false,

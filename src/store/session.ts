@@ -15,7 +15,6 @@ import {
 } from '@/src/storage/sessionStore'
 import { createJellyfinContext } from '@/src/services/jellyfin/client'
 import { logger } from '@/src/logging/logger'
-import { clearNativeNextQueue } from '@/src/player/nativeQueue'
 
 type SessionState = {
   readonly hydrated: boolean
@@ -38,7 +37,6 @@ type SessionState = {
 }
 
 const resetPlayback = async () => {
-  clearNativeNextQueue()
   const { usePlayerStore } = await import('@/src/store/player')
   usePlayerStore.getState().reset()
 }

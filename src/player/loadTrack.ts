@@ -50,11 +50,8 @@ import { bitrateForPreset, resolveStreamPreset } from '@/src/domain/streamQualit
 import { fetchItem } from '@/src/services/jellyfin/library'
 import { melioRootUri, offlineAudioExists } from '@/src/storage/jsonFile'
 import { maybeRefillAutoplay } from '@/src/player/autoplayContinuation'
-import {
-  applyNativeEq,
-  clearNativeNextQueue,
-  primeNextTrack,
-} from '@/src/player/nativeQueue'
+import { applyNativeEq, primeNextTrack } from '@/src/player/nativeQueue'
+import { clearNativeNextQueue } from '@/src/player/nativeHandoff'
 import { localHandoffPositionSec } from '@/src/player/crossfadeLocal'
 import {
   getJellyfinReachable,

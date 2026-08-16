@@ -43,7 +43,7 @@ import {
   isMelioScrobbleEnabled,
   setLocalOutputEnabled,
 } from '@/src/player/outputPolicy'
-import { clearNativeNextQueue } from '@/src/player/nativeQueue'
+import { clearNativeNextQueue } from '@/src/player/nativeHandoff'
 import { goNextWithAutoplay } from '@/src/player/autoplayContinuation'
 import {
   fadePlayerVolume,
