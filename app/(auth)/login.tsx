@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Platform, StyleSheet, Text, View } from 'react-native'
+import { Platform, StyleSheet, TextInput, Keyboard } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { WebView } from 'react-native-webview'
 import {
@@ -18,18 +18,18 @@ import {
 import { loginWithSsoAuthorizeUrl } from '@/src/services/jellyfin/ssoNative'
 import { extractOidcState, ssoStartUrl } from '@/src/services/jellyfin/sso'
 import { useSessionStore } from '@/src/store/session'
+import { GlassButton, PrimaryButton, Screen } from '@/src/ui/primitives'
 import {
-  Field,
-  GlassButton,
-  Muted,
-  PrimaryButton,
-  Screen,
-  Title,
-} from '@/src/ui/primitives'
-import { Surface } from '@/src/theme/Glass'
+  AuthCode,
+  AuthError,
+  AuthField,
+  AuthHero,
+  AuthHint,
+  AuthScroll,
+  GlassGroup,
+} from '@/src/ui/AuthForm'
 import { authCardEntering, useMotionEnabled } from '@/src/theme/motion'
 import { BackButton } from '@/src/ui/NavChrome'
-import { colors, spacing } from '@/src/theme/tokens'
 import type { Result } from '@/src/domain/result'
 import Animated from 'react-native-reanimated'
 
@@ -57,6 +57,7 @@ export default function LoginScreen() {
   const abortRef = useRef<AbortController | null>(null)
   const handledSso = useRef(false)
   const capturedAuthorize = useRef(false)
+  const passwordRef = useRef<TextInput>(null)
 
   const allowInsecureHttp = params.allowInsecureHttp === '1'
   const serverUrl = params.serverUrl
@@ -82,14 +83,17 @@ export default function LoginScreen() {
   const finish = useCallback(
     async (result: Result<AuthSuccess>) => {
       if (!result.ok) {
-        setError(result.error.message)
+        // Back / Cancel aborts Quick Connect. Don't flash "Cancelled".
+        if (result.error.code !== 'cancelled') setError(result.error.message)
         setBusy(false)
+        setQcCode(null)
         setSsoCapture(null)
         return
       }
       const { context, ...session } = result.value
       await setAuthenticated(session, context)
       setBusy(false)
+      setQcCode(null)
       setSsoCapture(null)
       // AuthGate owns the auth -> app handoff (avoids double replace flicker).
     },
@@ -117,6 +121,7 @@ export default function LoginScreen() {
   }
 
   const onPasswordLogin = async () => {
+    if (busy || username.trim().length === 0) return
     setBusy(true)
     setError(null)
     await finish(
@@ -124,7 +129,14 @@ export default function LoginScreen() {
     )
   }
 
+  const onCancelQuickConnect = () => {
+    abortRef.current?.abort()
+    setQcCode(null)
+    setBusy(false)
+  }
+
   const onQuickConnect = async () => {
+    Keyboard.dismiss()
     setBusy(true)
     setError(null)
     const initiated = await initiateQuickConnect(serverUrl)
@@ -190,67 +202,90 @@ export default function LoginScreen() {
   }
 
   return (
-    <Screen centered padBottom={false}>
-      <View style={styles.hero}>
-        <View style={styles.titleRow}>
-          <BackButton onPress={goBackToServer} label="Back to server selection" />
-          <Title>{serverName}</Title>
-        </View>
-        <Muted>Sign in to continue listening</Muted>
-      </View>
+    <Screen padBottom={false}>
+      <AuthScroll>
+        <AuthHero
+          leading={
+            <BackButton onPress={goBackToServer} label="Back to server selection" />
+          }
+          title={serverName}
+        />
 
-      <Animated.View entering={authCardEntering(enabled)}>
-        <Surface style={styles.card} contentStyle={styles.cardInner}>
-          <Field
-            label="Username"
-            accessibilityLabel="Username"
-            autoCapitalize="none"
-            value={username}
-            onChangeText={setUsername}
-            placeholder="Username"
-            containerStyle={styles.field}
-            inset
-          />
-          <Field
-            label="Password"
-            accessibilityLabel="Password"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Password"
-            containerStyle={styles.field}
-            inset
-          />
-          <PrimaryButton
-            label={busy ? 'Signing in...' : 'Sign in'}
-            onPress={() => void onPasswordLogin()}
-            disabled={busy}
-          />
-          <GlassButton
-            label={qcCode ? `Quick Connect · ${qcCode}` : 'Quick Connect'}
-            onPress={() => void onQuickConnect()}
-            disabled={busy}
-          />
-          {providers.map((provider) => (
-            <GlassButton
-              key={provider}
-              label={busy ? `Continue with ${provider}...` : `Continue with ${provider}`}
-              onPress={() => void onSso(provider)}
-              disabled={busy}
-            />
-          ))}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          {providers.length > 0 ? (
-            <View style={styles.hint}>
-              <Muted>
-                {Platform.OS === 'web'
-                  ? "If Authentik opens but Melio doesn't continue, finish with Quick Connect. Browser SSO can't always return tokens from the provider popup."
-                  : 'SSO opens in the system browser so passkeys work. Melio finishes sign-in automatically after Authentik succeeds.'}
-              </Muted>
-            </View>
-          ) : null}
-        </Surface>
-      </Animated.View>
+        <Animated.View entering={authCardEntering(enabled)}>
+          {qcCode ? (
+            <>
+              <GlassGroup footer="Enter this code in Jellyfin under Quick Connect. Melio signs in when you approve.">
+                <AuthCode code={qcCode} />
+              </GlassGroup>
+              <GlassButton label="Cancel" onPress={onCancelQuickConnect} />
+            </>
+          ) : (
+            <>
+              <GlassGroup>
+                <AuthField
+                  label="Username"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  autoComplete="username"
+                  textContentType="username"
+                  returnKeyType="next"
+                  enablesReturnKeyAutomatically
+                  clearButtonMode="while-editing"
+                  autoFocus
+                  value={username}
+                  onChangeText={(value) => {
+                    setError(null)
+                    setUsername(value)
+                  }}
+                  onSubmitEditing={() => passwordRef.current?.focus()}
+                />
+                <AuthField
+                  inputRef={passwordRef}
+                  label="Password"
+                  secureTextEntry
+                  autoCorrect={false}
+                  autoComplete="password"
+                  textContentType="password"
+                  returnKeyType="go"
+                  value={password}
+                  onChangeText={(value) => {
+                    setError(null)
+                    setPassword(value)
+                  }}
+                  onSubmitEditing={() => void onPasswordLogin()}
+                />
+              </GlassGroup>
+              {error ? <AuthError message={error} /> : null}
+              <PrimaryButton
+                label={busy ? 'Signing in...' : 'Sign in'}
+                onPress={() => void onPasswordLogin()}
+                disabled={busy || username.trim().length === 0}
+              />
+              <GlassButton
+                label="Quick Connect"
+                onPress={() => void onQuickConnect()}
+                disabled={busy}
+              />
+              {providers.map((provider) => (
+                <GlassButton
+                  key={provider}
+                  label={busy ? `Continue with ${provider}...` : `Continue with ${provider}`}
+                  onPress={() => void onSso(provider)}
+                  disabled={busy}
+                />
+              ))}
+              {providers.length > 0 ? (
+                <AuthHint>
+                  {Platform.OS === 'web'
+                    ? 'If the browser window does not return here, use Quick Connect.'
+                    : 'Opens in the browser so passkeys work.'}
+                </AuthHint>
+              ) : null}
+            </>
+          )}
+        </Animated.View>
+      </AuthScroll>
 
       {ssoCapture ? (
         <WebView
@@ -284,32 +319,6 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  hero: {
-    marginBottom: spacing.xl,
-    gap: spacing.xs,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginLeft: -spacing.sm,
-  },
-  card: {
-    width: '100%',
-  },
-  cardInner: {
-    padding: spacing.lg,
-  },
-  field: {
-    marginTop: spacing.sm,
-  },
-  error: {
-    color: colors.danger,
-    marginTop: spacing.md,
-  },
-  hint: {
-    marginTop: spacing.md,
-  },
   hiddenWebView: {
     position: 'absolute',
     width: 1,

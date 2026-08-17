@@ -13,7 +13,7 @@
   <a href="https://github.com/kgrubb/melio/actions/workflows/ci.yml"><img src="https://github.com/kgrubb/melio/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/kgrubb/melio/actions/workflows/release.yml"><img src="https://github.com/kgrubb/melio/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="GPL-3.0" /></a>
-  <img src="https://img.shields.io/badge/platform-iOS-black.svg" alt="iOS" />
+  <img src="https://img.shields.io/badge/platform-iPhone-black.svg" alt="iPhone" />
   <img src="https://img.shields.io/badge/Expo-SDK%2054-000020.svg?logo=expo" alt="Expo SDK 54" />
   <img src="https://img.shields.io/badge/node-%3E%3D24.19-339933.svg?logo=node.js&logoColor=white" alt="Node >= 24.19" />
 </p>
@@ -21,6 +21,16 @@
 ---
 
 Melio is a native-feeling Jellyfin music client for iOS. Browse your library, queue tracks, download for the commute, cast to speakers, and keep listening when the network flakes out.
+
+## Screenshots
+
+| Home | Mix |
+| :---: | :---: |
+| <img src="assets/screenshots/home.png" alt="Home" /> | <img src="assets/screenshots/mix.png" alt="Instant Mix" /> |
+
+| Library | Now playing |
+| :---: | :---: |
+| <img src="assets/screenshots/library.png" alt="Library albums" /> | <img src="assets/screenshots/now-playing.png" alt="Now playing" /> |
 
 ## Features
 
@@ -102,6 +112,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full checklist and offline smok
 | --- | --- |
 | [CHANGELOG.md](./CHANGELOG.md) | What shipped (written by CI) |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | How to land a change, including conventional PR titles |
+| [PRIVACY.md](./PRIVACY.md) | App Store / in-app privacy policy |
 
 ## Contributing
 
@@ -110,3 +121,5 @@ Issues and PRs are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, 
 ## License
 
 [GPL-3.0](./LICENSE) © Melio contributors
+
+Melio is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.

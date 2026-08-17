@@ -1,14 +1,19 @@
 import { useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
 import Animated from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { isInsecureHttpUrl, normalizeServerUrl } from '@/src/domain/jellyfin'
 import { probePublicInfo } from '@/src/services/jellyfin/client'
 import { useSessionStore } from '@/src/store/session'
-import { Brand, Field, GlassButton, Muted, PrimaryButton, Screen } from '@/src/ui/primitives'
-import { Surface, Toggle } from '@/src/theme/Glass'
+import { GlassButton, PrimaryButton, Screen } from '@/src/ui/primitives'
+import {
+  AuthError,
+  AuthField,
+  AuthHero,
+  AuthScroll,
+  AuthSwitchRow,
+  GlassGroup,
+} from '@/src/ui/AuthForm'
 import { authCardEntering, useMotionEnabled } from '@/src/theme/motion'
-import { colors, spacing } from '@/src/theme/tokens'
 
 export default function ServerScreen() {
   const router = useRouter()
@@ -20,6 +25,7 @@ export default function ServerScreen() {
   const [busy, setBusy] = useState(false)
 
   const onContinue = async () => {
+    if (busy || url.trim().length === 0) return
     setError(null)
     const normalized = normalizeServerUrl(url, {
       preferScheme: useHttps ? 'https' : 'http',
@@ -54,85 +60,67 @@ export default function ServerScreen() {
   }
 
   return (
-    <Screen centered padBottom={false}>
-      <View style={styles.hero}>
-        <Brand>Melio</Brand>
-        <Text style={styles.tagline}>
-          {addingAccount
-            ? 'Add another Jellyfin server.'
-            : 'Your Jellyfin music, beautifully.'}
-        </Text>
-      </View>
+    <Screen padBottom={false}>
+      <AuthScroll>
+        <AuthHero
+          brand="Melio"
+          subtitle={
+            addingAccount
+              ? 'Add another Jellyfin server.'
+              : 'Connect to your Jellyfin server.'
+          }
+        />
 
-      <Animated.View entering={authCardEntering(enabled)}>
-        <Surface style={styles.card} contentStyle={styles.cardInner}>
-          <Field
-            label="Server"
-            accessibilityLabel="Server URL"
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="jellyfin.example.com"
-            value={url}
-            onChangeText={setUrl}
-            containerStyle={styles.field}
-            inset
-          />
-          <View style={styles.row}>
-            <Muted>Use HTTPS</Muted>
-            <Toggle
-              value={useHttps}
-              onValueChange={setUseHttps}
-              accessibilityLabel="Use HTTPS"
+        <Animated.View entering={authCardEntering(enabled)}>
+          <GlassGroup
+            footer={
+              useHttps
+                ? undefined
+                : 'HTTP is for a Jellyfin server on your local network. Use HTTPS if this server is on the internet.'
+            }
+          >
+            <AuthField
+              label="Server"
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              autoComplete="url"
+              textContentType="URL"
+              keyboardType="url"
+              returnKeyType="go"
+              enablesReturnKeyAutomatically
+              clearButtonMode="while-editing"
+              autoFocus={addingAccount}
+              placeholder="jellyfin.example.com"
+              value={url}
+              onChangeText={(value) => {
+                setError(null)
+                setUrl(value)
+                if (/^https:\/\//i.test(value.trim())) setUseHttps(true)
+                else if (/^http:\/\//i.test(value.trim())) setUseHttps(false)
+              }}
+              onSubmitEditing={() => void onContinue()}
             />
-          </View>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+            <AuthSwitchRow
+              label="Use HTTPS"
+              value={useHttps}
+              onValueChange={(value) => {
+                setError(null)
+                setUseHttps(value)
+              }}
+            />
+          </GlassGroup>
+          {error ? <AuthError message={error} /> : null}
           <PrimaryButton
             label={busy ? 'Checking...' : 'Continue'}
             onPress={() => void onContinue()}
-            disabled={busy}
+            disabled={busy || url.trim().length === 0}
           />
           {addingAccount ? (
             <GlassButton label="Cancel" onPress={onCancelAdd} />
           ) : null}
-        </Surface>
-      </Animated.View>
+        </Animated.View>
+      </AuthScroll>
     </Screen>
   )
 }
-
-const styles = StyleSheet.create({
-  hero: {
-    marginBottom: spacing.xl,
-    gap: spacing.sm,
-  },
-  tagline: {
-    color: colors.textSecondary,
-    fontSize: 17,
-    fontWeight: '500',
-    letterSpacing: -0.2,
-    maxWidth: 280,
-  },
-  card: {
-    width: '100%',
-  },
-  cardInner: {
-    padding: spacing.lg,
-    gap: spacing.sm,
-    paddingBottom: spacing.lg,
-  },
-  field: {
-    marginTop: 0,
-  },
-  row: {
-    marginTop: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    minHeight: 40,
-  },
-  error: {
-    marginTop: spacing.sm,
-    color: colors.danger,
-  },
-})

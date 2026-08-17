@@ -1,6 +1,6 @@
 # Contributing to Melio
 
-Thanks for wanting to help. This guide is how changes get into `main`.
+Thanks for wanting to help. This guide is how changes get into `main`. Contributions are licensed under [GPL-3.0](./LICENSE).
 
 ## Ways to contribute
 
@@ -85,7 +85,8 @@ When you touch library sync, downloads, or playback failover:
 - Describe what changed and why
 - Link related issues
 - Call out risk areas (playback, offline, casting, CarPlay)
-- Include screenshots or a short screen recording for UI changes when you can
+- Include screenshots or a short screen recording for UI changes when you can. [assets/screenshots](./assets/screenshots) is the current product UI if you need a visual reference.
+- App Store screenshots must be from **your** Jellyfin library, not a catalog of other people’s albums as the product. Do not reuse the README stills as listing art if they are not from the review account’s library.
 
 Maintainers review for correctness, regressions, and fit with the architecture above.
 
@@ -94,6 +95,8 @@ Maintainers review for correctness, regressions, and fit with the architecture a
 Merges to `main` run [release-please](https://github.com/googleapis/release-please). If there are unreleased `feat` / `fix` / `perf` / breaking changes, it opens or updates a PR titled `[release vX.Y.Z]` that bumps `package.json`, `app.config.ts`, and `CHANGELOG.md`. Merging that PR tags `vX.Y.Z`, creates the GitHub Release, then (when `EXPO_TOKEN` is set) starts an EAS iOS production build. App Store submit additionally needs `EXPO_ASC_API_KEY_ID`, `EXPO_ASC_API_KEY_ISSUER_ID`, and `EXPO_ASC_API_KEY_P8`.
 
 The release PR is opened with `GITHUB_TOKEN`, so GitHub will not run CI on it. Quality still runs on the merge to `main` before the tag is created. Do not edit the changelog or version files on that PR.
+
+Paste [store/review-notes.txt](./store/review-notes.txt) into App Store Connect → App Review Information (plus a demo Jellyfin the reviewer can reach). Leave CarPlay off until Apple grants the Audio entitlement.
 
 ## Code of conduct
 

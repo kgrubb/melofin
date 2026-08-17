@@ -112,6 +112,10 @@ export const DevicesSheet = () => {
               <Text style={styles.heading}>Devices</Text>
               <CastRouteButton style={styles.castBtn} />
             </View>
+            <Text style={styles.caption}>
+              Uses the local network to find Chromecast and AirPlay speakers. Grant Local
+              Network when iOS asks, including on a network with no speakers.
+            </Text>
             {lastError ? <Text style={styles.error}>{lastError.message}</Text> : null}
             <FlatList
               data={[
@@ -199,6 +203,11 @@ const styles = StyleSheet.create({
   heading: {
     ...typography.subtitle,
     color: colors.text,
+  },
+  caption: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
   },
   castBtn: {
     width: 28,

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
 import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
@@ -39,6 +39,13 @@ const qualityName = (preset: QualityPreset): string => {
   if (preset === 'low') return 'Low'
   if (preset === 'normal') return 'Normal'
   return 'High'
+}
+
+const privacyPolicyUrl = (): string => {
+  const fromConfig = Constants.expoConfig?.extra?.privacyPolicyUrl
+  return typeof fromConfig === 'string'
+    ? fromConfig
+    : 'https://github.com/kgrubb/melio/blob/main/PRIVACY.md'
 }
 
 export default function SettingsScreen() {
@@ -158,7 +165,10 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
-        <SettingsGroup title="Accounts">
+        <SettingsGroup
+          title="Servers"
+          footer="Saved logins to your Jellyfin servers. Forgetting one only removes it from this iPhone. Melio does not host accounts."
+        >
           {accounts.accounts.map((account) => {
             const active =
               session != null && sessionAccountId(session) === account.accountId
@@ -172,18 +182,22 @@ export default function SettingsScreen() {
                   if (!active) void switchAccount(account.accountId)
                 }}
                 onLongPress={() => {
-                  Alert.alert('Remove Account', account.userName, [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Remove',
-                      style: 'destructive',
-                      onPress: () => {
-                        void removeAccount(account.accountId)
+                  Alert.alert(
+                    'Forget this server?',
+                    'Removes the saved login from this iPhone. Your Jellyfin user is unchanged.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Forget',
+                        style: 'destructive',
+                        onPress: () => {
+                          void removeAccount(account.accountId)
+                        },
                       },
-                    },
-                  ])
+                    ],
+                  )
                 }}
-                accessibilityHint="Touch and hold to remove"
+                accessibilityHint="Touch and hold to forget this server on this iPhone"
               />
             )
           })}
@@ -299,6 +313,16 @@ export default function SettingsScreen() {
               onPress={() => void setReplayGainMode(mode)}
             />
           ))}
+        </SettingsGroup>
+
+        <SettingsGroup>
+          <SettingsRow
+            title="Privacy Policy"
+            chevron
+            onPress={() => {
+              void Linking.openURL(privacyPolicyUrl())
+            }}
+          />
         </SettingsGroup>
 
         <SettingsGroup>
