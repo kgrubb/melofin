@@ -8,10 +8,15 @@ concurrency:
   group: release-main
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   quality:
     name: Quality
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,7 +40,10 @@ jobs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4.4.0
+      # v5 runs on Node 24 (GitHub no longer executes Node 20 actions as-is).
+      # GITHUB_TOKEN needs pull-requests: write plus the repo setting
+      # "Allow GitHub Actions to create and approve pull requests".
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
