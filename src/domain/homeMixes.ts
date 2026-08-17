@@ -132,6 +132,22 @@ export const tryBuildHomeMixCard = (
   }
 }
 
+export const retitleHomeMixCard = <
+  T extends {
+    readonly title: string
+    readonly subtitle: string
+    readonly tracks: readonly LibraryItem[]
+  },
+>(
+  mix: T,
+): T => {
+  const seed = mix.title.replace(/\s+mix$/i, '').trim()
+  if (!seed) return mix
+  const title = homeMixCardTitle(seed, mix.tracks)
+  if (title === mix.title) return mix
+  return { ...mix, title, subtitle: homeMixCardSubtitle(seed, mix.tracks) }
+}
+
 export const appendHomeMixCard = (
   state: MixFoldState,
   candidate: HomeMixCandidate,

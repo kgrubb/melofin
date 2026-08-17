@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
-import { Image } from 'expo-image'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
@@ -12,6 +11,7 @@ import {
 } from '@/src/services/jellyfin/library'
 import { useSessionStore } from '@/src/store/session'
 import { PressableScale } from '@/src/theme/motion'
+import { Artwork } from '@/src/ui/Artwork'
 import { BackButton } from '@/src/ui/NavChrome'
 import { EdgeBackGesture } from '@/src/ui/EdgeBackGesture'
 import {
@@ -193,11 +193,7 @@ export default function GenreRoute() {
                   onPress={() => router.push(`/(app)/(main)/album/${item.id}`)}
                   style={styles.row}
                 >
-                  {art ? (
-                    <Image source={{ uri: art }} style={styles.art} />
-                  ) : (
-                    <View style={[styles.art, styles.artFallback]} />
-                  )}
+                  <Artwork uri={art} style={styles.art} recyclingKey={item.id} />
                   <View style={styles.meta}>
                     <Text style={styles.name} numberOfLines={1}>
                       {item.name}
@@ -252,9 +248,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: radii.sm,
-  },
-  artFallback: {
-    backgroundColor: colors.elevated,
   },
   meta: {
     flex: 1,

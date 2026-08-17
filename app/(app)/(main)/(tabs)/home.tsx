@@ -82,6 +82,7 @@ import {
   settleEntering,
   useMotionEnabled,
 } from '@/src/theme/motion'
+import { Artwork } from '@/src/ui/Artwork'
 import { EmptyState, ErrorState, Screen } from '@/src/ui/primitives'
 import { Icon } from '@/src/ui/Icon'
 import { colors, motion, radii, scrollUnderChromePad, spacing } from '@/src/theme/tokens'
@@ -109,15 +110,10 @@ const MixCollage = ({
           key={`c-${index}`}
           style={[styles.collageCell, { width: cell, height: cell }]}
         >
-          {uri ? (
-            <Image
-              source={{ uri }}
-              style={{ width: cell, height: cell }}
-              contentFit="cover"
-            />
-          ) : (
-            <View style={[styles.artFallback, { width: cell, height: cell }]} />
-          )}
+          <Artwork
+            uri={uri}
+            style={{ width: cell, height: cell, borderRadius: 0 }}
+          />
         </View>
       ))}
     </View>
@@ -178,17 +174,11 @@ const HomeRail = ({
                 style={[styles.card, { width: card }]}
               >
                 <View style={[styles.genreArt, { width: card, height: card }]}>
-                  {art ? (
-                    <Image
-                      source={{ uri: art }}
-                      style={[styles.genreImage, { width: card, height: card }]}
-                      contentFit="cover"
-                    />
-                  ) : (
-                    <View
-                      style={[styles.artFallback, styles.genreImage, { width: card, height: card }]}
-                    />
-                  )}
+                  <Artwork
+                    uri={art}
+                    recyclingKey={entry.id}
+                    style={[styles.genreImage, { width: card, height: card }]}
+                  />
                   <LinearGradient
                     pointerEvents="none"
                     colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.72)']}
@@ -218,25 +208,15 @@ const HomeRail = ({
               scaleTo={motion.scale.card}
               style={[styles.card, { width: card }]}
             >
-              {art ? (
-                <Image
-                  source={{ uri: art }}
-                  style={[
-                    styles.art,
-                    { width: card, height: card },
-                    circle ? styles.artCircle : null,
-                  ]}
-                />
-              ) : (
-                <View
-                  style={[
-                    styles.art,
-                    styles.artFallback,
-                    { width: card, height: card },
-                    circle ? styles.artCircle : null,
-                  ]}
-                />
-              )}
+              <Artwork
+                uri={art}
+                recyclingKey={entry.id}
+                style={[
+                  styles.art,
+                  { width: card, height: card },
+                  circle ? styles.artCircle : null,
+                ]}
+              />
               <Text
                 style={[styles.cardTitle, circle ? styles.cardTitleCenter : null]}
                 numberOfLines={circle ? 2 : 1}
@@ -1297,9 +1277,6 @@ const styles = StyleSheet.create({
   },
   artCircle: {
     borderRadius: 999,
-  },
-  artFallback: {
-    backgroundColor: colors.elevated,
   },
   genreArt: {
     borderRadius: 6,

@@ -177,6 +177,33 @@ describe('homeFeed', () => {
     expect(
       primaryArtistName(['Tyler, The Creator/Daniel Caesar'], 'x'),
     ).toBe('Tyler, The Creator')
+    expect(
+      instantMixCardTitle(
+        item('s', 'Audio', { artists: ['AC/DC'], name: 'Thunderstruck' }),
+      ),
+    ).toBe('Mix · AC/DC')
+  })
+
+  it('keeps slash band names and splits collab credits', () => {
+    expect(primaryArtistName(['AC/DC'])).toBe('AC/DC')
+    expect(primaryArtistName(['100gecs/Skrillex'])).toBe('100gecs')
+    expect(primaryArtistName(['Tyler, The Creator / Frank'])).toBe(
+      'Tyler, The Creator',
+    )
+    expect(
+      albumCardSubtitle(item('a', 'MusicAlbum', { artists: ['AC/DC'] })),
+    ).toBe('AC/DC')
+    expect(
+      homeMixCardTitle('AC/DC', [item('1', 'Audio', { artists: ['AC/DC'] })]),
+    ).toBe('AC/DC Mix')
+    expect(
+      homeMixCardTitle('AC', [item('1', 'Audio', { artists: ['AC/DC'] })]),
+    ).toBe('AC/DC Mix')
+    expect(
+      homeMixCardTitle('Tyler, The Creator', [
+        item('1', 'Audio', { artists: ['Tyler, The Creator/Daniel Caesar'] }),
+      ]),
+    ).toBe('Tyler, The Creator Mix')
   })
 
   it('fills empty album artists from matching tracks', () => {
@@ -229,6 +256,35 @@ describe('homeFeed', () => {
     expect(ranked[0]?.type).toBe('MusicArtist')
   })
 
+  it('keeps slash band names and skips collab artist ids', () => {
+    const ranked = rankArtistsFromTracks(
+      [
+        item('ac1', 'Audio', { artistId: 'acdc', artists: ['AC/DC'] }),
+        item('ac2', 'Audio', { artistId: 'acdc', artists: ['AC/DC'] }),
+        item('collab', 'Audio', {
+          artistId: 'gecs-skrillex',
+          artists: ['100gecs/Skrillex'],
+        }),
+        item('solo', 'Audio', { artistId: 'gecs', artists: ['100 gecs'] }),
+      ],
+      12,
+    )
+    expect(ranked.map((entry) => ({ id: entry.id, name: entry.name }))).toEqual([
+      { id: 'acdc', name: 'AC/DC' },
+      { id: 'gecs', name: '100 gecs' },
+    ])
+    expect(
+      assembleMixSeeds([
+        item('collab', 'Audio', {
+          artistId: 'gecs-skrillex',
+          artists: ['100gecs/Skrillex'],
+        }),
+        item('solo', 'Audio', { artistId: 'gecs', artists: ['100 gecs'] }),
+        item('ac', 'Audio', { artistId: 'acdc', artists: ['AC/DC'] }),
+      ]).map((entry) => entry.id),
+    ).toEqual(['solo', 'ac'])
+  })
+
   it('merges liked artists ahead of ranked', () => {
     const liked = [item('z', 'MusicArtist', { name: 'Z' })]
     const ranked = [
@@ -238,6 +294,24 @@ describe('homeFeed', () => {
     expect(assembleFavoriteArtists(liked, ranked, 12).map((e) => e.id)).toEqual([
       'z',
       'a',
+    ])
+  })
+
+  it('drops collab artist tiles and duplicate names', () => {
+    const liked = [
+      item('gecs', 'MusicArtist', { name: '100 gecs', artists: ['100 gecs'] }),
+      item('combo', 'MusicArtist', {
+        name: '100gecs/Skrillex',
+        artists: ['100gecs/Skrillex'],
+      }),
+    ]
+    const ranked = [
+      item('gecs-spelled', 'MusicArtist', { name: '100gecs', artists: ['100gecs'] }),
+      item('acdc', 'MusicArtist', { name: 'AC/DC', artists: ['AC/DC'] }),
+    ]
+    expect(assembleFavoriteArtists(liked, ranked, 12).map((e) => e.id)).toEqual([
+      'gecs',
+      'acdc',
     ])
   })
 

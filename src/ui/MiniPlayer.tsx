@@ -1,4 +1,3 @@
-import { Image } from 'expo-image'
 import { useCallback, useRef } from 'react'
 import { StyleSheet, Text, View, type View as RNView } from 'react-native'
 import { usePathname, useRouter } from 'expo-router'
@@ -8,6 +7,7 @@ import { useCastStore } from '@/src/cast/castStore'
 import { AccentGradient } from '@/src/theme/Atmosphere'
 import { Glass, nativeLiquidGlass } from '@/src/theme/Glass'
 import { PressableScale } from '@/src/theme/motion'
+import { Artwork } from '@/src/ui/Artwork'
 import { Icon } from '@/src/ui/Icon'
 import { ProgressLine } from '@/src/ui/ProgressBar'
 import { resizeArtworkUrl } from '@/src/services/jellyfin/library'
@@ -110,19 +110,12 @@ export const MiniPlayer = () => {
           }}
           style={styles.mainHit}
         >
-          {thumbArt ? (
-            <Image
-              source={{
-                uri: thumbArt,
-                cacheKey: `art-thumb-${track.id}`,
-              }}
-              style={styles.art}
-              cachePolicy="memory-disk"
-              recyclingKey={`art-thumb-${track.id}`}
-            />
-          ) : (
-            <View style={styles.art} />
-          )}
+          <Artwork
+            uri={thumbArt}
+            cacheKey={`art-thumb-${track.id}`}
+            style={styles.art}
+            recyclingKey={`art-thumb-${track.id}`}
+          />
           <View style={styles.meta}>
             <Text style={styles.title} numberOfLines={1}>
               {track.title}

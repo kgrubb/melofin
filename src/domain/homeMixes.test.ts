@@ -8,6 +8,7 @@ import {
   isHomeMixCacheFresh,
   MIX_PLAY_MIN,
   pickPlayableMixTracks,
+  retitleHomeMixCard,
   shouldRebuildHomeMixes,
   tryBuildHomeMixCard,
 } from '@/src/domain/homeMixes'
@@ -225,6 +226,21 @@ describe('homeMixes', () => {
         item('t', { artists: ['Tyler, The Creator / Frank'], name: 'Song' }),
       ),
     ).toBe('Tyler, The Creator')
+    expect(
+      artistMixSeedLabel(item('t', { artists: ['AC/DC'], name: 'Thunderstruck' })),
+    ).toBe('AC/DC')
+    const cached = {
+      title: 'AC Mix',
+      subtitle: 'Kendrick, SZA, JID and more',
+      tracks: radioTracks('AC/DC'),
+    }
+    expect(retitleHomeMixCard(cached).title).toBe('AC/DC Mix')
+    const kept = {
+      title: 'Tyler, The Creator Mix',
+      subtitle: 'kept',
+      tracks: radioTracks('Tyler, The Creator'),
+    }
+    expect(retitleHomeMixCard(kept)).toBe(kept)
     expect(dedupeById([item('1'), item('1'), item('2')]).map((e) => e.id)).toEqual([
       '1',
       '2',

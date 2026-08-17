@@ -48,6 +48,7 @@ import { AccentGradient } from '@/src/theme/Atmosphere'
 import { Glass, GlassCluster } from '@/src/theme/Glass'
 import { IconButton, PressableScale } from '@/src/theme/motion'
 import { AppErrorBoundary } from '@/src/ui/AppErrorBoundary'
+import { Artwork } from '@/src/ui/Artwork'
 import { Icon } from '@/src/ui/Icon'
 import { LyricsPanel } from '@/src/ui/LyricsPanel'
 import { presentTrackActions } from '@/src/ui/PlaylistActions'
@@ -510,21 +511,16 @@ export default function PlayerScreen() {
                             }
                             reduceMotion={Boolean(reduceMotion)}
                           />
-                        ) : heroArt ? (
-                          <Image
-                            source={{
-                              uri: heroArt,
-                              cacheKey: `art-hero-${track.id}`,
-                            }}
+                        ) : (
+                          <Artwork
+                            uri={heroArt}
+                            cacheKey={`art-hero-${track.id}`}
                             style={styles.art}
-                            contentFit="cover"
                             cachePolicy="disk"
                             priority="high"
                             allowDownscaling={false}
                             recyclingKey={`art-hero-${track.id}`}
                           />
-                        ) : (
-                          <View style={[styles.art, styles.artFallback]} />
                         )}
                       </View>
                     </View>
@@ -834,9 +830,6 @@ const styles = StyleSheet.create({
   art: {
     width: '100%',
     height: '100%',
-  },
-  artFallback: {
-    backgroundColor: colors.elevated,
   },
   meta: {
     gap: spacing.xs,
