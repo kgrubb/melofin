@@ -39,7 +39,7 @@ Expo Go is not supported. Use a development build.
 - Pin new dependency versions in `package.json`. Default to not adding packages. Ask in an issue if you need something heavy or that overlaps an existing module.
 - Avoid TrackPlayer, expo-av, AsyncStorage, lodash/ramda, uuid/nanoid, date libs, app-wide axios, React Query/SWR, immer, analytics SDKs, Redux/MobX, and UI kits.
 - Do not edit [CHANGELOG.md](./CHANGELOG.md). CI writes it from conventional PR titles when a release is cut.
-- `patches/expo-audio+1.1.1.patch`: lock-screen next/prev, catalog duration, and JS-owned remote play/pause/seek. Drop it when upgrading past Expo SDK 54 if upstream covers those.
+- `patches/expo-audio+1.1.1.patch`: lock-screen next/prev, catalog duration, JS-owned remote play/pause/seek, and USB/car session recovery. Drop it when upgrading past Expo SDK 54 if upstream covers those.
 
 ## Branch and commits
 

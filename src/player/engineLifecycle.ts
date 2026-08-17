@@ -44,6 +44,8 @@ import {
   setLocalOutputEnabled,
 } from '@/src/player/outputPolicy'
 import { clearNativeNextQueue } from '@/src/player/nativeHandoff'
+import { applyNativeEq } from '@/src/player/nativeQueue'
+import { startAudioSessionBridge } from '@/src/player/audioSessionBridge'
 import { goNextWithAutoplay } from '@/src/player/autoplayContinuation'
 import {
   fadePlayerVolume,
@@ -62,6 +64,12 @@ const PLAYER_OPTS = {
   // 1s is enough for didJustFinish / status. Position comes from our 500ms timer.
   // Lower intervals spam Now Playing + the JS bridge for no UX gain.
   updateInterval: 1000,
+} as const
+
+const AUDIO_MODE = {
+  playsInSilentMode: true,
+  shouldPlayInBackground: true,
+  interruptionMode: 'doNotMix',
 } as const
 
 /** Progress fill is Reanimated. 1s is enough for labels/lyrics/drift. */
@@ -249,6 +257,7 @@ const advanceFromEnd = () => {
 }
 
 const applyPlayPlan = (plan: TransportPlan) => {
+  stateRef.pausedForRouteLoss = false
   recoverLocalOutput()
   const player = activePlayer()
   if (!player) return
@@ -360,11 +369,7 @@ export const startPlaybackEngine = async (): Promise<Engine> => {
   }
 
   stateRef.startPromise = (async () => {
-    await setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: true,
-      interruptionMode: 'doNotMix',
-    })
+    await setAudioModeAsync(AUDIO_MODE)
 
     const player = createAudioPlayer(null, PLAYER_OPTS)
     const mediaUnsubs = { current: [] as (() => void)[] }
@@ -411,13 +416,53 @@ export const startPlaybackEngine = async (): Promise<Engine> => {
 
     bindMediaListeners(player)
 
+    const recoverSessionAndPlay = async () => {
+      try {
+        await setAudioModeAsync(AUDIO_MODE)
+      } catch {
+        // Route flips can reject setActive until the new output settles.
+      }
+      const current = activePlayer()
+      if (current && usePlayerStore.getState().isPlaying) safePlay(current)
+    }
+
+    const stopAudioSession = startAudioSessionBridge({
+      isPlaying: () => usePlayerStore.getState().isPlaying,
+      pausedForRouteLoss: () => stateRef.pausedForRouteLoss,
+      pauseForRouteLoss: () => {
+        stateRef.pausedForRouteLoss = true
+        clearNativeNextQueue()
+        applyPause()
+        if (usePlayerStore.getState().isPlaying) {
+          usePlayerStore.getState().setPlaying(false)
+        }
+      },
+      resumeAfterRoute: () => {
+        const track = currentTrack(usePlayerStore.getState())
+        if (!track || !isLocalOutputEnabled()) {
+          stateRef.pausedForRouteLoss = false
+          return
+        }
+        const shouldResume =
+          stateRef.pausedForRouteLoss || usePlayerStore.getState().isPlaying
+        stateRef.pausedForRouteLoss = false
+        if (!shouldResume) return
+        if (!usePlayerStore.getState().isPlaying) {
+          usePlayerStore.getState().setPlaying(true)
+        }
+        void recoverSessionAndPlay()
+      },
+    })
+
     bindLocalOutputChange((enabled, wasEnabled) => {
       if (!enabled) {
         clearNativeNextQueue()
         applyPause()
+        applyNativeEq()
         return
       }
       if (!wasEnabled) {
+        applyNativeEq()
         syncFromStore()
       }
     })
@@ -573,6 +618,7 @@ export const startPlaybackEngine = async (): Promise<Engine> => {
         mediaUnsubs.current.forEach((u) => u())
         mediaUnsubs.current = []
         unsubPlayer()
+        stopAudioSession()
         appSub.remove()
         bindLocalOutputChange(null)
         const active = activePlayer()
@@ -597,6 +643,7 @@ export const startPlaybackEngine = async (): Promise<Engine> => {
         stateRef.scrobble = null
         stateRef.playingFromCache = false
         stateRef.stallFailoverDone = false
+        stateRef.pausedForRouteLoss = false
         clearNativeNextQueue()
         if (getGlobalSlot()?.dispose === engine.dispose) {
           setGlobalSlot(null)

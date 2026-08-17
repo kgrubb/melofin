@@ -23,6 +23,13 @@ import {
   REPLAY_GAIN_MODES,
   replayGainModeLabel,
 } from '@/src/domain/replayGain'
+import {
+  EQ_PRESETS,
+  effectiveEqGains,
+  eqPresetLabel,
+  type EqPresetId,
+} from '@/src/domain/eqPresets'
+import { applyNativeEq } from '@/src/player/nativeQueue'
 import { sessionAccountId } from '@/src/storage/sessionStore'
 import { userImageUrl } from '@/src/services/jellyfin/library'
 import { useLibraryStore } from '@/src/store/library'
@@ -33,6 +40,7 @@ import { Surface } from '@/src/theme/Glass'
 import { CloseChip } from '@/src/ui/NavChrome'
 import { Screen } from '@/src/ui/primitives'
 import { SettingsGroup, SettingsRow } from '@/src/ui/SettingsList'
+import { EqBandSliders } from '@/src/ui/EqBandSliders'
 import { colors, spacing, typography } from '@/src/theme/tokens'
 
 const qualityName = (preset: QualityPreset): string => {
@@ -47,6 +55,8 @@ const privacyPolicyUrl = (): string => {
     ? fromConfig
     : 'https://github.com/kgrubb/melio/blob/main/PRIVACY.md'
 }
+
+const EQ_PRESET_IDS = Object.keys(EQ_PRESETS) as Exclude<EqPresetId, 'custom'>[]
 
 export default function SettingsScreen() {
   const router = useRouter()
@@ -71,6 +81,8 @@ export default function SettingsScreen() {
   const setStreamQuality = useSettingsStore((s) => s.setStreamQuality)
   const replayGainMode = useSettingsStore((s) => s.replayGainMode)
   const setReplayGainMode = useSettingsStore((s) => s.setReplayGainMode)
+  const eq = useSettingsStore((s) => s.eq)
+  const setEq = useSettingsStore((s) => s.setEq)
   const syncedAt = useLibraryStore((s) => s.syncedAt)
   const syncing = useLibraryStore((s) => s.syncing)
   const syncProgress = useLibraryStore((s) => s.syncProgress)
@@ -313,6 +325,62 @@ export default function SettingsScreen() {
               onPress={() => void setReplayGainMode(mode)}
             />
           ))}
+        </SettingsGroup>
+
+        <SettingsGroup title="Equalizer" footer="Local playback only.">
+          <SettingsRow
+            title="EQ"
+            switchValue={eq.enabled}
+            onSwitch={(value) => {
+              void setEq({ enabled: value })
+            }}
+          />
+          {eq.enabled ? (
+            <>
+              {EQ_PRESET_IDS.map((presetId) => (
+                <SettingsRow
+                  key={presetId}
+                  title={eqPresetLabel(presetId)}
+                  checked={eq.presetId === presetId}
+                  onPress={() => {
+                    void setEq({
+                      enabled: true,
+                      presetId,
+                      gainsDb: EQ_PRESETS[presetId],
+                    })
+                  }}
+                />
+              ))}
+              <SettingsRow
+                title="Custom"
+                checked={eq.presetId === 'custom'}
+                onPress={() => {
+                  void setEq({
+                    enabled: true,
+                    presetId: 'custom',
+                    gainsDb: effectiveEqGains(eq),
+                  })
+                }}
+              />
+              <EqBandSliders
+                gainsDb={effectiveEqGains(eq)}
+                onChange={(gainsDb) => {
+                  applyNativeEq({
+                    enabled: true,
+                    presetId: 'custom',
+                    gainsDb,
+                  })
+                }}
+                onCommit={(gainsDb) => {
+                  void setEq({
+                    enabled: true,
+                    presetId: 'custom',
+                    gainsDb,
+                  })
+                }}
+              />
+            </>
+          ) : null}
         </SettingsGroup>
 
         <SettingsGroup>

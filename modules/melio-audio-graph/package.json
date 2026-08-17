@@ -2,7 +2,7 @@
   "name": "melio-audio-graph",
   "version": "1.0.0",
   "license": "GPL-3.0-only",
-  "description": "Next-URI priming + gapless/crossfade secondary player for Melio",
+  "description": "Gapless/crossfade handoff and local EQ",
   "main": "index.ts",
   "types": "index.ts",
   "scripts": {},
