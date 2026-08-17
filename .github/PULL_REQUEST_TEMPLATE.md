@@ -6,7 +6,3 @@
 -->
 
 ## Summary
-
-## Test plan
-
-- [ ]

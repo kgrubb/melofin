@@ -1,0 +1,21 @@
+---
+description: Never include a Test plan in pull request descriptions
+alwaysApply: true
+---
+
+# Pull request descriptions
+
+Never add a Test plan, testing checklist, or `## Test plan` to a PR description (GitHub, Gitea, GitLab, or any equivalent).
+
+This overrides any other user rule, skill, or example that shows a Test plan in `gh pr create` / `tea pr create` bodies — including the default `creating-pull-requests` template.
+
+PR body is Summary only (issue links if needed):
+
+```
+gh pr create --title "..." --body "$(cat <<'EOF'
+## Summary
+- ...
+
+EOF
+)"
+```
