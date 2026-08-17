@@ -1,9 +1,9 @@
 import { memo } from 'react'
-import { Image } from 'expo-image'
 import { StyleSheet, Text, View } from 'react-native'
 import type { LibraryItem } from '@/src/services/jellyfin/library'
 import { PressableHighlight } from '@/src/theme/motion'
 import { colors, radii, spacing, typography } from '@/src/theme/tokens'
+import { Artwork } from '@/src/ui/Artwork'
 
 export const TRACK_ROW_HEIGHT = 52 + spacing.sm * 2
 
@@ -46,16 +46,8 @@ export const TrackRow = memo(function TrackRow({
     >
       {index !== undefined ? (
         <Text style={[styles.index, selected ? styles.selected : null]}>{index + 1}</Text>
-      ) : artworkUrl ? (
-        <Image
-          source={{ uri: artworkUrl }}
-          style={styles.art}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          recyclingKey={item.id}
-        />
       ) : (
-        <View style={[styles.art, styles.artFallback]} />
+        <Artwork uri={artworkUrl} style={styles.art} recyclingKey={item.id} />
       )}
       <View style={styles.meta}>
         <Text style={[styles.title, selected ? styles.selected : null]} numberOfLines={1}>
@@ -96,9 +88,6 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: radii.sm,
-    backgroundColor: colors.elevated,
-  },
-  artFallback: {
     backgroundColor: colors.elevated,
   },
   meta: {

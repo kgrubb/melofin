@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Platform, StyleSheet, Text, View } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
-import { Image } from 'expo-image'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { formatCollectionDuration } from '@/src/domain/format'
@@ -34,6 +33,7 @@ import { usePlayerStore } from '@/src/store/player'
 import { useSettingsStore } from '@/src/store/settings'
 import { AccentGradient } from '@/src/theme/Atmosphere'
 import { PressableScale } from '@/src/theme/motion'
+import { Artwork } from '@/src/ui/Artwork'
 import { Icon } from '@/src/ui/Icon'
 import { BackButton, MoreButton } from '@/src/ui/NavChrome'
 import { EdgeBackGesture } from '@/src/ui/EdgeBackGesture'
@@ -81,16 +81,10 @@ const MixCollage = ({
     <View style={{ width: size, height: size, flexDirection: 'row', flexWrap: 'wrap', overflow: 'hidden', borderRadius: radii.lg, backgroundColor: colors.elevated }}>
       {tiles.map((uri, index) => (
         <View key={`c-${index}`} style={{ width: cell, height: cell }}>
-          {uri ? (
-            <Image
-              source={{ uri }}
-              style={{ width: cell, height: cell }}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-            />
-          ) : (
-            <View style={{ width: cell, height: cell, backgroundColor: colors.elevated }} />
-          )}
+          <Artwork
+            uri={uri}
+            style={{ width: cell, height: cell, borderRadius: 0 }}
+          />
         </View>
       ))}
     </View>
@@ -188,15 +182,8 @@ const CollectionHero = ({
     <View style={styles.hero}>
       {collageArts && collageArts.length > 0 ? (
         <MixCollage arts={collageArts} size={220} />
-      ) : heroArt ? (
-        <Image
-          source={{ uri: heroArt }}
-          style={styles.heroArt}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-        />
       ) : (
-        <View style={[styles.heroArt, styles.heroFallback]} />
+        <Artwork uri={heroArt} style={styles.heroArt} />
       )}
       <View style={styles.heroMeta}>
         <Text style={styles.heroTitle} numberOfLines={3}>
@@ -1005,9 +992,6 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: radii.lg,
-    backgroundColor: colors.elevated,
-  },
-  heroFallback: {
     backgroundColor: colors.elevated,
   },
   empty: {

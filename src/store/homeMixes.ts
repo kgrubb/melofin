@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { LibraryItem } from '@/src/domain/libraryItem'
+import { retitleHomeMixCard } from '@/src/domain/homeMixes'
 import { accountScopeKey } from '@/src/domain/accountScope'
 import { readJsonFile, writeJsonFile } from '@/src/storage/jsonFile'
 
@@ -46,7 +47,7 @@ export const loadPersistedHomeMixes = async (
   if (!result.ok || !result.value?.mixes) return { mixes: [], savedAt: undefined }
   const savedAt = result.value.savedAt
   return {
-    mixes: result.value.mixes.filter(isCachedMix),
+    mixes: result.value.mixes.filter(isCachedMix).map(retitleHomeMixCard),
     savedAt:
       typeof savedAt === 'number' && Number.isFinite(savedAt) && savedAt > 0
         ? savedAt

@@ -1,7 +1,6 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { Alert, Platform, StyleSheet, Text, View } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
-import { Image } from 'expo-image'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { toQueueTrack } from '@/src/services/jellyfin/library'
@@ -9,6 +8,7 @@ import { removeDownloadedTrack } from '@/src/offline/downloader'
 import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
 import { usePlayerStore } from '@/src/store/player'
+import { Artwork } from '@/src/ui/Artwork'
 import { EmptyState, Screen, Title } from '@/src/ui/primitives'
 import { AccentGradient } from '@/src/theme/Atmosphere'
 import { Surface } from '@/src/theme/Glass'
@@ -75,19 +75,7 @@ const OfflineCollectionRow = memo(function OfflineCollectionRow({
       style={styles.collectionPress}
       contentStyle={styles.collectionInner}
     >
-      {item.artworkUrl ? (
-        <Image
-          source={{ uri: item.artworkUrl }}
-          style={styles.art}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          recyclingKey={item.id}
-        />
-      ) : (
-        <View style={[styles.art, styles.artFallback]}>
-          <Icon name="arrow.down.circle" tintColor={colors.textSecondary} size={22} />
-        </View>
-      )}
+      <Artwork uri={item.artworkUrl} style={styles.art} recyclingKey={item.id} />
       <View style={styles.meta}>
         <Text style={styles.collectionTitle} numberOfLines={1}>
           {item.title}
@@ -701,12 +689,7 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: radii.sm,
     backgroundColor: colors.elevated,
-    alignItems: 'center',
-    justifyContent: 'center',
     ...(Platform.OS === 'ios' ? { borderCurve: 'continuous' as const } : null),
-  },
-  artFallback: {
-    backgroundColor: colors.elevated,
   },
   meta: {
     flex: 1,

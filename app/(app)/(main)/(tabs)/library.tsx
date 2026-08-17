@@ -10,7 +10,6 @@ import {
 } from 'react-native'
 import { FlashList, type FlashListRef } from '@shopify/flash-list'
 import Animated from 'react-native-reanimated'
-import { Image } from 'expo-image'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
@@ -29,6 +28,7 @@ import { useLibraryStore } from '@/src/store/library'
 import { usePlayerStore } from '@/src/store/player'
 import { loadAllSongs, loadSongsAfter } from '@/src/storage/libraryDb'
 import { PressableScale, settleEntering, useMotionEnabled } from '@/src/theme/motion'
+import { Artwork } from '@/src/ui/Artwork'
 import { AlphabetIndex, ALPHABET_INDEX_LIST_INSET } from '@/src/ui/AlphabetIndex'
 import { MoreButton } from '@/src/ui/NavChrome'
 import {
@@ -87,11 +87,10 @@ const PlaylistCard = ({
     onPress={onPress}
     style={[styles.playlistCard, { width }]}
   >
-    {art ? (
-      <Image source={{ uri: art }} style={[styles.playlistArt, { width, height: width }]} />
-    ) : (
-      <View style={[styles.playlistArt, styles.playlistArtFallback, { width, height: width }]} />
-    )}
+    <Artwork
+      uri={art}
+      style={[styles.playlistArt, { width, height: width }]}
+    />
     <Text style={styles.playlistTitle} numberOfLines={2}>
       {item.name}
     </Text>
@@ -859,9 +858,6 @@ const styles = StyleSheet.create({
   },
   playlistArt: {
     borderRadius: radii.md,
-    backgroundColor: colors.elevated,
-  },
-  playlistArtFallback: {
     backgroundColor: colors.elevated,
   },
   playlistTitle: {

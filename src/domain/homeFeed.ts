@@ -23,6 +23,8 @@ export const assembleMixSeeds = (
   ]
   for (const item of ordered) {
     if (!item.id) continue
+    const credit = item.artists.find((name) => name.trim().length > 0)?.trim() ?? ''
+    if (isCollabArtistName(credit)) continue
     const key = mixSeedKey(item)
     if (seen.has(key)) continue
     seen.add(key)
@@ -34,15 +36,36 @@ export const assembleMixSeeds = (
 
 export const recentMixTitle = (): string => 'Recently played'
 
-/** Split collabs on / | but keep commas in names. */
+const artistNameKey = (name: string): string =>
+  name.toLowerCase().replace(/[^a-z0-9]+/g, '')
+
+/** `;` `|` always split. Bare `/` is a band name when both sides are short (AC/DC). */
+const splitArtistCredits = (raw: string): readonly string[] => {
+  const out: string[] = []
+  for (const chunk of raw.split(/\s*[|;]\s*/)) {
+    const token = chunk.trim()
+    if (!token) continue
+    const parts = token.split(/\s*\/\s*/).map((part) => part.trim()).filter(Boolean)
+    const collab =
+      parts.length > 1 &&
+      (/\s\/|\/\s/.test(token) ||
+        parts.some((part) => /\s/.test(part)) ||
+        parts.every((part) => part.length >= 4))
+    if (collab) out.push(...parts)
+    else out.push(token)
+  }
+  return out
+}
+
+const isCollabArtistName = (name: string): boolean => splitArtistCredits(name).length > 1
+
 export const primaryArtistName = (
   artists: readonly string[],
   fallback = '',
 ): string => {
   const raw = artists.find((name) => name.trim().length > 0)?.trim() ?? fallback.trim()
   if (!raw) return ''
-  const first = raw.split(/\s*[/|;]\s*/)[0]?.trim() ?? raw
-  return first
+  return splitArtistCredits(raw)[0] ?? raw
 }
 
 export const withArtistsFromTracks = (
@@ -110,6 +133,27 @@ export const seededMixTitle = (seedLabel: string): string => {
   return `${label} Mix`
 }
 
+/** Cached "AC Mix" from splitting AC/DC. Do not expand collab credits. */
+const restoreSlashBandSeed = (
+  seedLabel: string,
+  tracks: readonly LibraryItem[],
+): string => {
+  const seed = seedLabel.trim()
+  if (!seed || isNumberedMixTitle(seed)) return seed
+  const prefix = `${seed.toLowerCase()}/`
+  for (const track of tracks) {
+    const name = primaryArtistName(track.artists)
+    if (
+      name.length > seed.length &&
+      name.toLowerCase().startsWith(prefix) &&
+      !isCollabArtistName(name)
+    ) {
+      return name
+    }
+  }
+  return seed
+}
+
 export const topArtistsFromTracks = (
   tracks: readonly LibraryItem[],
   limit = 3,
@@ -138,7 +182,7 @@ export const homeMixCardTitle = (
   seedLabel: string,
   tracks: readonly LibraryItem[],
 ): string => {
-  const fromSeed = seededMixTitle(seedLabel)
+  const fromSeed = seededMixTitle(restoreSlashBandSeed(seedLabel, tracks))
   if (fromSeed) return fromSeed
   const top = topArtistsFromTracks(tracks, 1)
   if (top[0]) return seededMixTitle(top[0]) || `${top[0]} Mix`
@@ -154,7 +198,7 @@ export const homeMixCardSubtitle = (
   seedLabel: string,
   tracks: readonly LibraryItem[],
 ): string => {
-  const seed = seedLabel.trim().toLowerCase()
+  const seed = restoreSlashBandSeed(seedLabel, tracks).trim().toLowerCase()
   const exclude =
     seed && !isNumberedMixTitle(seed) ? new Set([seed]) : new Set<string>()
   const withoutSeed = topArtistsFromTracks(tracks, 3, exclude)
@@ -216,7 +260,8 @@ export const rankArtistsFromTracks = (
   >()
   for (const track of tracks) {
     const id = track.artistId?.trim()
-    if (!id) continue
+    const raw = track.artists.find((name) => name.trim().length > 0)?.trim() ?? ''
+    if (!id || isCollabArtistName(raw)) continue
     const name = primaryArtistName(track.artists, 'Artist') || 'Artist'
     const prev = counts.get(id)
     counts.set(id, {
@@ -244,10 +289,16 @@ export const assembleFavoriteArtists = (
   limit = 12,
 ): readonly LibraryItem[] => {
   const out: LibraryItem[] = []
-  const seen = new Set<string>()
+  const seenIds = new Set<string>()
+  const seenNames = new Set<string>()
   for (const item of [...liked, ...ranked]) {
-    if (item.type !== 'MusicArtist' || !item.id || seen.has(item.id)) continue
-    seen.add(item.id)
+    if (item.type !== 'MusicArtist' || !item.id || seenIds.has(item.id)) continue
+    const label = item.name.trim() || primaryArtistName(item.artists)
+    if (isCollabArtistName(label)) continue
+    const nameKey = artistNameKey(label)
+    if (nameKey && seenNames.has(nameKey)) continue
+    seenIds.add(item.id)
+    if (nameKey) seenNames.add(nameKey)
     out.push(item)
     if (out.length >= limit) return out
   }
