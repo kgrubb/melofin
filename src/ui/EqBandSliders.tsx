@@ -33,7 +33,6 @@ type Props = {
   readonly onCommit?: (gainsDb: EqGains) => void
 }
 
-/** UI bands map 2:1 onto the native 10-band curve. */
 export const EqBandSliders = ({ gainsDb, onChange, onCommit }: Props) => {
   const [draft, setDraft] = useState(gainsDb)
   const draftRef = useRef(draft)

@@ -2,6 +2,20 @@ import { requireNativeModule } from 'expo-modules-core'
 
 export type MelioEqGains = readonly number[]
 
+export type AudioRouteNativeEvent = {
+  readonly reason: string
+  readonly previousPorts: readonly string[]
+  readonly currentPorts: readonly string[]
+}
+
+export type AudioInterruptNativeEvent = {
+  readonly type: 'began' | 'ended'
+  readonly shouldResume: boolean
+  readonly currentPorts: readonly string[]
+}
+
+type NativeSubscription = { readonly remove: () => void }
+
 type MelioAudioGraphNative = {
   readonly clearNext: () => void
   readonly setNextUri: (
@@ -14,6 +28,10 @@ type MelioAudioGraphNative = {
   readonly setEqGains: (gainsDb: MelioEqGains) => void
   readonly resetEq: () => void
   readonly isAvailable: () => boolean
+  readonly addListener?: (
+    eventName: string,
+    listener: (event: Record<string, unknown>) => void,
+  ) => NativeSubscription
 }
 
 let native: MelioAudioGraphNative | null = null
@@ -95,4 +113,46 @@ export const melioAudioGraph = {
       // Ignore.
     }
   },
+}
+
+const EMPTY_PORTS: readonly string[] = []
+
+const asStringArray = (value: unknown): readonly string[] =>
+  Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : EMPTY_PORTS
+
+export const subscribeAudioSession = (
+  onRoute: (event: AudioRouteNativeEvent) => void,
+  onInterruption: (event: AudioInterruptNativeEvent) => void,
+): (() => void) => {
+  const mod = loadNative()
+  if (!mod?.addListener) return () => undefined
+  try {
+    const routeSub = mod.addListener('onAudioRoute', (event) => {
+      onRoute({
+        reason: typeof event.reason === 'string' ? event.reason : 'unknown',
+        previousPorts: asStringArray(event.previousPorts),
+        currentPorts: asStringArray(event.currentPorts),
+      })
+    })
+    try {
+      const interruptSub = mod.addListener('onAudioInterruption', (event) => {
+        onInterruption({
+          type: event.type === 'ended' ? 'ended' : 'began',
+          shouldResume: event.shouldResume === true,
+          currentPorts: asStringArray(event.currentPorts),
+        })
+      })
+      return () => {
+        routeSub.remove()
+        interruptSub.remove()
+      }
+    } catch {
+      routeSub.remove()
+      return () => undefined
+    }
+  } catch {
+    return () => undefined
+  }
 }

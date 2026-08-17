@@ -15,6 +15,7 @@ import {
   shouldAbandonSilentStart,
   shouldAutoAdvanceOnLoadFailure,
   shouldFailoverStall,
+  STALL_FAILOVER_START_MS,
 } from '@/src/domain/playbackSource'
 import { emptyQueue, playItems, type QueueTrack } from '@/src/domain/queue'
 
@@ -97,6 +98,46 @@ describe('playbackSource', () => {
         playingFromCache: true,
         now: 10_000,
         lastMovingAt: 500,
+      }),
+    ).toBe(false)
+    expect(
+      shouldFailoverStall({
+        wantsPlay: true,
+        playingFromCache: false,
+        now: 2_000,
+        lastMovingAt: 0,
+        lastLoadedAt: 0,
+      }),
+    ).toBe(false)
+    expect(
+      shouldFailoverStall({
+        wantsPlay: true,
+        playingFromCache: false,
+        now: STALL_FAILOVER_START_MS,
+        lastMovingAt: 0,
+        lastLoadedAt: 0,
+      }),
+    ).toBe(true)
+    expect(
+      shouldFailoverStall({
+        wantsPlay: true,
+        playingFromCache: false,
+        now: STALL_FAILOVER_START_MS,
+        lastMovingAt: 0,
+        lastLoadedAt: 0,
+        nativePlaying: false,
+        isBuffering: false,
+      }),
+    ).toBe(true)
+    expect(
+      shouldFailoverStall({
+        wantsPlay: true,
+        playingFromCache: false,
+        now: 10_000,
+        lastMovingAt: 500,
+        lastLoadedAt: 0,
+        nativePlaying: false,
+        isBuffering: false,
       }),
     ).toBe(false)
 

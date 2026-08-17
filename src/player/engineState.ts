@@ -55,11 +55,13 @@ export const stateRef: {
   seekGuard: SeekGuard
   playingFromCache: boolean
   lastMovingAt: number
+  lastLoadedAt: number
   stallFailoverDone: boolean
   lastLoadAllRemotesFailed: boolean
   playbackVolume: number
   failedUris: Set<string>
   forceReload: boolean
+  pausedForRouteLoss: boolean
   /** Secondary covering next until primary seek-matches. */
   handoffActive: boolean
   /** playingIdentity the secondary was primed for. */
@@ -81,11 +83,13 @@ export const stateRef: {
   seekGuard: idleSeekGuard(),
   playingFromCache: false,
   lastMovingAt: Date.now(),
+  lastLoadedAt: 0,
   stallFailoverDone: false,
   lastLoadAllRemotesFailed: false,
   playbackVolume: 1,
   failedUris: new Set(),
   forceReload: false,
+  pausedForRouteLoss: false,
   handoffActive: false,
   handoffForKey: null,
 }

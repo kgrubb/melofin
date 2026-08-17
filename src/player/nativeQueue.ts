@@ -14,7 +14,7 @@ import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
 import { Platform } from 'react-native'
 
-export const applyNativeEq = (eq: EqSettings | undefined): void => {
+export const applyNativeEq = (eq?: EqSettings): void => {
   if (!isLocalOutputEnabled()) {
     melioAudioGraph.resetEq()
     return

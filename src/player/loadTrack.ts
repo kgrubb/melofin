@@ -77,6 +77,8 @@ const handoffSeekMs = (): number => {
 }
 
 const afterSuccessfulLoad = () => {
+  stateRef.lastLoadedAt = Date.now()
+  stateRef.lastMovingAt = Date.now()
   if (stateRef.handoffActive) clearNativeNextQueue()
   applyNativeEq(useSettingsStore.getState().eq)
   maybeRefillAutoplay()
@@ -618,14 +620,21 @@ export const maybeStallFailover = (player: AudioPlayer) => {
   const sink = useCastStore.getState().transfer.active.kind
   if (!isLocalAudible(sink)) return
   const queue = usePlayerStore.getState()
-  if (
-    !shouldFailoverStall({
-      wantsPlay: queue.isPlaying,
-      playingFromCache: stateRef.playingFromCache,
-      now: Date.now(),
-      lastMovingAt: stateRef.lastMovingAt,
-    })
-  ) {
+  try {
+    if (
+      !shouldFailoverStall({
+        wantsPlay: queue.isPlaying,
+        playingFromCache: stateRef.playingFromCache,
+        now: Date.now(),
+        lastMovingAt: stateRef.lastMovingAt,
+        lastLoadedAt: stateRef.lastLoadedAt,
+        nativePlaying: player.playing,
+        isBuffering: player.isBuffering,
+      })
+    ) {
+      return
+    }
+  } catch {
     return
   }
   stateRef.stallFailoverDone = true

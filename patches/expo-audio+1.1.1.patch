@@ -261,10 +261,23 @@ index b30a75a..7008304 100644
  export declare class AudioRecorder extends SharedObject<RecordingEvents> {
      /**
 diff --git a/node_modules/expo-audio/ios/AudioModule.swift b/node_modules/expo-audio/ios/AudioModule.swift
-index 938f985..4cde066 100644
+index 938f985..audiofix 100644
 --- a/node_modules/expo-audio/ios/AudioModule.swift
 +++ b/node_modules/expo-audio/ios/AudioModule.swift
-@@ -197,7 +197,11 @@ public class AudioModule: Module {
+@@ -171,7 +171,11 @@
+       }
+ 
+       Function("play") { player in
+-        try activateSession()
++        do {
++          try activateSession()
++        } catch {
++          // Route flips can fail setActive; still attempt playback.
++        }
+         let rate = player.currentRate > 0 ? player.currentRate : 1.0
+         player.play(at: rate)
+       }
+@@ -197,7 +201,11 @@
        }
  
        Function("pause") { player in
@@ -276,7 +289,7 @@ index 938f985..4cde066 100644
          if !player.keepAudioSessionActive {
            deactivateSession()
          }
-@@ -220,7 +224,7 @@ public class AudioModule: Module {
+@@ -220,7 +228,7 @@
        Function("updateLockScreenMetadata") { (player: AudioPlayer, metadata: Metadata?) in
          if player.isActiveForLockScreen {
            player.metadata = metadata
@@ -285,6 +298,64 @@ index 938f985..4cde066 100644
          }
        }
  
+@@ -392,6 +400,7 @@
+           playerVolumes[player.id] = player.ref.volume
+           player.ref.volume *= 0.5
+         case .doNotMix, .mixWithOthers:
++          player.nowPlayingPlaying = false
+           player.ref.pause()
+         }
+       }
+@@ -413,7 +422,7 @@
+         resumeInterruptedPlayers()
+       }
+     } catch {
+-      print("Failed to reactivate audio session: \(error)")
++      // Route flips can fail setActive; play() retries.
+     }
+   }
+ 
+@@ -424,11 +433,10 @@
+       return
+     }
+ 
+-    switch reason {
+-    case .oldDeviceUnavailable:
++    let previous = userInfo[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription
++    let current = AVAudioSession.sharedInstance().currentRoute
++    if reason == .oldDeviceUnavailable || lostWiredOutput(previous: previous, current: current) {
+       pauseAllPlayers()
+-    default:
+-      break
+     }
+   }
+ 
+@@ -462,11 +470,25 @@
+     registry.allPlayers.values.forEach { player in
+       if player.isPlaying {
+         player.wasPlaying = true
++        player.nowPlayingPlaying = false
+         player.ref.pause()
++        if player.isActiveForLockScreen {
++          MediaController.shared.updateNowPlayingInfo(for: player, force: true)
++        }
+       }
+     }
+   }
+ 
++  private func lostWiredOutput(
++    previous: AVAudioSessionRouteDescription?,
++    current: AVAudioSessionRouteDescription
++  ) -> Bool {
++    let wired: Set<AVAudioSession.Port> = [.usbAudio, .carAudio, .headphones, .lineOut]
++    let had = previous?.outputs.contains { wired.contains($0.portType) } ?? false
++    let has = current.outputs.contains { wired.contains($0.portType) }
++    return had && !has
++  }
++
+   private func resumeAllPlayers() {
+     registry.allPlayers.values.forEach { player in
+       if player.wasPlaying {
 diff --git a/node_modules/expo-audio/ios/AudioPlayer.swift b/node_modules/expo-audio/ios/AudioPlayer.swift
 index 1dbce09..48e466f 100644
 --- a/node_modules/expo-audio/ios/AudioPlayer.swift

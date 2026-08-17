@@ -60,7 +60,7 @@ type Settings = {
   readonly autoplayEnabled: boolean
   /** Local overlap fade seconds; 0 = off (gapless still applies). */
   readonly crossfadeSeconds: CrossfadeSeconds
-  /** Kept for round-trip. EQ UI hidden until native insert lands. */
+  /** 10-band graphic EQ. */
   readonly eq: EqSettings
   readonly syncPacks: SyncPackIndex
 }
@@ -211,6 +211,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (session) {
       await get().activateAccountScope(session.serverUrl, session.userId)
     }
+    void import('@/src/player/nativeQueue').then(({ applyNativeEq }) => {
+      applyNativeEq(get().eq)
+    })
   },
   activateAccountScope: async (serverUrl, userId) => {
     const key = accountScopeKey({ serverUrl, userId })
@@ -287,6 +290,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const eq = parseEqSettings({ ...get().eq, ...patch })
     await persistSettings(snapshot(get(), { eq }))
     set({ eq })
+    void import('@/src/player/nativeQueue').then(({ applyNativeEq }) => {
+      applyNativeEq(eq)
+    })
   },
   setSyncPacks: async (syncPacks) => {
     const key = get().activeScopeKey

@@ -8,7 +8,11 @@ export const FILE_LOAD_TIMEOUT_MS = 250
 export const REMOTE_FIRST_TIMEOUT_MS = 1_800
 export const REMOTE_WIFI_TIMEOUT_MS = 2_500
 export const REMOTE_CELLULAR_TIMEOUT_MS = 1_500
+/** Mid-track stall before swapping Direct Play → transcoder. */
 export const STALL_FAILOVER_MS = 9_000
+/** After a fresh load, fail over sooner than a ~10s silent wait. */
+export const STALL_FAILOVER_START_MS = 2_500
+export const STALL_FAILOVER_START_WINDOW_MS = 8_000
 export const POSITION_MOVE_MIN_MS = 400
 /** After play(), require the playhead to move or fail the candidate. */
 export const AUDIO_START_CONFIRM_MS = 700
@@ -120,9 +124,24 @@ export const shouldFailoverStall = (input: {
   readonly playingFromCache: boolean
   readonly now: number
   readonly lastMovingAt: number
+  readonly lastLoadedAt?: number
+  readonly nativePlaying?: boolean
+  readonly isBuffering?: boolean
 }): boolean => {
   if (!input.wantsPlay || input.playingFromCache) return false
-  return input.now - input.lastMovingAt >= STALL_FAILOVER_MS
+  const sinceLoad = input.now - (input.lastLoadedAt ?? 0)
+  if (
+    input.nativePlaying === false &&
+    input.isBuffering === false &&
+    sinceLoad >= STALL_FAILOVER_START_WINDOW_MS
+  ) {
+    return false
+  }
+  const threshold =
+    sinceLoad < STALL_FAILOVER_START_WINDOW_MS
+      ? STALL_FAILOVER_START_MS
+      : STALL_FAILOVER_MS
+  return input.now - input.lastMovingAt >= threshold
 }
 
 export const prefetchCountForNetwork = (
