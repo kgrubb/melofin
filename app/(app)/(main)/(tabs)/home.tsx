@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppState,
   ScrollView,
@@ -13,19 +13,24 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated from 'react-native-reanimated'
 import { mapPool } from '@/src/domain/asyncPool'
+import { uniqueCollageItems } from '@/src/domain/collageArt'
+import { uniqueAlbumsFromTracks } from '@/src/domain/genreAlbums'
 import { accountScopeKey } from '@/src/domain/accountScope'
 import {
   albumCardSubtitle,
   assembleFavoriteArtists,
   assembleInstantMixSeeds,
   assembleMixSeeds,
-  collageTracks,
   downloadsFromOffline,
+  HOME_FAVORITE_ARTISTS_LIMIT,
   HOME_GENRE_CATALOG_LIMIT,
   HOME_GENRE_PREVIEW_LIMIT,
   HOME_INSTANT_MIX_SEED_ATTEMPTS,
   HOME_INSTANT_MIX_TARGET,
+  HOME_LATEST_ALBUMS_LIMIT,
   HOME_MIX_FETCH_CONCURRENCY,
+  latestAlbumsFromCatalog,
+  likedArtistsFromCatalog,
   rankArtistsFromTracks,
   titleCaseGenreLabel,
   withArtistsFromTracks,
@@ -35,12 +40,15 @@ import {
   createMixFoldQueue,
   dedupeById,
   genreMixCandidateTracks,
+  MIX_PLAY_MIN,
   shouldRebuildHomeMixes,
   type HomeMixCard,
 } from '@/src/domain/homeMixes'
+import { genreTileCovers } from '@/src/domain/browseGenres'
 import {
   canonicalGenre,
   foldGenreCatalog,
+  albumsMatchingGenre,
   listeningGenreNames,
   listeningGenresFromTracks,
   listeningGenresNeedCatalog,
@@ -52,7 +60,9 @@ import {
   artworkUrl,
   fetchFavoriteArtists,
   fetchFavoriteTracks,
+  fetchGenreArtSamples,
   fetchInstantMixFromGenre,
+  fetchInstantMixFromGenreName,
   fetchLatestAlbums,
   fetchMusicGenresPreview,
   fetchRandomSongs,
@@ -72,6 +82,7 @@ import {
   persistHomeMixes,
   useHomeMixesStore,
 } from '@/src/store/homeMixes'
+import { useLibraryStore } from '@/src/store/library'
 import { usePlayerStore } from '@/src/store/player'
 import { useSettingsStore } from '@/src/store/settings'
 import { AccentGradient } from '@/src/theme/Atmosphere'
@@ -83,6 +94,7 @@ import {
   useMotionEnabled,
 } from '@/src/theme/motion'
 import { Artwork } from '@/src/ui/Artwork'
+import { MixCollage } from '@/src/ui/MixCollage'
 import { EmptyState, ErrorState, Screen } from '@/src/ui/primitives'
 import { Icon } from '@/src/ui/Icon'
 import { colors, motion, radii, scrollUnderChromePad, spacing } from '@/src/theme/tokens'
@@ -94,37 +106,12 @@ type HomeMix = HomeMixCard & {
   readonly icon: string
 }
 
-const MixCollage = ({
-  arts,
-  size,
-}: {
-  readonly arts: readonly (string | undefined)[]
-  readonly size: number
-}) => {
-  const cell = Math.floor(size / 2)
-  const tiles = [0, 1, 2, 3].map((index) => arts[index])
-  return (
-    <View style={[styles.collage, { width: size, height: size }]}>
-      {tiles.map((uri, index) => (
-        <View
-          key={`c-${index}`}
-          style={[styles.collageCell, { width: cell, height: cell }]}
-        >
-          <Artwork
-            uri={uri}
-            style={{ width: cell, height: cell, borderRadius: 0 }}
-          />
-        </View>
-      ))}
-    </View>
-  )
-}
-
-const HomeRail = ({
+const HomeRail = memo(function HomeRail({
   title,
   items,
   onPressItem,
   artFor,
+  artsFor,
   large = false,
   variant = 'album',
 }: {
@@ -132,17 +119,19 @@ const HomeRail = ({
   readonly items: readonly LibraryItem[]
   readonly onPressItem: (item: LibraryItem) => void
   readonly artFor: (item: LibraryItem) => string | undefined
+  readonly artsFor?: (item: LibraryItem) => readonly (string | undefined)[]
   readonly large?: boolean
   readonly variant?: 'album' | 'artist' | 'genre'
-}) => {
+}) {
   const { width } = useWindowDimensions()
   const pad = spacing.md
   const gap = spacing.md
   const circle = variant === 'artist'
   const visible = large ? 2.15 : circle ? 3.35 : 2.4
+  const layoutWidth = Math.min(width, 430)
   const card = Math.max(
     circle ? 104 : 132,
-    Math.floor((width - pad * 2 - gap * Math.floor(visible)) / visible),
+    Math.floor((layoutWidth - pad * 2 - gap * Math.floor(visible)) / visible),
   )
   const uniqueItems = dedupeById(items)
   if (uniqueItems.length === 0) return null
@@ -164,6 +153,7 @@ const HomeRail = ({
 
           if (variant === 'genre') {
             const genreName = titleCaseGenreLabel(entry.name) || entry.name
+            const arts = artsFor?.(entry) ?? [art]
             return (
               <PressableScale
                 key={entry.id}
@@ -174,11 +164,7 @@ const HomeRail = ({
                 style={[styles.card, { width: card }]}
               >
                 <View style={[styles.genreArt, { width: card, height: card }]}>
-                  <Artwork
-                    uri={art}
-                    recyclingKey={entry.id}
-                    style={[styles.genreImage, { width: card, height: card }]}
-                  />
+                  <MixCollage arts={arts} size={card} radius={0} recyclingKey={entry.id} />
                   <LinearGradient
                     pointerEvents="none"
                     colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.72)']}
@@ -234,7 +220,7 @@ const HomeRail = ({
       </ScrollView>
     </View>
   )
-}
+})
 
 const ActionChip = ({
   label,
@@ -263,12 +249,16 @@ const ActionChip = ({
     {primary ? (
       <AccentGradient style={styles.chipPrimary}>
         <Icon name={icon} tintColor={colors.onAccent} size={16} />
-        <Text style={styles.chipPrimaryLabel}>{busy ? '...' : label}</Text>
+        <Text style={[styles.chipPrimaryLabel, busy ? styles.chipBusyLabel : null]}>
+          {label}
+        </Text>
       </AccentGradient>
     ) : (
       <View style={[styles.chipSecondary, disabled ? styles.chipDisabled : null]}>
         <Icon name={icon} tintColor={colors.text} size={16} />
-        <Text style={styles.chipSecondaryLabel}>{busy ? '...' : label}</Text>
+        <Text style={[styles.chipSecondaryLabel, busy ? styles.chipBusyLabel : null]}>
+          {label}
+        </Text>
       </View>
     )}
   </PressableScale>
@@ -335,6 +325,9 @@ export default function HomeScreen() {
   const [favorites, setFavorites] = useState<readonly LibraryItem[]>([])
   const [favoriteArtists, setFavoriteArtists] = useState<readonly LibraryItem[]>([])
   const [genres, setGenres] = useState<readonly LibraryItem[]>([])
+  const [genreArtById, setGenreArtById] = useState<
+    Readonly<Record<string, readonly LibraryItem[]>>
+  >({})
   const [homeMixes, setHomeMixes] = useState<readonly HomeMix[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -349,6 +342,7 @@ export default function HomeScreen() {
   const mixesCountRef = useRef(0)
   const mixesAttemptedAtRef = useRef<number | undefined>(undefined)
   const loadInFlightRef = useRef(false)
+  const genreArtStartedRef = useRef(new Set<string>())
 
   useEffect(() => {
     setProfileFailed(false)
@@ -367,7 +361,7 @@ export default function HomeScreen() {
           context
             ? artworkUrl(
                 context,
-                entry.imageItemId ?? entry.id,
+                entry.imageItemId ?? entry.albumId ?? entry.id,
                 entry.imageTag,
                 'hero',
               )
@@ -394,6 +388,8 @@ export default function HomeScreen() {
       setFavorites([])
       setFavoriteArtists([])
       setGenres([])
+      setGenreArtById({})
+      genreArtStartedRef.current = new Set()
       setHomeMixes([])
       useHomeMixesStore.getState().clear()
       mixesSavedAtRef.current = undefined
@@ -431,6 +427,7 @@ export default function HomeScreen() {
             (cached) => {
               if (!isCurrent()) return cached
               mixesSavedAtRef.current = cached.savedAt
+              mixesAttemptedAtRef.current = cached.attemptedAt
               mixesCountRef.current = cached.mixes.length
               if (cached.mixes.length === 0) return cached
               const restored = cached.mixes.map(
@@ -449,6 +446,25 @@ export default function HomeScreen() {
         : Promise.resolve(null)
     const gate = { cancelled: false }
     try {
+      const library = useLibraryStore.getState()
+      if (paintedUserRef.current !== scopeKey) {
+        const seedAlbums = latestAlbumsFromCatalog(
+          library.albums,
+          HOME_LATEST_ALBUMS_LIMIT,
+        )
+        const seedArtists = assembleFavoriteArtists(
+          likedArtistsFromCatalog(library.artists),
+          [],
+          HOME_FAVORITE_ARTISTS_LIMIT,
+        )
+        if (seedAlbums.length > 0) setAlbums(seedAlbums)
+        if (seedArtists.length > 0) setFavoriteArtists(seedArtists)
+        if (seedAlbums.length > 0 || seedArtists.length > 0) {
+          paintedUserRef.current = scopeKey
+          setLoading(false)
+        }
+      }
+
       const recentP = fetchRecentSongs(context, session.userId, 80)
       const favoritesP = fetchFavoriteTracks(context, session.userId)
       const likedArtistsP = fetchFavoriteArtists(context, session.userId, 24)
@@ -460,6 +476,34 @@ export default function HomeScreen() {
         session.userId,
         HOME_GENRE_PREVIEW_LIMIT,
       )
+
+      const listenTracksBox: { current: readonly LibraryItem[] } = { current: [] }
+      const likedArtistsBox: { current: readonly LibraryItem[] } = {
+        current: likedArtistsFromCatalog(library.artists),
+      }
+      const paintFavoriteArtists = () => {
+        if (!isCurrent() || gate.cancelled) return
+        const next = assembleFavoriteArtists(
+          likedArtistsBox.current,
+          rankArtistsFromTracks(listenTracksBox.current, 16),
+          HOME_FAVORITE_ARTISTS_LIMIT,
+        )
+        setFavoriteArtists(next)
+        if (next.length === 0) return
+        paintedUserRef.current = scopeKey
+        setLoading(false)
+      }
+      void albumsP.then((result) => {
+        if (!isCurrent() || gate.cancelled || !result.ok) return
+        setAlbums(withArtistsFromTracks(result.value, listenTracksBox.current))
+        paintedUserRef.current = scopeKey
+        setLoading(false)
+      })
+      void likedArtistsP.then((result) => {
+        if (!isCurrent() || gate.cancelled || !result.ok) return
+        likedArtistsBox.current = result.value
+        paintFavoriteArtists()
+      })
 
       const [recent, f, likedArtists, resumeEarly] = await Promise.all([
         recentP,
@@ -474,6 +518,8 @@ export default function HomeScreen() {
       const nextResume = resumeEarly.ok ? resumeEarly.value : []
       const audioResume = nextResume.filter((entry) => entry.type === 'Audio')
       const listenTracks = [...nextRecent, ...nextFavorites]
+      listenTracksBox.current = listenTracks
+      if (likedArtists.ok) likedArtistsBox.current = likedArtists.value
       const listenedGenreNames = listeningGenreNames(listenTracks)
       const genresFromTracks = listeningGenresFromTracks(listenTracks, 16)
       const genresBox = {
@@ -489,12 +535,9 @@ export default function HomeScreen() {
 
       setResume(nextResume)
       setFavorites(nextFavorites)
-      setFavoriteArtists(
-        assembleFavoriteArtists(
-          likedArtists.ok ? likedArtists.value : [],
-          rankArtistsFromTracks([...nextFavorites, ...nextRecent], 16),
-          12,
-        ),
+      paintFavoriteArtists()
+      setAlbums((prev) =>
+        prev.length > 0 ? withArtistsFromTracks(prev, listenTracks) : prev,
       )
       if (genresBox.current.length > 0) setGenres(genresBox.current)
       paintedUserRef.current = scopeKey
@@ -503,10 +546,6 @@ export default function HomeScreen() {
       if (!listenFailed) setError(null)
 
       const live = () => isCurrent() && !gate.cancelled
-      void albumsP.then((result) => {
-        if (!live() || !result.ok) return
-        setAlbums(withArtistsFromTracks(result.value, listenTracks))
-      })
       void playlistsP.then((result) => {
         if (!live() || !result.ok) return
         setPlaylists(result.value)
@@ -546,6 +585,7 @@ export default function HomeScreen() {
       if (!isCurrent()) return
       if (cached) {
         mixesSavedAtRef.current = cached.savedAt
+        mixesAttemptedAtRef.current = cached.attemptedAt
         mixesCountRef.current = Math.max(mixesCountRef.current, cached.mixes.length)
       }
       if (listenFailed && mixesCountRef.current === 0) {
@@ -595,7 +635,9 @@ export default function HomeScreen() {
       const foldQueue = createMixFoldQueue(HOME_INSTANT_MIX_TARGET, (mixes) => {
         if (!isCurrent() || gate.cancelled) return
         const mapped = mixes.map(toHomeMix)
-        setHomeMixes((prev) => (prev.length > mapped.length ? prev : mapped))
+        startTransition(() => {
+          setHomeMixes((prev) => (prev.length > mapped.length ? prev : mapped))
+        })
         const newest = mapped[mapped.length - 1]
         if (newest) useHomeMixesStore.getState().upsertMix(newest)
       })
@@ -642,60 +684,51 @@ export default function HomeScreen() {
           readonly id: string
           readonly run: () => Promise<Result<readonly LibraryItem[]>>
         }
-        type JobAcc = {
-          readonly seen: ReadonlySet<string>
-          readonly jobs: readonly GenreJob[]
+        const seen = new Set<string>()
+        const jobs: GenreJob[] = []
+        const pushJob = (job: GenreJob, limit: number) => {
+          if (jobs.length >= limit || !job.key || seen.has(job.key)) return
+          seen.add(job.key)
+          jobs.push(job)
         }
-        const pushJob = (
-          acc: JobAcc,
-          job: GenreJob,
-          limit: number,
-        ): JobAcc => {
-          if (acc.jobs.length >= limit || !job.key || acc.seen.has(job.key)) {
-            return acc
-          }
-          return {
-            seen: new Set([...acc.seen, job.key]),
-            jobs: [...acc.jobs, job],
-          }
-        }
-        const emptyJobs: JobAcc = { seen: new Set(), jobs: [] }
-        const fromListening = listenedGenreNames.reduce<JobAcc>(
-          (acc, name) =>
-            pushJob(
-              acc,
-              {
-                key: canonicalGenre(name),
-                label: name,
-                id: `name:${canonicalGenre(name)}`,
-                run: () => genreMixByName(name),
-              },
-              need + 2,
-            ),
-          emptyJobs,
-        )
-        const genreJobs = genresBox.current
-          .reduce<JobAcc>(
-            (acc, genre) =>
-              pushJob(
-                acc,
-                {
-                  key: canonicalGenre(genre.name),
-                  label: genre.name,
-                  id: genre.id,
-                  run: () =>
-                    fetchInstantMixFromGenre(
-                      context,
-                      session.userId,
-                      genre.id,
-                      INSTANT_MIX_HOME_LIMIT,
-                    ),
-                },
-                need + 4,
-              ),
-            fromListening,
+        for (const name of listenedGenreNames) {
+          pushJob(
+            {
+              key: canonicalGenre(name),
+              label: name,
+              id: `name:${canonicalGenre(name)}`,
+              run: () => genreMixByName(name),
+            },
+            need + 2,
           )
-          .jobs.slice(0, Math.max(need * 2, need))
+        }
+        for (const genre of genresBox.current) {
+          pushJob(
+            {
+              key: canonicalGenre(genre.name),
+              label: genre.name,
+              id: genre.id,
+              run: () =>
+                fetchInstantMixFromGenre(
+                  context,
+                  session.userId,
+                  genre.id,
+                  INSTANT_MIX_HOME_LIMIT,
+                ).then((byId) =>
+                  byId.ok && byId.value.length >= MIX_PLAY_MIN
+                    ? byId
+                    : fetchInstantMixFromGenreName(
+                        context,
+                        session.userId,
+                        genre.name,
+                        INSTANT_MIX_HOME_LIMIT,
+                      ),
+                ),
+            },
+            need + 4,
+          )
+        }
+        const genreJobs = jobs.slice(0, Math.max(need * 2, need))
 
         await mapPool(
           genreJobs,
@@ -808,13 +841,66 @@ export default function HomeScreen() {
       const offlineArt = offlineIndex.entries[entry.id]?.artworkPath
       if (offlineArt) return offlineArt
       return context
-        ? artworkUrl(context, entry.imageItemId ?? entry.id, entry.imageTag, 'card')
+        ? artworkUrl(
+            context,
+            entry.imageItemId ?? entry.albumId ?? entry.id,
+            entry.imageTag,
+            'thumb',
+          )
         : undefined
     },
     [context, offlineIndex.entries],
   )
 
-  const openItem = (
+  const mixCollageArts = useMemo(() => {
+    const occupied = new Set<string>()
+    const byId: Record<string, readonly (string | undefined)[]> = {}
+    for (const mix of homeMixes) {
+      const items = uniqueCollageItems(
+        [...uniqueAlbumsFromTracks(mix.tracks), ...albums, ...mix.tracks],
+        4,
+        occupied,
+      )
+      byId[mix.id] = items.map(artFor)
+    }
+    return byId
+  }, [albums, artFor, homeMixes])
+  const artsForGenre = useCallback(
+    (genre: LibraryItem) => {
+      const covers = genreTileCovers(
+        [
+          ...(genreArtById[genre.id] ?? []),
+          ...albumsMatchingGenre(albums, genre.name),
+        ],
+        genre,
+      )
+      return covers.map(artFor)
+    },
+    [albums, artFor, genreArtById],
+  )
+
+  useEffect(() => {
+    if (!context || !session || genres.length === 0) return
+    const todo = genres.filter(
+      (genre) => genre.id && !genreArtStartedRef.current.has(genre.id),
+    )
+    if (todo.length === 0) return
+    for (const genre of todo) genreArtStartedRef.current.add(genre.id)
+    const userId = session.userId
+    void (async () => {
+      const found: Record<string, readonly LibraryItem[]> = {}
+      await mapPool(todo, 4, async (genre) => {
+        const samples = await fetchGenreArtSamples(context, session.userId, genre)
+        if (samples.length === 0) return
+        found[genre.id] = samples
+      })
+      if (useSessionStore.getState().session?.userId !== userId) return
+      if (Object.keys(found).length === 0) return
+      setGenreArtById((prev) => ({ ...prev, ...found }))
+    })()
+  }, [context, session, genres])
+
+  const openItem = useCallback((
     entry: LibraryItem,
     opts?: { readonly resume?: boolean },
   ) => {
@@ -866,14 +952,14 @@ export default function HomeScreen() {
       return
     }
     router.push(`/(app)/(main)/playlist/${entry.id}`)
-  }
+  }, [context, genres, offlineIndex.entries, playQueue, router])
 
-  const openGenre = (entry: LibraryItem) => {
+  const openGenre = useCallback((entry: LibraryItem) => {
     router.push({
       pathname: '/(app)/(main)/genre/[id]',
       params: { id: entry.id, name: entry.name },
     })
-  }
+  }, [router])
 
   const shuffleLibrary = async () => {
     if (!context || !session || busy) return
@@ -938,8 +1024,9 @@ export default function HomeScreen() {
       ? userImageUrl(context, session.userId, undefined, 'thumb')
       : undefined
 
-  const continueItems = resume.filter(
-    (entry) => (entry.playbackPositionMs ?? 0) > 0,
+  const continueItems = useMemo(
+    () => resume.filter((entry) => (entry.playbackPositionMs ?? 0) > 0),
+    [resume],
   )
 
   const topBar = (
@@ -1041,7 +1128,7 @@ export default function HomeScreen() {
                   contentContainerStyle={styles.rail}
                 >
                   {homeMixes.map((mix) => {
-                    const arts = collageTracks(mix.tracks).map((track) => artFor(track))
+                    const arts = mixCollageArts[mix.id] ?? []
                     return (
                       <PressableScale
                         key={mix.id}
@@ -1052,7 +1139,7 @@ export default function HomeScreen() {
                         style={[styles.mixCard, { width: MIX_CARD_W }]}
                       >
                         <View style={styles.mixArtWrap}>
-                          <MixCollage arts={arts} size={MIX_CARD_W} />
+                          <MixCollage arts={arts} size={MIX_CARD_W} radius={radii.cover} recyclingKey={mix.id} />
                           <PressableScale
                             accessibilityRole="button"
                             accessibilityLabel={`Shuffle play ${mix.title}`}
@@ -1134,6 +1221,7 @@ export default function HomeScreen() {
               items={genres}
               onPressItem={openGenre}
               artFor={artFor}
+              artsFor={artsForGenre}
               variant="genre"
             />
 
@@ -1233,6 +1321,10 @@ const styles = StyleSheet.create({
     color: colors.onAccent,
     fontWeight: '700',
     fontSize: 13,
+    flexShrink: 0,
+  },
+  chipBusyLabel: {
+    opacity: 0.72,
   },
   chipSecondary: {
     minHeight: 34,
@@ -1252,6 +1344,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '600',
     fontSize: 13,
+    flexShrink: 0,
   },
   section: {
     gap: spacing.sm,
@@ -1272,21 +1365,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   art: {
-    borderRadius: 6,
+    borderRadius: radii.cover,
     backgroundColor: colors.surface,
   },
   artCircle: {
     borderRadius: 999,
   },
   genreArt: {
-    borderRadius: 6,
+    borderRadius: radii.cover,
     overflow: 'hidden',
     backgroundColor: colors.elevated,
-  },
-  genreImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
   },
   genreScrim: {
     ...StyleSheet.absoluteFillObject,
@@ -1332,16 +1420,7 @@ const styles = StyleSheet.create({
     width: MIX_CARD_W,
     height: MIX_CARD_W,
     overflow: 'hidden',
-  },
-  collage: {
-    borderRadius: 6,
-    overflow: 'hidden',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    backgroundColor: colors.surface,
-  },
-  collageCell: {
-    overflow: 'hidden',
+    borderRadius: radii.cover,
   },
   mixBadgePress: {
     position: 'absolute',
@@ -1367,7 +1446,7 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
   mixSkeletonArt: {
-    borderRadius: 6,
+    borderRadius: radii.cover,
     backgroundColor: colors.elevated,
   },
   mixSkeletonLine: {

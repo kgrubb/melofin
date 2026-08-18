@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { formatCollectionDuration } from '@/src/domain/format'
 import { mergeAlbumLists, uniqueAlbumsFromTracks } from '@/src/domain/genreAlbums'
-import { collageTracks } from '@/src/domain/homeFeed'
+import { uniqueCollageItems } from '@/src/domain/collageArt'
 import { normalizePlaylistName, playlistStub } from '@/src/domain/playlists'
 import { backfillSongArtists } from '@/src/domain/songArtists'
 import {
@@ -34,6 +34,7 @@ import { useSettingsStore } from '@/src/store/settings'
 import { AccentGradient } from '@/src/theme/Atmosphere'
 import { PressableScale } from '@/src/theme/motion'
 import { Artwork } from '@/src/ui/Artwork'
+import { MixCollage } from '@/src/ui/MixCollage'
 import { Icon } from '@/src/ui/Icon'
 import { BackButton, MoreButton } from '@/src/ui/NavChrome'
 import { EdgeBackGesture } from '@/src/ui/EdgeBackGesture'
@@ -65,30 +66,6 @@ const kindLabel = (kind: CollectionKind): string => {
   if (kind === 'artist') return 'Artist'
   if (kind === 'mix') return 'Mix'
   return 'Playlist'
-}
-
-/** 2×2 artwork collage for mix cards. */
-const MixCollage = ({
-  arts,
-  size,
-}: {
-  readonly arts: readonly (string | undefined)[]
-  readonly size: number
-}) => {
-  const cell = Math.floor(size / 2)
-  const tiles = [0, 1, 2, 3].map((index) => arts[index])
-  return (
-    <View style={{ width: size, height: size, flexDirection: 'row', flexWrap: 'wrap', overflow: 'hidden', borderRadius: radii.lg, backgroundColor: colors.elevated }}>
-      {tiles.map((uri, index) => (
-        <View key={`c-${index}`} style={{ width: cell, height: cell }}>
-          <Artwork
-            uri={uri}
-            style={{ width: cell, height: cell, borderRadius: 0 }}
-          />
-        </View>
-      ))}
-    </View>
-  )
 }
 
 const CircleAction = ({
@@ -181,7 +158,7 @@ const CollectionHero = ({
   return (
     <View style={styles.hero}>
       {collageArts && collageArts.length > 0 ? (
-        <MixCollage arts={collageArts} size={220} />
+        <MixCollage arts={collageArts} size={220} radius={radii.cover} />
       ) : (
         <Artwork uri={heroArt} style={styles.heroArt} />
       )}
@@ -269,6 +246,7 @@ export const CollectionScreen = ({
   const [downloading, setDownloading] = useState(false)
   const [mutating, setMutating] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
+  const [saveMixOpen, setSaveMixOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [pendingTrackId, setPendingTrackId] = useState<string | null>(null)
@@ -387,7 +365,7 @@ export const CollectionScreen = ({
         toQueueTrack(
           track,
           context
-            ? artworkUrl(context, track.imageItemId ?? track.id, track.imageTag, 'hero')
+            ? artworkUrl(context, track.imageItemId ?? track.albumId ?? track.id, track.imageTag, 'hero')
             : undefined,
         ),
       ),
@@ -552,6 +530,41 @@ export const CollectionScreen = ({
     ])
   }
 
+  const openMixMenu = () => {
+    if (kind !== 'mix' || mutating || tracks.length === 0) return
+    presentTrackActions(cachedMix?.title ?? 'Mix', [
+      { text: 'Save to Library…', onPress: () => setSaveMixOpen(true) },
+    ])
+  }
+
+  const runSaveMix = async (name: string) => {
+    if (!context || !session || mutating) return
+    const ids = tracks.map((track) => track.id).filter((trackId) => trackId.length > 0)
+    if (ids.length === 0) {
+      Alert.alert("Couldn't save mix", 'This mix has no tracks.')
+      return
+    }
+    setMutating(true)
+    try {
+      const result = await createPlaylist(context, session.userId, name, ids)
+      if (!result.ok) {
+        Alert.alert("Couldn't save mix", result.error.message)
+        return
+      }
+      await upsertPlaylist({
+        ...playlistStub(result.value, name, ids.length),
+        type: 'Playlist',
+        artists: [],
+        durationMs: 0,
+      })
+      setSaveMixOpen(false)
+      await refreshPlaylists()
+      router.push(`/(app)/(main)/playlist/${result.value}`)
+    } finally {
+      setMutating(false)
+    }
+  }
+
   const removeTrack = useCallback(
     async (entryId: string) => {
       if (!context || !session || !id || mutating) return
@@ -644,12 +657,15 @@ export const CollectionScreen = ({
 
   const collageArts =
     kind === 'mix' && context
-      ? collageTracks(tracks).map((track) =>
+      ? uniqueCollageItems([
+          ...uniqueAlbumsFromTracks(tracks),
+          ...tracks,
+        ]).map((item) =>
           artworkUrl(
             context,
-            track.imageItemId ?? track.id,
-            track.imageTag,
-            'hero',
+            item.imageItemId ?? item.albumId ?? item.id,
+            item.imageTag,
+            'card',
           ),
         )
       : undefined
@@ -792,8 +808,8 @@ export const CollectionScreen = ({
             ? undefined
             : artworkUrl(
                 context,
-                item.imageItemId ?? item.id,
-                item.imageTag,
+                item.albumId ?? item.imageItemId ?? item.id,
+                item.type === 'Audio' ? undefined : item.imageTag,
                 'thumb',
               )
         }
@@ -855,6 +871,8 @@ export const CollectionScreen = ({
             <BackButton onPress={goBack} />
             {kind === 'playlist' ? (
               <MoreButton label="Playlist options" onPress={openPlaylistMenu} />
+            ) : kind === 'mix' && tracks.length > 0 ? (
+              <MoreButton label="Mix options" onPress={openMixMenu} />
             ) : null}
           </View>
           <FlashList
@@ -885,6 +903,19 @@ export const CollectionScreen = ({
             renderItem={renderTrack}
           />
         </View>
+        <PlaylistNameModal
+          visible={saveMixOpen}
+          title="Save to Library"
+          initialName={cachedMix?.title ?? ''}
+          busy={mutating}
+          onCancel={() => {
+            if (mutating) return
+            setSaveMixOpen(false)
+          }}
+          onSubmit={(name) => {
+            void runSaveMix(name)
+          }}
+        />
         <PlaylistNameModal
           visible={renameOpen}
           title="Rename playlist"
@@ -991,7 +1022,8 @@ const styles = StyleSheet.create({
   heroArt: {
     width: 220,
     height: 220,
-    borderRadius: radii.lg,
+    borderRadius: radii.cover,
+    overflow: 'hidden',
     backgroundColor: colors.elevated,
   },
   empty: {

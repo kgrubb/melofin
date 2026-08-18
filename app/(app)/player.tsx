@@ -821,7 +821,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   artWrap: {
-    borderRadius: radii.xl,
+    borderRadius: radii.cover,
     overflow: 'hidden',
     width: '100%',
     aspectRatio: 1,

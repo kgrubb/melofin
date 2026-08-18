@@ -7,6 +7,7 @@ import {
   scopedOfflineIndexRelativePath,
   scopedPacksRelativePath,
   stableHash,
+  unitRandomFromSeed,
 } from '@/src/domain/accountScope'
 
 describe('accountScope', () => {
@@ -31,6 +32,15 @@ describe('accountScope', () => {
     expect(scopedLyricsRelativePath(key, 'track')).toBe(
       `scopes/${key}/lyrics/track.json`,
     )
+  })
+
+  it('yields a stable unit sequence from a seed', () => {
+    const a = unitRandomFromSeed('jazz|rock')
+    const b = unitRandomFromSeed('jazz|rock')
+    const first = [a(), a(), a()]
+    expect([b(), b(), b()]).toEqual(first)
+    expect(first.every((value) => value >= 0 && value < 1)).toBe(true)
+    expect(unitRandomFromSeed('pop')()).not.toBe(first[0])
   })
 
   it('detects legacy offline audio paths', () => {

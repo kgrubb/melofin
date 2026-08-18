@@ -19,6 +19,15 @@ export type AccountScope = {
 export const accountScopeKey = (scope: AccountScope): string =>
   `${stableHash(scope.serverUrl)}:${scope.userId}`
 
+/** Deterministic `Math.random` stand-in. Same seed → same sequence. */
+export const unitRandomFromSeed = (seed: string): (() => number) => {
+  let state = Number.parseInt(stableHash(seed), 16) || 1
+  return () => {
+    state = (Math.imul(1664525, state) + 1013904223) >>> 0
+    return state / 4294967296
+  }
+}
+
 export const scopedAudioRelativePath = (
   scopeKey: string,
   itemId: string,

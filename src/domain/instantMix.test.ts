@@ -12,6 +12,7 @@ import {
   listeningGenreNames,
   listeningGenresFromTracks,
   listeningGenresNeedCatalog,
+  albumsMatchingGenre,
   mixTitleKey,
   needsMixDiversityPad,
   normalizeGenre,
@@ -209,6 +210,25 @@ describe('instantMix', () => {
       { id: 'g-jazz', name: 'Jazz', type: 'MusicGenre' },
       { id: 'g-in', name: 'Indie', type: 'MusicGenre' },
     ])
+    expect(
+      albumsMatchingGenre(
+        [
+          item('rock-1', {
+            type: 'MusicAlbum',
+            genres: ['Rock'],
+            imageTag: 'a',
+          }),
+          item('rock-deluxe', {
+            type: 'MusicAlbum',
+            genres: ['rock'],
+            imageTag: 'a',
+          }),
+          item('jazz-1', { type: 'MusicAlbum', genres: ['Jazz'], imageTag: 'b' }),
+          item('song', { type: 'Audio', genres: ['Rock'] }),
+        ],
+        'Rock',
+      ).map((entry) => entry.id),
+    ).toEqual(['rock-1', 'rock-deluxe'])
     expect(
       listeningGenresNeedCatalog(
         ['Jazz', 'Soul'],

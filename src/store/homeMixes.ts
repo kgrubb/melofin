@@ -16,11 +16,13 @@ export type CachedHomeMix = {
 type PersistedHomeMixes = {
   readonly mixes: readonly CachedHomeMix[]
   readonly savedAt?: number
+  readonly attemptedAt?: number
 }
 
 export type LoadedHomeMixes = {
   readonly mixes: readonly CachedHomeMix[]
   readonly savedAt: number | undefined
+  readonly attemptedAt: number | undefined
 }
 
 const mixesPath = (serverUrl: string, userId: string): string =>
@@ -44,14 +46,17 @@ export const loadPersistedHomeMixes = async (
   userId: string,
 ): Promise<LoadedHomeMixes> => {
   const result = await readJsonFile<PersistedHomeMixes>(mixesPath(serverUrl, userId))
-  if (!result.ok || !result.value?.mixes) return { mixes: [], savedAt: undefined }
+  if (!result.ok || !result.value?.mixes) {
+    return { mixes: [], savedAt: undefined, attemptedAt: undefined }
+  }
   const savedAt = result.value.savedAt
+  const attemptedAt = result.value.attemptedAt
+  const stamp = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
   return {
     mixes: result.value.mixes.filter(isCachedMix).map(retitleHomeMixCard),
-    savedAt:
-      typeof savedAt === 'number' && Number.isFinite(savedAt) && savedAt > 0
-        ? savedAt
-        : undefined,
+    savedAt: stamp(savedAt),
+    attemptedAt: stamp(attemptedAt),
   }
 }
 
@@ -60,8 +65,9 @@ export const persistHomeMixes = async (
   userId: string,
   mixes: readonly CachedHomeMix[],
   savedAt = Date.now(),
+  attemptedAt = savedAt,
 ): Promise<void> => {
-  await writeJsonFile(mixesPath(serverUrl, userId), { mixes, savedAt })
+  await writeJsonFile(mixesPath(serverUrl, userId), { mixes, savedAt, attemptedAt })
 }
 
 type HomeMixesStore = {

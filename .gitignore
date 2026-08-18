@@ -46,6 +46,9 @@ coverage/
 # local screenshots / scratch
 .tmp*
 
+# demo Jellyfin media + config (scripts/demo-jellyfin)
+.demo-jellyfin/
+
 # generated native folders
 /ios
 /android

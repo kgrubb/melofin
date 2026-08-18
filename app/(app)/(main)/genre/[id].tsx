@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -40,39 +40,26 @@ export default function GenreRoute() {
   const [genre, setGenre] = useState<LibraryItem | null>(null)
   const [albums, setAlbums] = useState<readonly LibraryItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [filling, setFilling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const paintedRef = useRef<readonly LibraryItem[]>([])
 
   const load = useCallback(async () => {
     if (!context || !session || !genreId) {
       setLoading(false)
-      setFilling(false)
       return
     }
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
     const live = () => !ac.signal.aborted
-    paintedRef.current = []
     setLoading(true)
-    setFilling(false)
     setError(null)
     setAlbums([])
     setGenre(null)
-    const applyPartial = (next: readonly LibraryItem[]) => {
-      if (!live() || next.length === 0) return
-      paintedRef.current = next
-      setAlbums(next)
-      setLoading(false)
-      setFilling(true)
-    }
     try {
       const [genreResult, albumsResult] = await Promise.all([
         fetchItem(context, session.userId, genreId),
         fetchAlbumsByGenre(context, session.userId, genreId, passedName, {
-          onPartial: applyPartial,
           signal: ac.signal,
         }),
       ])
@@ -84,9 +71,7 @@ export default function GenreRoute() {
         return
       }
       if (genreResult.ok) setGenre(genreResult.value)
-      const initialAlbums = albumsResult.ok
-        ? albumsResult.value
-        : paintedRef.current
+      const initialAlbums = albumsResult.ok ? albumsResult.value : []
       const resolvedName =
         passedName ?? (genreResult.ok ? genreResult.value.name : undefined)
       const retry =
@@ -98,7 +83,7 @@ export default function GenreRoute() {
               session.userId,
               genreId,
               resolvedName,
-              { onPartial: applyPartial, signal: ac.signal },
+              { signal: ac.signal },
             )
           : null
       if (retry && !live()) return
@@ -111,12 +96,12 @@ export default function GenreRoute() {
         setError(retry.error.message)
         return
       }
-      const albums = retry?.ok ? retry.value : initialAlbums
+      const nextAlbums = retry?.ok ? retry.value : initialAlbums
       if (!live()) return
-      setAlbums(albums)
+      setAlbums(nextAlbums)
       if (
         !albumsResult.ok &&
-        albums.length === 0 &&
+        nextAlbums.length === 0 &&
         albumsResult.error.code !== 'cancelled'
       ) {
         setError(albumsResult.error.message)
@@ -125,10 +110,7 @@ export default function GenreRoute() {
       if (!live()) return
       setError('Failed to load genre')
     } finally {
-      if (live()) {
-        setFilling(false)
-        setLoading(false)
-      }
+      if (live()) setLoading(false)
     }
   }, [context, genreId, passedName, session])
 
@@ -163,22 +145,13 @@ export default function GenreRoute() {
         {error && albums.length === 0 ? (
           <ErrorState message={error} onRetry={() => void load()} />
         ) : null}
-        {!loading && !filling && !error && albums.length === 0 ? (
+        {!loading && !error && albums.length === 0 ? (
           <EmptyState title="No albums" message="Nothing in this genre yet." />
         ) : null}
         {albums.length > 0 ? (
           <FlashList
             data={albums}
-            extraData={filling}
             keyExtractor={(item) => item.id}
-            ListFooterComponent={
-              filling ? (
-                <View style={styles.footer}>
-                  <ActivityIndicator color={colors.accent} />
-                  <Muted>Finding more albums...</Muted>
-                </View>
-              ) : null
-            }
             contentContainerStyle={{
               ...styles.list,
               paddingBottom: scrollUnderChromePad(insets.bottom),
@@ -230,13 +203,6 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: spacing.lg,
     gap: spacing.xs,
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
   },
   row: {
     flexDirection: 'row',

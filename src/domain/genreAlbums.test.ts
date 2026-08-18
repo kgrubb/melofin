@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeAlbumLists, shouldQueryGenreTracksById, uniqueAlbumsFromTracks } from '@/src/domain/genreAlbums'
+import { genreTrackQueryModes, mergeAlbumLists, uniqueAlbumsFromTracks } from '@/src/domain/genreAlbums'
 import type { LibraryItem } from '@/src/domain/libraryItem'
 
 const track = (
@@ -92,12 +92,13 @@ describe('uniqueAlbumsFromTracks', () => {
   })
 })
 
-describe('shouldQueryGenreTracksById', () => {
-  it('falls back when a named crawl found no audio', () => {
-    expect(shouldQueryGenreTracksById('Hip Hop', 0)).toBe(true)
-    expect(shouldQueryGenreTracksById('Hip Hop', undefined)).toBe(true)
-    expect(shouldQueryGenreTracksById('Hip Hop', 12)).toBe(false)
-    expect(shouldQueryGenreTracksById(undefined, 0)).toBe(false)
-    expect(shouldQueryGenreTracksById('  ', 0)).toBe(false)
+describe('genreTrackQueryModes', () => {
+  it('runs name and id crawls when a genre name is known', () => {
+    expect(genreTrackQueryModes('Hip Hop')).toEqual(['name', 'id'])
+  })
+
+  it('runs id crawl only when genre name is missing', () => {
+    expect(genreTrackQueryModes()).toEqual(['id'])
+    expect(genreTrackQueryModes('  ')).toEqual(['id'])
   })
 })

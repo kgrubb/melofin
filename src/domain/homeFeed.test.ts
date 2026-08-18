@@ -4,10 +4,12 @@ import {
   assembleFavoriteArtists,
   assembleInstantMixSeeds,
   assembleMixSeeds,
-  collageImageIds,
   downloadsFromOffline,
   HOME_INSTANT_MIX_TARGET,
   HOME_INSTANT_MIX_SEED_ATTEMPTS,
+  HOME_LATEST_ALBUMS_LIMIT,
+  latestAlbumsFromCatalog,
+  likedArtistsFromCatalog,
   homeMixCardSubtitle,
   homeMixCardTitle,
   instantMixCardTitle,
@@ -242,6 +244,32 @@ describe('homeFeed', () => {
     ).toMatch(/^Added /)
   })
 
+  it('picks newest albums from a local catalog', () => {
+    expect(latestAlbumsFromCatalog([], HOME_LATEST_ALBUMS_LIMIT)).toEqual([])
+    expect(
+      latestAlbumsFromCatalog(
+        [
+          item('old', 'MusicAlbum', { name: 'Old', dateCreatedMs: 10 }),
+          item('new', 'MusicAlbum', { name: 'New', dateCreatedMs: 30 }),
+          item('mid', 'MusicAlbum', { name: 'Mid', dateCreatedMs: 20 }),
+          item('song', 'Audio', { name: 'Skip', dateCreatedMs: 99 }),
+        ],
+        2,
+      ).map((entry) => entry.id),
+    ).toEqual(['new', 'mid'])
+  })
+
+  it('keeps only favorited artists from a local catalog', () => {
+    expect(
+      likedArtistsFromCatalog([
+        item('a', 'MusicArtist', { name: 'A', isFavorite: true }),
+        item('b', 'MusicArtist', { name: 'B', isFavorite: false }),
+        item('c', 'MusicAlbum', { name: 'C', isFavorite: true }),
+        item('d', 'MusicArtist', { name: 'D' }),
+      ]).map((entry) => entry.id),
+    ).toEqual(['a'])
+  })
+
   it('ranks favorite artists from track frequency', () => {
     const ranked = rankArtistsFromTracks(
       [
@@ -313,16 +341,6 @@ describe('homeFeed', () => {
       'gecs',
       'acdc',
     ])
-  })
-
-  it('picks distinct collage image ids', () => {
-    expect(
-      collageImageIds([
-        item('t1', 'Audio', { imageItemId: 'alb-a' }),
-        item('t2', 'Audio', { imageItemId: 'alb-a' }),
-        item('t3', 'Audio', { imageItemId: 'alb-b' }),
-      ]),
-    ).toEqual(['alb-a', 'alb-b'])
   })
 
   it('maps complete offline entries newest-first', () => {

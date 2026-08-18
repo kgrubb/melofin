@@ -258,13 +258,16 @@ describe('homeMixes', () => {
     expect(isHomeMixCacheFresh(now - HOME_MIX_MAX_AGE_MS - 1, now)).toBe(false)
   })
 
-  it('rebuilds empty or stale mixes, but not after a recent failed attempt', () => {
+  it('rebuilds stale or never-attempted partial rails, but not after a recent attempt', () => {
     const now = 1_700_000_000_000
     expect(
       shouldRebuildHomeMixes({ savedAtMs: now, mixCount: 6 }, now),
     ).toBe(false)
     expect(
       shouldRebuildHomeMixes({ savedAtMs: now, mixCount: 0 }, now),
+    ).toBe(true)
+    expect(
+      shouldRebuildHomeMixes({ savedAtMs: now, mixCount: 1 }, now),
     ).toBe(true)
     expect(
       shouldRebuildHomeMixes(
@@ -281,9 +284,12 @@ describe('homeMixes', () => {
         },
         now,
       ),
-      ).toBe(false)
+    ).toBe(false)
     expect(
       shouldRebuildHomeMixes({ savedAtMs: now, mixCount: 0, attemptedAtMs: now }, now),
-    ).toBe(true)
+    ).toBe(false)
+    expect(
+      shouldRebuildHomeMixes({ savedAtMs: now, mixCount: 1, attemptedAtMs: now }, now),
+    ).toBe(false)
   })
 })
