@@ -444,6 +444,23 @@ export const listeningGenresFromTracks = (
   return out
 }
 
+/** Local catalog albums tagged with this genre — unique covers for Home tiles. */
+export const albumsMatchingGenre = (
+  albums: readonly LibraryItem[],
+  genreName: string,
+): readonly LibraryItem[] => {
+  const key = canonicalGenre(genreName)
+  if (!key) return []
+  return albums.filter((album) => {
+    if (album.type !== 'MusicAlbum' || !album.id) return false
+    const names = [
+      ...(album.genres ?? []),
+      ...(album.genreItems ?? []).map((entry) => entry.name),
+    ]
+    return names.some((name) => canonicalGenre(name) === key)
+  })
+}
+
 /** First layer wins on canonical name. */
 export const foldGenreCatalog = (
   layers: readonly (readonly LibraryItem[])[],

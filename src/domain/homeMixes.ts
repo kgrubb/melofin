@@ -29,7 +29,7 @@ export const isHomeMixCacheFresh = (
   nowMs - savedAtMs >= 0 &&
   nowMs - savedAtMs < HOME_MIX_MAX_AGE_MS
 
-/** Rebuild unless cards were saved or attempted within the last day. */
+/** Rebuild unless we already attempted today, or a full rail is still fresh. */
 export const shouldRebuildHomeMixes = (
   {
     savedAtMs,
@@ -42,8 +42,10 @@ export const shouldRebuildHomeMixes = (
   },
   nowMs = Date.now(),
 ): boolean => {
-  if (mixCount > 0 && isHomeMixCacheFresh(savedAtMs, nowMs)) return false
-  if (mixCount > 0 && isHomeMixCacheFresh(attemptedAtMs, nowMs)) return false
+  if (isHomeMixCacheFresh(attemptedAtMs, nowMs)) return false
+  if (mixCount >= HOME_INSTANT_MIX_TARGET && isHomeMixCacheFresh(savedAtMs, nowMs)) {
+    return false
+  }
   return true
 }
 

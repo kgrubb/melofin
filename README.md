@@ -32,6 +32,10 @@ Melio is a native-feeling Jellyfin music client for iOS. Browse your library, qu
 | :---: | :---: |
 | <img src="assets/screenshots/library.png" alt="Library albums" /> | <img src="assets/screenshots/now-playing.png" alt="Now playing" /> |
 
+| Search | Downloads |
+| :---: | :---: |
+| <img src="assets/screenshots/search.png" alt="Search" /> | <img src="assets/screenshots/downloads.png" alt="Downloads" /> |
+
 ## Features
 
 | | |

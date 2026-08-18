@@ -1,4 +1,8 @@
-import { artistMixSeedLabel, type HomeMixCandidate } from '@/src/domain/homeMixes'
+import {
+  artistMixSeedLabel,
+  MIX_PLAY_MIN,
+  type HomeMixCandidate,
+} from '@/src/domain/homeMixes'
 import {
   assembleThemedMix,
   canonicalGenre,
@@ -6,7 +10,7 @@ import {
   needsMixDiversityPad,
   themedMixTracks,
 } from '@/src/domain/instantMix'
-import { assembleListenNow, LISTEN_NOW_MIN } from '@/src/domain/listenNow'
+import { assembleListenNow } from '@/src/domain/listenNow'
 import type { LibraryItem } from '@/src/domain/libraryItem'
 import type { Result } from '@/src/domain/result'
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
@@ -27,7 +31,7 @@ export const buildMixCandidate = async (
   userId: string,
   seed: LibraryItem,
   genreMixByName: GenreMixFn,
-  minLength = LISTEN_NOW_MIN,
+  minLength = MIX_PLAY_MIN,
 ): Promise<HomeMixCandidate> => {
   const artistId =
     seed.artistId ?? (seed.type === 'MusicArtist' ? seed.id : undefined)

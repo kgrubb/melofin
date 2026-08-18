@@ -1,5 +1,5 @@
 import { Image, type ImageProps, type ImageStyle } from 'expo-image'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { StyleSheet, View, type StyleProp } from 'react-native'
 import { colors } from '@/src/theme/tokens'
 
@@ -17,7 +17,15 @@ type ArtworkProps = {
   readonly style?: StyleProp<ImageStyle>
   readonly recyclingKey?: string
   readonly cacheKey?: string
-} & Pick<ImageProps, 'contentFit' | 'cachePolicy' | 'priority' | 'allowDownscaling'>
+} & Pick<
+  ImageProps,
+  | 'contentFit'
+  | 'cachePolicy'
+  | 'priority'
+  | 'allowDownscaling'
+  | 'transition'
+  | 'responsivePolicy'
+>
 
 const ArtworkPlaceholder = ({
   style,
@@ -44,9 +52,16 @@ export const Artwork = ({
   cacheKey,
   contentFit = 'cover',
   cachePolicy = 'memory-disk',
+  transition = 0,
   ...imageProps
 }: ArtworkProps) => {
   const [failedUri, setFailedUri] = useState<string | null>(null)
+  const recycleGen = recyclingKey ?? uri ?? ''
+  const seenGen = useRef(recycleGen)
+  if (seenGen.current !== recycleGen) {
+    seenGen.current = recycleGen
+    if (failedUri !== null) setFailedUri(null)
+  }
   if (!uri || failedUri === uri) {
     return <ArtworkPlaceholder style={style} />
   }
@@ -58,6 +73,8 @@ export const Artwork = ({
       contentFit={contentFit}
       cachePolicy={cachePolicy}
       recyclingKey={recyclingKey}
+      transition={transition}
+      allowDownscaling={imageProps.allowDownscaling ?? true}
       onError={() => setFailedUri(uri)}
     />
   )

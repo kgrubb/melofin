@@ -215,6 +215,29 @@ export const HOME_INSTANT_MIX_SEED_ATTEMPTS = 12
 export const HOME_MIX_FETCH_CONCURRENCY = 6
 export const HOME_GENRE_PREVIEW_LIMIT = 32
 export const HOME_GENRE_CATALOG_LIMIT = 250
+export const HOME_LATEST_ALBUMS_LIMIT = 24
+export const HOME_FAVORITE_ARTISTS_LIMIT = 12
+
+/** Newest albums from a local catalog — Home can paint before Jellyfin returns. */
+export const latestAlbumsFromCatalog = (
+  albums: readonly LibraryItem[],
+  limit = HOME_LATEST_ALBUMS_LIMIT,
+): readonly LibraryItem[] => {
+  if (limit <= 0 || albums.length === 0) return []
+  return [...albums]
+    .filter((album) => album.type === 'MusicAlbum' && album.id)
+    .sort(
+      (left, right) =>
+        (right.dateCreatedMs ?? 0) - (left.dateCreatedMs ?? 0) ||
+        left.name.localeCompare(right.name),
+    )
+    .slice(0, limit)
+}
+
+export const likedArtistsFromCatalog = (
+  artists: readonly LibraryItem[],
+): readonly LibraryItem[] =>
+  artists.filter((artist) => artist.type === 'MusicArtist' && artist.isFavorite === true)
 
 export const assembleInstantMixSeeds = (
   {
@@ -286,7 +309,7 @@ export const rankArtistsFromTracks = (
 export const assembleFavoriteArtists = (
   liked: readonly LibraryItem[],
   ranked: readonly LibraryItem[],
-  limit = 12,
+  limit = HOME_FAVORITE_ARTISTS_LIMIT,
 ): readonly LibraryItem[] => {
   const out: LibraryItem[] = []
   const seenIds = new Set<string>()
@@ -304,28 +327,6 @@ export const assembleFavoriteArtists = (
   }
   return out
 }
-
-export const collageTracks = (
-  tracks: readonly LibraryItem[],
-  limit = 4,
-): readonly LibraryItem[] => {
-  const out: LibraryItem[] = []
-  const seen = new Set<string>()
-  for (const track of tracks) {
-    const id = track.imageItemId ?? track.id
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    out.push(track)
-    if (out.length >= limit) return out
-  }
-  return out
-}
-
-export const collageImageIds = (
-  tracks: readonly LibraryItem[],
-  limit = 4,
-): readonly string[] =>
-  collageTracks(tracks, limit).map((track) => track.imageItemId ?? track.id)
 
 export const downloadsFromOffline = (
   entries: Readonly<Record<string, OfflineEntry>>,

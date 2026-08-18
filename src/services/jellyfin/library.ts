@@ -10,7 +10,16 @@ import type { ItemFilter } from '@jellyfin/sdk/lib/generated-client/models/item-
 import type { ItemFields } from '@jellyfin/sdk/lib/generated-client/models/item-fields'
 import type { ItemSortBy } from '@jellyfin/sdk/lib/generated-client/models/item-sort-by'
 import type { SortOrder } from '@jellyfin/sdk/lib/generated-client/models/sort-order'
-import { mergeAlbumLists, shouldQueryGenreTracksById, uniqueAlbumsFromTracks } from '@/src/domain/genreAlbums'
+import { mapPool } from '@/src/domain/asyncPool'
+import {
+  BROWSE_GENRE_ART_SAMPLES,
+  BROWSE_GENRE_MIN_ALBUMS,
+  BROWSE_GENRE_PROBE_ALBUMS,
+  browseGenreAlbumCount,
+  type BrowseGenre,
+} from '@/src/domain/browseGenres'
+import { uniqueCollageItems } from '@/src/domain/collageArt'
+import { genreTrackQueryModes, mergeAlbumLists, uniqueAlbumsFromTracks } from '@/src/domain/genreAlbums'
 import { appError, err, ok, type Result } from '@/src/domain/result'
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
 import {
@@ -134,6 +143,37 @@ export const genreTracksQuery = (
     ...(name ? { genres: [name] as const } : { genreIds: [genreId] as const }),
   }
 }
+
+const genreTrackQueries = (
+  userId: string,
+  genreId: string,
+  genreName?: string,
+) =>
+  genreTrackQueryModes(genreName).map((mode) =>
+    mode === 'name'
+      ? genreTracksQuery(userId, genreId, genreName)
+      : genreTracksQuery(userId, genreId),
+  )
+
+/** Cheap existence check: any album or song tagged with this genre id. */
+export const genreContentByIdQuery = (userId: string, genreId: string) => ({
+  userId,
+  includeItemTypes: ['MusicAlbum', 'Audio'] as const,
+  genreIds: [genreId] as const,
+  enableImages: false as const,
+  enableUserData: false as const,
+  fields: ['ParentId'] as const,
+})
+
+/** Same probe by genre name — Jellyfin often tags Audio by name only. */
+export const genreContentByNameQuery = (userId: string, genreName: string) => ({
+  userId,
+  includeItemTypes: ['MusicAlbum', 'Audio'] as const,
+  genres: [genreName] as const,
+  enableImages: false as const,
+  enableUserData: false as const,
+  fields: ['ParentId'] as const,
+})
 
 type Page = {
   readonly items: readonly LibraryItem[]
@@ -329,21 +369,10 @@ export const fetchMusicGenres = async (
   }
 }
 
-const publishGenreAlbums = (
-  catalog: readonly LibraryItem[],
-  derived: readonly LibraryItem[],
-  onPartial?: (albums: readonly LibraryItem[]) => void,
-): readonly LibraryItem[] => {
-  const albums = mergeAlbumLists(catalog, derived)
-  onPartial?.(albums)
-  return albums
-}
-
 const deriveAlbumsFromGenreTrackPages = async (
   context: JellyfinContext,
   query: ItemQuery,
   catalog: readonly LibraryItem[],
-  onPartial: ((albums: readonly LibraryItem[]) => void) | undefined,
   signal: AbortSignal | undefined,
   resume?: {
     readonly startIndex: number
@@ -357,7 +386,7 @@ const deriveAlbumsFromGenreTrackPages = async (
   const loop = async (
     startIndex: number,
   ): Promise<Result<readonly LibraryItem[]>> => {
-    if (signal?.aborted) return ok(publishGenreAlbums(catalog, derived))
+    if (signal?.aborted) return ok(mergeAlbumLists(catalog, derived))
     const page = await fetchItemsPage(
       context,
       query,
@@ -371,18 +400,14 @@ const deriveAlbumsFromGenreTrackPages = async (
         derived.length > 0 ||
         catalog.length > 0
       ) {
-        return ok(publishGenreAlbums(catalog, derived, onPartial))
+        return ok(mergeAlbumLists(catalog, derived))
       }
       return page
     }
-    const before = derived.length
     for (const album of uniqueAlbumsFromTracks(page.value.items)) {
       if (seen.has(album.id)) continue
       seen.add(album.id)
       derived.push(album)
-    }
-    if (derived.length > before || startIndex === 0) {
-      publishGenreAlbums(catalog, derived, onPartial)
     }
     if (
       !shouldFetchNextPage(
@@ -392,7 +417,7 @@ const deriveAlbumsFromGenreTrackPages = async (
         GENRE_TRACK_PAGE_SIZE,
       )
     ) {
-      return ok(publishGenreAlbums(catalog, derived, onPartial))
+      return ok(mergeAlbumLists(catalog, derived))
     }
     return loop(startIndex + page.value.items.length)
   }
@@ -406,40 +431,18 @@ export const fetchAlbumsByGenre = async (
   genreId: string,
   genreName?: string,
   opts?: {
-    readonly onPartial?: (albums: readonly LibraryItem[]) => void
     readonly signal?: AbortSignal
   },
 ): Promise<Result<readonly LibraryItem[]>> => {
   const name = genreName?.trim()
   const signal = opts?.signal
-  const onPartial = opts?.onPartial
-  const trackQuery = genreTracksQuery(userId, genreId, name)
   const byIdP = fetchAllItemPages(context, genreAlbumsByIdQuery(userId, genreId), {
     signal,
   })
   const byNameP = name
     ? fetchAllItemPages(context, genreAlbumsByNameQuery(userId, name), { signal })
     : Promise.resolve(ok([]))
-  const firstTracksP = fetchItemsPage(
-    context,
-    trackQuery,
-    0,
-    GENRE_TRACK_PAGE_SIZE,
-    signal,
-  )
-  void Promise.all([byIdP, byNameP]).then(([byId, byName]) => {
-    if (signal?.aborted) return
-    const early = mergeAlbumLists(
-      byId.ok ? byId.value : [],
-      byName.ok ? byName.value : [],
-    )
-    if (early.length > 0) onPartial?.(early)
-  })
-  const [byId, byName, firstTracks] = await Promise.all([
-    byIdP,
-    byNameP,
-    firstTracksP,
-  ])
+  const [byId, byName] = await Promise.all([byIdP, byNameP])
   if (signal?.aborted) {
     return ok(
       mergeAlbumLists(byId.ok ? byId.value : [], byName.ok ? byName.value : []),
@@ -451,57 +454,22 @@ export const fetchAlbumsByGenre = async (
   )
   const seen = new Set(catalog.map((album) => album.id))
   const derived: LibraryItem[] = []
-  if (firstTracks.ok) {
-    for (const album of uniqueAlbumsFromTracks(firstTracks.value.items)) {
-      if (seen.has(album.id)) continue
-      seen.add(album.id)
-      derived.push(album)
-    }
-  }
-  const initial = publishGenreAlbums(catalog, derived, onPartial)
-  const nameTrackCount = firstTracks.ok
-    ? Math.max(firstTracks.value.total, firstTracks.value.items.length)
-    : undefined
-  if (!firstTracks.ok && !name) {
-    return initial.length > 0 ? ok(initial) : firstTracks
-  }
-  const moreTracks =
-    firstTracks.ok &&
-    shouldFetchNextPage(
-      0,
-      firstTracks.value.items.length,
-      firstTracks.value.total,
-      GENRE_TRACK_PAGE_SIZE,
+  let latest = catalog
+  let lastError: Result<readonly LibraryItem[]> | undefined
+  for (const query of genreTrackQueries(userId, genreId, name)) {
+    const result = await deriveAlbumsFromGenreTrackPages(
+      context,
+      query,
+      catalog,
+      signal,
+      { startIndex: 0, derived, seen },
     )
-  const continued = moreTracks
-    ? await deriveAlbumsFromGenreTrackPages(
-        context,
-        trackQuery,
-        catalog,
-        onPartial,
-        signal,
-        {
-          startIndex: firstTracks.value.items.length,
-          derived,
-          seen,
-        },
-      )
-    : ok(initial)
-
-  if (!continued.ok) return continued
-  if (signal?.aborted) return continued
-  if (!firstTracks.ok && firstTracks.error.code === 'cancelled') {
-    return continued
+    if (result.ok) latest = result.value
+    else lastError = result
+    if (signal?.aborted) break
   }
-  if (!shouldQueryGenreTracksById(name, nameTrackCount)) return continued
-
-  return deriveAlbumsFromGenreTrackPages(
-    context,
-    genreTracksQuery(userId, genreId),
-    continued.value,
-    onPartial,
-    signal,
-  )
+  if (latest.length > 0 || !lastError) return ok(latest)
+  return lastError
 }
 
 export const fetchPlaylists = async (
@@ -579,15 +547,19 @@ export const fetchMusicGenresPreview = async (
   context: JellyfinContext,
   userId: string,
   limit = 16,
-  opts?: { readonly enableImages?: boolean },
+  opts?: {
+    readonly enableImages?: boolean
+    readonly sortBy?: readonly ItemSortBy[]
+    readonly sortOrder?: readonly SortOrder[]
+  },
 ): Promise<Result<readonly LibraryItem[]>> => {
   try {
     const response = await getMusicGenresApi(context.api).getMusicGenres({
       userId,
       startIndex: 0,
       limit,
-      sortBy: ['SortName'],
-      sortOrder: ['Ascending'],
+      sortBy: [...(opts?.sortBy ?? ['SortName'])],
+      sortOrder: [...(opts?.sortOrder ?? ['Ascending'])],
       enableImages: opts?.enableImages ?? true,
       enableTotalRecordCount: false,
     })
@@ -595,6 +567,138 @@ export const fetchMusicGenresPreview = async (
   } catch (cause) {
     return fail('Failed to load genres', cause)
   }
+}
+
+const BROWSE_GENRE_TRACK_PROBE = 48
+
+const albumCountFromPage = (
+  page: Result<{ readonly items: readonly LibraryItem[]; readonly total: number }>,
+): number =>
+  page.ok ? browseGenreAlbumCount(page.value.total, page.value.items.length) : 0
+
+const pickBrowseGenreAlbums = (
+  ...sources: readonly (readonly LibraryItem[])[]
+): readonly LibraryItem[] => {
+  const merged: LibraryItem[] = []
+  const seen = new Set<string>()
+  for (const source of sources) {
+    for (const album of source) {
+      if (!album.id || seen.has(album.id)) continue
+      seen.add(album.id)
+      merged.push(album)
+    }
+  }
+  return uniqueCollageItems(merged, BROWSE_GENRE_ART_SAMPLES)
+}
+
+const randomGenreAlbumsQuery = (userId: string, genreId: string, genreName?: string) =>
+  genreName
+    ? { ...genreAlbumsByNameQuery(userId, genreName), sortBy: ['Random'] as const }
+    : { ...genreAlbumsByIdQuery(userId, genreId), sortBy: ['Random'] as const }
+
+const loadGenreAlbumProbe = async (
+  context: JellyfinContext,
+  userId: string,
+  genre: Pick<LibraryItem, 'id' | 'name'>,
+  signal?: AbortSignal,
+  minAlbums?: number,
+): Promise<{
+  readonly sampleAlbums: readonly LibraryItem[]
+  readonly albumCount: number
+}> => {
+  const name = genre.name.trim()
+  const [byId, byName] = await Promise.all([
+    fetchItemsPage(
+      context,
+      randomGenreAlbumsQuery(userId, genre.id),
+      0,
+      BROWSE_GENRE_PROBE_ALBUMS,
+      signal,
+    ),
+    name
+      ? fetchItemsPage(
+          context,
+          randomGenreAlbumsQuery(userId, genre.id, name),
+          0,
+          BROWSE_GENRE_PROBE_ALBUMS,
+          signal,
+        )
+      : Promise.resolve(ok({ items: [], total: 0 })),
+  ])
+  const byIdItems = byId.ok ? byId.value.items : []
+  const byNameItems = byName.ok ? byName.value.items : []
+  const uniqueIds = new Set<string>()
+  for (const album of [...byIdItems, ...byNameItems]) {
+    if (album.id) uniqueIds.add(album.id)
+  }
+  let albumCount = Math.max(
+    albumCountFromPage(byId),
+    albumCountFromPage(byName),
+    uniqueIds.size,
+  )
+  let sampleAlbums = pickBrowseGenreAlbums(byIdItems, byNameItems)
+  const needMore = () =>
+    sampleAlbums.length < BROWSE_GENRE_ART_SAMPLES ||
+    (minAlbums !== undefined && albumCount < minAlbums)
+  if (!needMore()) return { sampleAlbums, albumCount }
+  for (const query of genreTrackQueries(userId, genre.id, name || undefined)) {
+    if (signal?.aborted) break
+    const tracks = await fetchItemsPage(context, query, 0, BROWSE_GENRE_TRACK_PROBE, signal)
+    if (!tracks.ok) continue
+    const derived = uniqueAlbumsFromTracks(tracks.value.items)
+    for (const album of derived) {
+      if (album.id) uniqueIds.add(album.id)
+    }
+    albumCount = Math.max(albumCount, uniqueIds.size)
+    sampleAlbums = pickBrowseGenreAlbums(sampleAlbums, derived)
+    if (!needMore()) break
+  }
+  return { sampleAlbums, albumCount }
+}
+
+/** Random album covers for a genre tile. Fills from tracks when albums repeat art. */
+export const fetchGenreArtSamples = async (
+  context: JellyfinContext,
+  userId: string,
+  genre: Pick<LibraryItem, 'id' | 'name'>,
+  signal?: AbortSignal,
+): Promise<readonly LibraryItem[]> =>
+  (await loadGenreAlbumProbe(context, userId, genre, signal)).sampleAlbums
+
+/** Enough distinct albums to be worth a Search browse tile, plus cover samples. */
+export const probeBrowseGenre = async (
+  context: JellyfinContext,
+  userId: string,
+  genre: LibraryItem,
+  signal?: AbortSignal,
+): Promise<BrowseGenre | null> => {
+  const { sampleAlbums, albumCount } = await loadGenreAlbumProbe(
+    context,
+    userId,
+    genre,
+    signal,
+    BROWSE_GENRE_MIN_ALBUMS,
+  )
+  if (albumCount < BROWSE_GENRE_MIN_ALBUMS) return null
+  return { genre, sampleAlbums }
+}
+
+/** MusicGenre rows that have enough albums to browse. */
+export const fetchBrowseGenres = async (
+  context: JellyfinContext,
+  userId: string,
+  limit = 28,
+  signal?: AbortSignal,
+): Promise<Result<readonly BrowseGenre[]>> => {
+  const preview = await fetchMusicGenresPreview(context, userId, Math.max(limit * 2, 24), {
+    sortBy: ['Random'],
+  })
+  if (!preview.ok) return preview
+  const probes = await mapPool(preview.value, 6, (genre) =>
+    signal?.aborted ? Promise.resolve(null) : probeBrowseGenre(context, userId, genre, signal),
+  )
+  if (signal?.aborted) return err(appError('cancelled', 'Request cancelled'))
+  return ok(probes.filter((entry): entry is BrowseGenre => entry !== null))
 }
 
 export const markFavorite = async (
@@ -658,6 +762,8 @@ const INSTANT_MIX_LIMIT = 100
 /** Cap Instant Mix size for Home cards. */
 export const INSTANT_MIX_HOME_LIMIT = 48
 
+const MIX_ITEM_FIELDS = ['PrimaryImageAspectRatio', 'Genres', 'ParentId'] as const
+
 export const fetchInstantMix = async (
   context: JellyfinContext,
   userId: string,
@@ -671,7 +777,7 @@ export const fetchInstantMix = async (
       limit,
       enableImages: true,
       enableUserData: true,
-      fields: ['PrimaryImageAspectRatio', 'Genres'],
+      fields: [...MIX_ITEM_FIELDS],
     })
     return ok(dedupeLibraryItems(mapItems(response.data.Items)))
   } catch (cause) {
@@ -692,7 +798,7 @@ export const fetchInstantMixFromArtist = async (
       limit,
       enableImages: true,
       enableUserData: true,
-      fields: ['PrimaryImageAspectRatio', 'Genres'],
+      fields: [...MIX_ITEM_FIELDS],
     })
     return ok(dedupeLibraryItems(mapItems(response.data.Items)))
   } catch (cause) {
@@ -713,7 +819,7 @@ export const fetchInstantMixFromGenre = async (
       limit,
       enableImages: true,
       enableUserData: true,
-      fields: ['PrimaryImageAspectRatio', 'Genres'],
+      fields: [...MIX_ITEM_FIELDS],
     })
     return ok(dedupeLibraryItems(mapItems(response.data.Items)))
   } catch (cause) {
@@ -735,7 +841,7 @@ export const fetchInstantMixFromGenreName = async (
       limit,
       enableImages: true,
       enableUserData: true,
-      fields: ['PrimaryImageAspectRatio', 'Genres'],
+      fields: [...MIX_ITEM_FIELDS],
     })
     return ok(dedupeLibraryItems(mapItems(response.data.Items)))
   } catch (cause) {
@@ -920,7 +1026,7 @@ export const fetchPlaylistTracks = async (
         limit: pageSize,
         enableImages: true,
         enableUserData: true,
-        fields: ['PrimaryImageAspectRatio'],
+        fields: ['PrimaryImageAspectRatio', 'ParentId'],
       })
       const page = mapItems(response.data.Items)
       const merged = [...acc, ...page]

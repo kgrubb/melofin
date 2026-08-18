@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { colors, gradients, motion, scrollUnderChromePad, spacing, typography } from '@/src/theme/tokens'
+import { colors, gradients, motion, radii, scrollUnderChromePad, spacing, typography } from '@/src/theme/tokens'
 
 describe('theme tokens', () => {
   it('exposes brand palette values', () => {
     expect(colors.accent).toBe('#D946EF')
     expect(gradients.brand[0]).toBe('#9333EA')
     expect(spacing.md).toBe(16)
+    expect(radii.cover).toBe(6)
     expect(typography.title.fontWeight).toBe('700')
   })
 

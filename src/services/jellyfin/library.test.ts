@@ -5,6 +5,8 @@ import {
   artistContributingAlbumsQuery,
   genreAlbumsByIdQuery,
   genreAlbumsByNameQuery,
+  genreContentByIdQuery,
+  genreContentByNameQuery,
   genreTracksQuery,
 } from '@/src/services/jellyfin/library'
 import {
@@ -81,6 +83,22 @@ describe('genre album queries', () => {
       imageTypeLimit: 1,
       fields: ['ParentId'],
       genreIds: ['g1'],
+    })
+    expect(genreContentByIdQuery('u', 'g1')).toEqual({
+      userId: 'u',
+      includeItemTypes: ['MusicAlbum', 'Audio'],
+      genreIds: ['g1'],
+      enableImages: false,
+      enableUserData: false,
+      fields: ['ParentId'],
+    })
+    expect(genreContentByNameQuery('u', 'Hip Hop')).toEqual({
+      userId: 'u',
+      includeItemTypes: ['MusicAlbum', 'Audio'],
+      genres: ['Hip Hop'],
+      enableImages: false,
+      enableUserData: false,
+      fields: ['ParentId'],
     })
   })
 })
@@ -194,6 +212,19 @@ describe('library mappers', () => {
     expect(item.albumId).toBe('album')
   })
 
+  it('uses album art for songs even when ImageTags.Primary is set', () => {
+    const item = mapBaseItem({
+      Id: 'song',
+      Name: 'Song',
+      Type: 'Audio',
+      AlbumId: 'album',
+      AlbumPrimaryImageTag: 'album-tag',
+      ImageTags: { Primary: 'track-tag' },
+    })
+    expect(item.imageTag).toBe('album-tag')
+    expect(item.imageItemId).toBe('album')
+  })
+
   it('uses ParentId as albumId for library audio, not playlist children', () => {
     expect(
       mapBaseItem({
@@ -283,14 +314,14 @@ describe('library mappers', () => {
     expect(artworkUrl(context, '1', 'tag')).toContain('maxWidth=2048')
     expect(artworkUrl(context, '1', 'tag')).toContain('quality=96')
     expect(artworkUrl(context, '1', 'tag')).toContain('tag=tag')
-    expect(artworkUrl(context, '1', 'tag', 'thumb')).toContain('maxHeight=384')
+    expect(artworkUrl(context, '1', 'tag', 'thumb')).toContain('maxHeight=720')
     expect(artworkUrl(context, '1', 'tag', 'card')).toContain('maxHeight=960')
     expect(artworkUrl(context, '1')).toContain('Images/Primary')
     expect(artworkUrl(context, '1')).not.toContain('tag=')
     expect(artworkUrl(context, '')).toBeUndefined()
     expect(userImageUrl(context, 'u1')).toContain('/Users/u1/Images/Primary')
     expect(userImageUrl(context, 'u1', 'ptag', 'thumb')).toContain('tag=ptag')
-    expect(userImageUrl(context, 'u1', undefined, 'thumb')).toContain('maxHeight=384')
+    expect(userImageUrl(context, 'u1', undefined, 'thumb')).toContain('maxHeight=720')
     expect(userImageUrl(context, '')).toBeUndefined()
     expect(resizeArtworkUrl('https://jf/img?maxHeight=256&quality=90', 'hero')).toBe(
       'https://jf/img?maxWidth=2048&maxHeight=2048&quality=96',

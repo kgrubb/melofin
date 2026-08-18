@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import {
   ActivityIndicator,
   StyleSheet,
@@ -118,37 +119,55 @@ export const GlassButton = ({
   </PressableScale>
 )
 
-export const Field = ({
-  containerStyle,
-  label,
-  inset = true,
-  ...props
-}: TextInputProps & {
+type FieldProps = TextInputProps & {
   readonly containerStyle?: StyleProp<ViewStyle>
   readonly label?: string
   readonly inset?: boolean
-}) => (
-  <View style={[styles.fieldWrap, containerStyle]}>
-    {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
-    {inset ? (
-      <View style={styles.fieldInset}>
+  readonly leading?: React.ReactNode
+  readonly trailing?: React.ReactNode
+}
+
+export const Field = forwardRef<TextInput, FieldProps>(function Field(
+  { containerStyle, label, inset = true, leading, trailing, ...props },
+  ref,
+) {
+  const input =
+    leading || trailing ? (
+      <View style={styles.fieldRow}>
+        {leading ? <View style={styles.fieldSlot}>{leading}</View> : null}
         <TextInput
+          ref={ref}
           placeholderTextColor={colors.textSecondary}
           {...props}
-          style={[styles.fieldInput, props.style]}
+          style={[styles.fieldInput, styles.fieldInputGrow, props.style]}
         />
+        {trailing ? <View style={styles.fieldSlot}>{trailing}</View> : null}
       </View>
     ) : (
-      <Glass style={styles.fieldShell} contentStyle={styles.fieldInner}>
-        <TextInput
-          placeholderTextColor={colors.textSecondary}
-          {...props}
-          style={[styles.fieldInput, props.style]}
-        />
-      </Glass>
-    )}
-  </View>
-)
+      <TextInput
+        ref={ref}
+        placeholderTextColor={colors.textSecondary}
+        {...props}
+        style={[styles.fieldInput, props.style]}
+      />
+    )
+  return (
+    <View style={[styles.fieldWrap, containerStyle]}>
+      {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
+      {inset ? (
+        <View style={styles.fieldInset}>{input}</View>
+      ) : (
+        <Glass
+          style={styles.fieldShell}
+          contentStyle={styles.fieldInner}
+          isInteractive
+        >
+          {input}
+        </Glass>
+      )}
+    </View>
+  )
+})
 
 export const EmptyState = ({
   title,
@@ -288,11 +307,27 @@ const styles = StyleSheet.create({
     minHeight: 52,
     justifyContent: 'center',
   },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 52,
+    paddingLeft: spacing.sm,
+    paddingRight: spacing.xs,
+  },
+  fieldSlot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
   fieldInput: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     color: colors.text,
     fontSize: 16,
+  },
+  fieldInputGrow: {
+    flex: 1,
+    paddingHorizontal: spacing.sm,
   },
   centered: {
     flex: 1,

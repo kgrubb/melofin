@@ -46,12 +46,11 @@ export const mergeAlbumLists = (
   return [...byId.values()].sort(compareAlbumName)
 }
 
-/** Fall back to genreIds when a name-filtered Audio crawl found nothing. */
-export const shouldQueryGenreTracksById = (
-  genreName: string | undefined,
-  nameTrackCount: number | undefined,
-): boolean => {
+/** Audio crawls to run — Jellyfin tags some songs by genre name and others by id. */
+export const genreTrackQueryModes = (
+  genreName?: string,
+): readonly ('name' | 'id')[] => {
   const name = genreName?.trim()
-  if (!name) return false
-  return nameTrackCount === undefined || nameTrackCount <= 0
+  if (!name) return ['id']
+  return ['name', 'id']
 }

@@ -20,6 +20,8 @@ export const gradients = {
 } as const
 
 export const radii = {
+  /** Album/artist covers — matches home cards. */
+  cover: 6,
   sm: 14,
   md: 20,
   lg: 28,

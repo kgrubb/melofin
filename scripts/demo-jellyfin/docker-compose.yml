@@ -1,0 +1,15 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: melio-demo-jellyfin
+    ports:
+      - "8096:8096"
+    volumes:
+      - ../../.demo-jellyfin/config:/config
+      - ../../.demo-jellyfin/cache:/cache
+      - ../../.demo-jellyfin/media:/media:ro
+    environment:
+      TZ: America/New_York
+      JELLYFIN_PublishedServerUrl: http://127.0.0.1:8096
+    mem_limit: 1g
+    restart: unless-stopped

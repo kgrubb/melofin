@@ -52,8 +52,8 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
       stringList(item.AlbumArtist ?? item.albumArtist),
     ].find((list) => list.length > 0) ?? []
   const id = String(item.Id ?? '')
-  const imageTags = item.ImageTags
-  const mediaSources = item.MediaSources
+  const imageTags = item.ImageTags ?? item.imageTags
+  const mediaSources = item.MediaSources ?? item.mediaSources
   const primaryTag =
     imageTags && typeof imageTags === 'object'
       ? String((imageTags as { Primary?: string }).Primary ?? '')
@@ -74,12 +74,14 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
     artistPairs.find((entry) => entry.id)?.id ??
     albumArtistPairs.find((entry) => entry.id)?.id ??
     undefined
-  const imageTag = primaryTag || albumPrimary || undefined
-  const imageItemId = primaryTag
-    ? id
-    : albumPrimary && albumId
+  // Songs rarely have their own Primary; a track ImageTags.Primary often 404s.
+  const imageTag = (isAudio ? albumPrimary || primaryTag : primaryTag || albumPrimary) || undefined
+  const imageItemId =
+    isAudio && albumId
       ? albumId
-      : albumId || (isAudio ? id : undefined)
+      : primaryTag
+        ? id
+        : albumId || undefined
   const mediaSourceId =
     Array.isArray(mediaSources) && mediaSources[0]
       ? String((mediaSources[0] as { Id?: string }).Id ?? item.Id ?? '')
@@ -187,9 +189,9 @@ export const toQueueTrack = (
 
 type ArtworkSize = 'thumb' | 'card' | 'hero'
 
-/** Pixel caps. Hero must exceed @3x Now Playing (~390-430pt). */
+/** Pixel caps. Thumb must cover @3x browse tiles (~170pt). Hero exceeds Now Playing. */
 export const ARTWORK_MAX_PX: Record<ArtworkSize, number> = {
-  thumb: 384,
+  thumb: 720,
   card: 960,
   hero: 2048,
 }

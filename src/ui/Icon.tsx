@@ -1,3 +1,4 @@
+import { createElement } from 'react'
 import { SymbolView, type SFSymbol } from 'expo-symbols'
 import {
   Platform,
@@ -9,6 +10,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native'
+import { SF_SYMBOL_PATHS } from '@/src/ui/sfSymbolPaths'
 
 type Props = {
   readonly name: string
@@ -151,6 +153,7 @@ const FALLBACK_GLYPH: Record<string, string> = {
   house: '⌂',
   'house.fill': '⌂',
   magnifyingglass: '⌕',
+  clock: '◷',
   'rectangle.stack': '▤',
   'rectangle.stack.fill': '▦',
   'arrow.down.circle': '↓',
@@ -163,6 +166,7 @@ const FALLBACK_GLYPH: Record<string, string> = {
   'chevron.down': '⌄',
   'chevron.backward': '‹',
   xmark: '✕',
+  'xmark.circle.fill': '✕',
   ellipsis: '···',
   plus: '+',
   'speaker.wave.2': '🔊',
@@ -214,6 +218,49 @@ const FallbackGlyph = ({
   )
 }
 
+/** PNG-traced stack glyphs are cropped to ink; SF Symbols keep padding. */
+const WEB_OPTICAL_SCALE: Readonly<Record<string, number>> = {
+  'rectangle.stack': 0.62,
+  'rectangle.stack.fill': 0.62,
+}
+
+/** Same SF Symbol outlines iOS draws. Web-only (DOM SVG). */
+const SfPath = ({
+  name,
+  size,
+  color,
+  style,
+}: {
+  readonly name: string
+  readonly size: number
+  readonly color?: string
+  readonly style?: StyleProp<ViewStyle>
+}) => {
+  const glyph = SF_SYMBOL_PATHS[name]
+  if (!glyph) return null
+  const optical = WEB_OPTICAL_SCALE[name] ?? 1
+  const scale = (size * optical) / Math.max(glyph.width, glyph.height)
+  return (
+    <View style={box(size, style)}>
+      {createElement(
+        'svg',
+        {
+          width: glyph.width * scale,
+          height: glyph.height * scale,
+          viewBox: `0 0 ${glyph.width} ${glyph.height}`,
+          focusable: false,
+          'aria-hidden': true,
+        },
+        createElement('path', {
+          d: glyph.d,
+          fill: color ?? '#000',
+          fillRule: glyph.evenOdd ? 'evenodd' : 'nonzero',
+        }),
+      )}
+    </View>
+  )
+}
+
 const VectorFallback = ({
   name,
   size,
@@ -227,21 +274,18 @@ const VectorFallback = ({
 }) => {
   if (name === 'play.fill') return <SolidPlay size={size} color={color} style={style} />
   if (name === 'pause.fill') return <SolidPause size={size} color={color} style={style} />
-  if (name === 'backward.end.fill' || name === 'forward.end.fill') {
-    return (
-      <TrackSkip
-        direction={name === 'forward.end.fill' ? 'forward' : 'backward'}
-        size={size}
-        color={color}
-        style={style}
-      />
-    )
+  if (Platform.OS === 'web' && SF_SYMBOL_PATHS[name]) {
+    return <SfPath name={name} size={size} color={color} style={style} />
   }
-  // Legacy aliases still used in a few call sites.
-  if (name === 'backward.fill' || name === 'forward.fill') {
+  if (
+    name === 'backward.end.fill' ||
+    name === 'forward.end.fill' ||
+    name === 'backward.fill' ||
+    name === 'forward.fill'
+  ) {
     return (
       <TrackSkip
-        direction={name === 'forward.fill' ? 'forward' : 'backward'}
+        direction={name === 'forward.end.fill' || name === 'forward.fill' ? 'forward' : 'backward'}
         size={size}
         color={color}
         style={style}
