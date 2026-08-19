@@ -126,7 +126,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     privacyPolicyUrl: 'https://github.com/kgrubb/melofin/blob/main/PRIVACY.md',
     sourceUrl: 'https://github.com/kgrubb/melofin',
     eas: {
-      projectId: '402e26b5-7bf9-430f-a1b8-c03751cba89d',
+      projectId: '5db5fbc6-9c2e-4713-9d27-a35a09052a10',
       owner: 'kgrubb',
     },
   },

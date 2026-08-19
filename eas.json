@@ -20,13 +20,17 @@
       }
     },
     "production": {
-      "autoIncrement": true,
       "ios": {
         "image": "macos-sequoia-15.6-xcode-16.4"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6802902558",
+        "appleTeamId": "TUVTQVQG9D"
+      }
+    }
   }
 }

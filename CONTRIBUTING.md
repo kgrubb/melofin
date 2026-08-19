@@ -46,7 +46,7 @@ Expo Go is not supported. Use a development build.
 1. Fork (or create a branch from latest `main`)
 2. Use a short branch name: `fix/...`, `feat/...`, `docs/...`
 3. Keep commits focused. Prefer small PRs over kitchen-sink ones.
-4. **Squash-merge** so the PR title becomes the git commit on `main`.
+4. **Squash-merge** so the PR title becomes the single git commit on `main`. The GitHub merge button is squash-only: a merge commit would list the same PR twice in the release changelog.
 
 PR titles must be [conventional](https://www.conventionalcommits.org/):
 
@@ -92,7 +92,7 @@ Maintainers review for correctness, regressions, and fit with the architecture a
 
 ## Releases
 
-Merges to `main` run [release-please](https://github.com/googleapis/release-please). If there are unreleased `feat` / `fix` / `perf` / breaking changes, it opens or updates a PR titled `[release vX.Y.Z]` that bumps `package.json`, `app.config.ts`, and `CHANGELOG.md`. Merging that PR tags `vX.Y.Z`, creates the GitHub Release, then (when `EXPO_TOKEN` is set) starts an EAS iOS production build. App Store submit additionally needs `EXPO_ASC_API_KEY_ID`, `EXPO_ASC_API_KEY_ISSUER_ID`, and `EXPO_ASC_API_KEY_P8`.
+Squash-merges to `main` run [release-please](https://github.com/googleapis/release-please). If there are unreleased `feat` / `fix` / `perf` / breaking changes, it opens or updates a PR titled `[release vX.Y.Z]` that bumps `package.json`, `app.config.ts`, and `CHANGELOG.md`. Merging that PR tags `vX.Y.Z`, creates the GitHub Release, then (when `EXPO_TOKEN` is set) starts an EAS iOS production build. App Store submit additionally needs `EXPO_ASC_API_KEY_ID`, `EXPO_ASC_API_KEY_ISSUER_ID`, and `EXPO_ASC_API_KEY_P8`.
 
 The release PR is opened with `GITHUB_TOKEN`, so GitHub will not run CI on it. Quality still runs on the merge to `main` before the tag is created. Do not edit the changelog or version files on that PR.
 
