@@ -1,9 +1,9 @@
-import { melioAudioGraph } from 'melio-audio-graph'
+import { melofinAudioGraph } from 'melofin-audio-graph'
 import { stateRef } from '@/src/player/engineState'
 
 /** Stop secondary handoff player and clear handoff bookkeeping. */
 export const clearNativeNextQueue = (): void => {
   stateRef.handoffActive = false
   stateRef.handoffForKey = null
-  melioAudioGraph.clearNext()
+  melofinAudioGraph.clearNext()
 }

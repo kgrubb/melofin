@@ -330,7 +330,7 @@ describe('library mappers', () => {
       resizeArtworkUrl('https://jf/img?maxWidth=384&maxHeight=384&quality=90', 'hero'),
     ).toBe('https://jf/img?maxWidth=2048&maxHeight=2048&quality=96')
     expect(resizeArtworkUrl('https://jf/img?foo=1', 'hero')).toBe('https://jf/img?foo=1')
-    expect(resizeArtworkUrl('file:///melio/art', 'hero')).toBe('file:///melio/art')
+    expect(resizeArtworkUrl('file:///melofin/art', 'hero')).toBe('file:///melofin/art')
     expect(resizeArtworkUrl(undefined, 'hero')).toBeUndefined()
     expect(buildUniversalStreamUrl(context, '1', 'u')).toContain('UserId=u')
     expect(buildUniversalStreamUrl(context, '1', 'u')).toContain('/universal?')

@@ -3,7 +3,7 @@ import {
   planAudioRouteAction,
 } from '@/src/domain/audioRoute'
 import { logger } from '@/src/logging/logger'
-import { subscribeAudioSession } from 'melio-audio-graph'
+import { subscribeAudioSession } from 'melofin-audio-graph'
 
 export type AudioSessionBridgeHandlers = {
   readonly isPlaying: () => boolean

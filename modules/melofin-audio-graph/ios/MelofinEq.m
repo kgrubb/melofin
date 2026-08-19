@@ -1,4 +1,4 @@
-#import "MelioEq.h"
+#import "MelofinEq.h"
 
 #include <math.h>
 #include <string.h>
@@ -8,15 +8,15 @@
 #import <MediaToolbox/MediaToolbox.h>
 #import <objc/runtime.h>
 
-enum { kMelioEqBands = 10 };
+enum { kMelofinEqBands = 10 };
 
-static const float kMelioEqHz[kMelioEqBands] = {
+static const float kMelofinEqHz[kMelofinEqBands] = {
   32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000,
 };
 
-static float gGainsDb[kMelioEqBands];
-static char kMelioEqKVO;
-static const void *kMelioEqAttacherKey = &kMelioEqAttacherKey;
+static float gGainsDb[kMelofinEqBands];
+static char kMelofinEqKVO;
+static const void *kMelofinEqAttacherKey = &kMelofinEqAttacherKey;
 
 typedef struct {
   MTAudioProcessingTapRef tap;
@@ -24,21 +24,21 @@ typedef struct {
   Float64 sampleTime;
   Boolean supported;
   Boolean alive;
-  float lastGains[kMelioEqBands];
-} MelioEqTapContext;
+  float lastGains[kMelofinEqBands];
+} MelofinEqTapContext;
 
-static Boolean MelioEqActive(const float *gains) {
-  for (int i = 0; i < kMelioEqBands; i += 1) {
+static Boolean MelofinEqActive(const float *gains) {
+  for (int i = 0; i < kMelofinEqBands; i += 1) {
     if (fabsf(gains[i]) > 0.05f) return true;
   }
   return false;
 }
 
-static void MelioEqCopyGains(float *out) {
+static void MelofinEqCopyGains(float *out) {
   memcpy(out, gGainsDb, sizeof(gGainsDb));
 }
 
-static OSStatus MelioEqRenderCallback(
+static OSStatus MelofinEqRenderCallback(
   void *inRefCon,
   AudioUnitRenderActionFlags *ioActionFlags,
   const AudioTimeStamp *inTimeStamp,
@@ -49,69 +49,69 @@ static OSStatus MelioEqRenderCallback(
   (void)ioActionFlags;
   (void)inTimeStamp;
   (void)inBusNumber;
-  MelioEqTapContext *ctx = inRefCon;
+  MelofinEqTapContext *ctx = inRefCon;
   if (!ctx || !ctx->alive || !ctx->tap || !ioData) return kAudio_ParamError;
   return MTAudioProcessingTapGetSourceAudio(ctx->tap, inNumberFrames, ioData, NULL, NULL, NULL);
 }
 
-static void MelioEqConfigureBands(AudioUnit eq) {
-  for (UInt32 band = 0; band < kMelioEqBands; band += 1) {
+static void MelofinEqConfigureBands(AudioUnit eq) {
+  for (UInt32 band = 0; band < kMelofinEqBands; band += 1) {
     AudioUnitSetParameter(eq, kAUNBandEQParam_BypassBand + band, kAudioUnitScope_Global, 0, 0, 0);
     AudioUnitParameterID type = kAUNBandEQParam_FilterType + band;
     if (band == 0) {
       AudioUnitSetParameter(eq, type, kAudioUnitScope_Global, 0, kAUNBandEQFilterType_LowShelf, 0);
-    } else if (band == kMelioEqBands - 1) {
+    } else if (band == kMelofinEqBands - 1) {
       AudioUnitSetParameter(eq, type, kAudioUnitScope_Global, 0, kAUNBandEQFilterType_HighShelf, 0);
     } else {
       AudioUnitSetParameter(eq, type, kAudioUnitScope_Global, 0, kAUNBandEQFilterType_Parametric, 0);
       AudioUnitSetParameter(eq, kAUNBandEQParam_Bandwidth + band, kAudioUnitScope_Global, 0, 1.0, 0);
     }
-    AudioUnitSetParameter(eq, kAUNBandEQParam_Frequency + band, kAudioUnitScope_Global, 0, kMelioEqHz[band], 0);
+    AudioUnitSetParameter(eq, kAUNBandEQParam_Frequency + band, kAudioUnitScope_Global, 0, kMelofinEqHz[band], 0);
   }
 }
 
-static void MelioEqApplyGains(AudioUnit eq, const float *gains, float *last) {
-  for (int band = 0; band < kMelioEqBands; band += 1) {
+static void MelofinEqApplyGains(AudioUnit eq, const float *gains, float *last) {
+  for (int band = 0; band < kMelofinEqBands; band += 1) {
     if (fabsf(last[band] - gains[band]) < 0.01f) continue;
     AudioUnitSetParameter(eq, kAUNBandEQParam_Gain + (AudioUnitParameterID)band, kAudioUnitScope_Global, 0, gains[band], 0);
     last[band] = gains[band];
   }
 }
 
-static void MelioEqTapInit(MTAudioProcessingTapRef tap, void *clientInfo, void **tapStorageOut) {
+static void MelofinEqTapInit(MTAudioProcessingTapRef tap, void *clientInfo, void **tapStorageOut) {
   (void)clientInfo;
-  MelioEqTapContext *ctx = calloc(1, sizeof(MelioEqTapContext));
+  MelofinEqTapContext *ctx = calloc(1, sizeof(MelofinEqTapContext));
   if (!ctx) {
     *tapStorageOut = NULL;
     return;
   }
   ctx->tap = tap;
   ctx->alive = true;
-  for (int i = 0; i < kMelioEqBands; i += 1) ctx->lastGains[i] = NAN;
+  for (int i = 0; i < kMelofinEqBands; i += 1) ctx->lastGains[i] = NAN;
   *tapStorageOut = ctx;
 }
 
-static void MelioEqDisposeUnit(MelioEqTapContext *ctx) {
+static void MelofinEqDisposeUnit(MelofinEqTapContext *ctx) {
   if (!ctx || !ctx->eq) return;
   AudioUnitUninitialize(ctx->eq);
   AudioComponentInstanceDispose(ctx->eq);
   ctx->eq = NULL;
 }
 
-static void MelioEqTapFinalize(MTAudioProcessingTapRef tap) {
-  MelioEqTapContext *ctx = (MelioEqTapContext *)MTAudioProcessingTapGetStorage(tap);
+static void MelofinEqTapFinalize(MTAudioProcessingTapRef tap) {
+  MelofinEqTapContext *ctx = (MelofinEqTapContext *)MTAudioProcessingTapGetStorage(tap);
   if (!ctx) return;
   ctx->alive = false;
-  MelioEqDisposeUnit(ctx);
+  MelofinEqDisposeUnit(ctx);
   free(ctx);
 }
 
-static void MelioEqTapPrepare(
+static void MelofinEqTapPrepare(
   MTAudioProcessingTapRef tap,
   CMItemCount maxFrames,
   const AudioStreamBasicDescription *format
 ) {
-  MelioEqTapContext *ctx = (MelioEqTapContext *)MTAudioProcessingTapGetStorage(tap);
+  MelofinEqTapContext *ctx = (MelofinEqTapContext *)MTAudioProcessingTapGetStorage(tap);
   if (!ctx || !format) return;
   ctx->supported =
     format->mFormatID == kAudioFormatLinearPCM &&
@@ -130,12 +130,12 @@ static void MelioEqTapPrepare(
   }
 
   UInt32 maxSlice = (UInt32)maxFrames;
-  UInt32 bands = kMelioEqBands;
+  UInt32 bands = kMelofinEqBands;
   AudioUnitSetProperty(ctx->eq, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0, &maxSlice, sizeof(maxSlice));
   AudioUnitSetProperty(ctx->eq, kAUNBandEQProperty_NumberOfBands, kAudioUnitScope_Global, 0, &bands, sizeof(bands));
   AudioUnitSetProperty(ctx->eq, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, format, sizeof(*format));
   AudioUnitSetProperty(ctx->eq, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 0, format, sizeof(*format));
-  AURenderCallbackStruct callback = {.inputProc = MelioEqRenderCallback, .inputProcRefCon = ctx};
+  AURenderCallbackStruct callback = {.inputProc = MelofinEqRenderCallback, .inputProcRefCon = ctx};
   AudioUnitSetProperty(ctx->eq, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback, sizeof(callback));
   if (AudioUnitInitialize(ctx->eq) != noErr) {
     AudioComponentInstanceDispose(ctx->eq);
@@ -143,14 +143,14 @@ static void MelioEqTapPrepare(
     ctx->supported = false;
     return;
   }
-  MelioEqConfigureBands(ctx->eq);
+  MelofinEqConfigureBands(ctx->eq);
 }
 
-static void MelioEqTapUnprepare(MTAudioProcessingTapRef tap) {
-  MelioEqDisposeUnit((MelioEqTapContext *)MTAudioProcessingTapGetStorage(tap));
+static void MelofinEqTapUnprepare(MTAudioProcessingTapRef tap) {
+  MelofinEqDisposeUnit((MelofinEqTapContext *)MTAudioProcessingTapGetStorage(tap));
 }
 
-static void MelioEqTapProcess(
+static void MelofinEqTapProcess(
   MTAudioProcessingTapRef tap,
   CMItemCount numberFrames,
   MTAudioProcessingTapFlags flags,
@@ -159,16 +159,16 @@ static void MelioEqTapProcess(
   MTAudioProcessingTapFlags *flagsOut
 ) {
   (void)flags;
-  MelioEqTapContext *ctx = (MelioEqTapContext *)MTAudioProcessingTapGetStorage(tap);
-  float gains[kMelioEqBands];
-  MelioEqCopyGains(gains);
-  Boolean useEq = ctx && ctx->alive && ctx->supported && ctx->eq && MelioEqActive(gains);
+  MelofinEqTapContext *ctx = (MelofinEqTapContext *)MTAudioProcessingTapGetStorage(tap);
+  float gains[kMelofinEqBands];
+  MelofinEqCopyGains(gains);
+  Boolean useEq = ctx && ctx->alive && ctx->supported && ctx->eq && MelofinEqActive(gains);
   if (!useEq) {
     MTAudioProcessingTapGetSourceAudio(tap, numberFrames, bufferListInOut, flagsOut, NULL, numberFramesOut);
     return;
   }
 
-  MelioEqApplyGains(ctx->eq, gains, ctx->lastGains);
+  MelofinEqApplyGains(ctx->eq, gains, ctx->lastGains);
   AudioTimeStamp timestamp = {0};
   timestamp.mSampleTime = ctx->sampleTime;
   timestamp.mFlags = kAudioTimeStampSampleTimeValid;
@@ -182,7 +182,7 @@ static void MelioEqTapProcess(
   if (flagsOut) *flagsOut = 0;
 }
 
-static AVAssetTrack *MelioEqAudioTrack(AVPlayerItem *item) {
+static AVAssetTrack *MelofinEqAudioTrack(AVPlayerItem *item) {
   if (!item) return nil;
   for (AVPlayerItemTrack *track in item.tracks) {
     if ([track.assetTrack.mediaType isEqualToString:AVMediaTypeAudio]) return track.assetTrack;
@@ -190,12 +190,12 @@ static AVAssetTrack *MelioEqAudioTrack(AVPlayerItem *item) {
   return [item.asset tracksWithMediaType:AVMediaTypeAudio].firstObject;
 }
 
-@interface MelioEqAttacher : NSObject
+@interface MelofinEqAttacher : NSObject
 - (instancetype)initWithPlayer:(AVPlayer *)player;
 - (void)refresh;
 @end
 
-@implementation MelioEqAttacher {
+@implementation MelofinEqAttacher {
   __weak AVPlayer *_player;
   AVPlayerItem *_observedItem;
   AVPlayerItem *_installedItem;
@@ -215,8 +215,8 @@ static AVAssetTrack *MelioEqAudioTrack(AVPlayerItem *item) {
 
 - (void)unbindItem {
   if (!_observedItem) return;
-  [_observedItem removeObserver:self forKeyPath:@"status" context:&kMelioEqKVO];
-  [_observedItem removeObserver:self forKeyPath:@"tracks" context:&kMelioEqKVO];
+  [_observedItem removeObserver:self forKeyPath:@"status" context:&kMelofinEqKVO];
+  [_observedItem removeObserver:self forKeyPath:@"tracks" context:&kMelofinEqKVO];
   _observedItem = nil;
 }
 
@@ -225,8 +225,8 @@ static AVAssetTrack *MelioEqAudioTrack(AVPlayerItem *item) {
   [self unbindItem];
   _observedItem = item;
   if (!item) return;
-  [item addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:&kMelioEqKVO];
-  [item addObserver:self forKeyPath:@"tracks" options:NSKeyValueObservingOptionNew context:&kMelioEqKVO];
+  [item addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:&kMelofinEqKVO];
+  [item addObserver:self forKeyPath:@"tracks" options:NSKeyValueObservingOptionNew context:&kMelofinEqKVO];
 }
 
 - (void)refresh {
@@ -247,21 +247,21 @@ static AVAssetTrack *MelioEqAudioTrack(AVPlayerItem *item) {
   (void)keyPath;
   (void)object;
   (void)change;
-  if (context != &kMelioEqKVO) return;
+  if (context != &kMelofinEqKVO) return;
   [self refresh];
 }
 
 - (void)installIfPossible {
   AVPlayerItem *item = _player.currentItem;
-  float gains[kMelioEqBands];
-  MelioEqCopyGains(gains);
-  if (!item || !MelioEqActive(gains)) {
+  float gains[kMelofinEqBands];
+  MelofinEqCopyGains(gains);
+  if (!item || !MelofinEqActive(gains)) {
     _installedItem.audioMix = nil;
     _installedItem = nil;
     return;
   }
   if (_installedItem == item && item.audioMix) return;
-  AVAssetTrack *track = MelioEqAudioTrack(item);
+  AVAssetTrack *track = MelofinEqAudioTrack(item);
   if (!track) return;
 
   AVMutableAudioMixInputParameters *params = [AVMutableAudioMixInputParameters audioMixInputParametersWithTrack:track];
@@ -271,11 +271,11 @@ static AVAssetTrack *MelioEqAudioTrack(AVPlayerItem *item) {
   MTAudioProcessingTapCallbacks callbacks = {
     .version = kMTAudioProcessingTapCallbacksVersion_0,
     .clientInfo = NULL,
-    .init = MelioEqTapInit,
-    .finalize = MelioEqTapFinalize,
-    .prepare = MelioEqTapPrepare,
-    .unprepare = MelioEqTapUnprepare,
-    .process = MelioEqTapProcess,
+    .init = MelofinEqTapInit,
+    .finalize = MelofinEqTapFinalize,
+    .prepare = MelofinEqTapPrepare,
+    .unprepare = MelofinEqTapUnprepare,
+    .process = MelofinEqTapProcess,
   };
   MTAudioProcessingTapRef tap = NULL;
   if (MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, &tap) != noErr || !tap) {
@@ -290,30 +290,30 @@ static AVAssetTrack *MelioEqAudioTrack(AVPlayerItem *item) {
 
 @end
 
-@interface AVPlayer (MelioEq)
-- (void)melio_replaceCurrentItemWithItem:(AVPlayerItem *)item;
+@interface AVPlayer (MelofinEq)
+- (void)melofin_replaceCurrentItemWithItem:(AVPlayerItem *)item;
 @end
 
-@interface MelioEq ()
+@interface MelofinEq ()
 - (void)writeGains:(const float *)next;
 - (void)refreshAttached;
 @end
 
-@implementation MelioEq {
+@implementation MelofinEq {
   NSHashTable<AVPlayer *> *_players;
 }
 
 + (void)load {
   Method orig = class_getInstanceMethod([AVPlayer class], @selector(replaceCurrentItemWithItem:));
-  Method alt = class_getInstanceMethod([AVPlayer class], @selector(melio_replaceCurrentItemWithItem:));
+  Method alt = class_getInstanceMethod([AVPlayer class], @selector(melofin_replaceCurrentItemWithItem:));
   if (orig && alt) method_exchangeImplementations(orig, alt);
 }
 
 + (instancetype)shared {
-  static MelioEq *instance;
+  static MelofinEq *instance;
   static dispatch_once_t once;
   dispatch_once(&once, ^{
-    instance = [[MelioEq alloc] init];
+    instance = [[MelofinEq alloc] init];
   });
   return instance;
 }
@@ -326,15 +326,15 @@ static AVAssetTrack *MelioEqAudioTrack(AVPlayerItem *item) {
 }
 
 - (void)writeGains:(const float *)next {
-  Boolean was = MelioEqActive(gGainsDb);
+  Boolean was = MelofinEqActive(gGainsDb);
   memcpy(gGainsDb, next, sizeof(gGainsDb));
-  if (was != MelioEqActive(gGainsDb)) [self refreshAttached];
+  if (was != MelofinEqActive(gGainsDb)) [self refreshAttached];
 }
 
 - (void)setGainsDb:(NSArray<NSNumber *> *)gains {
-  float next[kMelioEqBands];
+  float next[kMelofinEqBands];
   memset(next, 0, sizeof(next));
-  NSUInteger count = MIN(gains.count, (NSUInteger)kMelioEqBands);
+  NSUInteger count = MIN(gains.count, (NSUInteger)kMelofinEqBands);
   for (NSUInteger i = 0; i < count; i += 1) {
     float value = gains[i].floatValue;
     if (!isfinite(value)) value = 0;
@@ -344,7 +344,7 @@ static AVAssetTrack *MelioEqAudioTrack(AVPlayerItem *item) {
 }
 
 - (void)reset {
-  float zeros[kMelioEqBands];
+  float zeros[kMelofinEqBands];
   memset(zeros, 0, sizeof(zeros));
   [self writeGains:zeros];
 }
@@ -352,7 +352,7 @@ static AVAssetTrack *MelioEqAudioTrack(AVPlayerItem *item) {
 - (void)refreshAttached {
   void (^work)(void) = ^{
     for (AVPlayer *player in self->_players) {
-      MelioEqAttacher *attacher = objc_getAssociatedObject(player, kMelioEqAttacherKey);
+      MelofinEqAttacher *attacher = objc_getAssociatedObject(player, kMelofinEqAttacherKey);
       [attacher refresh];
     }
   };
@@ -367,21 +367,21 @@ static AVAssetTrack *MelioEqAudioTrack(AVPlayerItem *item) {
     return;
   }
   [_players addObject:player];
-  MelioEqAttacher *attacher = objc_getAssociatedObject(player, kMelioEqAttacherKey);
+  MelofinEqAttacher *attacher = objc_getAssociatedObject(player, kMelofinEqAttacherKey);
   if (!attacher) {
-    attacher = [[MelioEqAttacher alloc] initWithPlayer:player];
-    objc_setAssociatedObject(player, kMelioEqAttacherKey, attacher, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    attacher = [[MelofinEqAttacher alloc] initWithPlayer:player];
+    objc_setAssociatedObject(player, kMelofinEqAttacherKey, attacher, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
   }
   [attacher refresh];
 }
 
 @end
 
-@implementation AVPlayer (MelioEq)
+@implementation AVPlayer (MelofinEq)
 
-- (void)melio_replaceCurrentItemWithItem:(AVPlayerItem *)item {
-  [self melio_replaceCurrentItemWithItem:item];
-  [[MelioEq shared] attachToPlayer:self];
+- (void)melofin_replaceCurrentItemWithItem:(AVPlayerItem *)item {
+  [self melofin_replaceCurrentItemWithItem:item];
+  [[MelofinEq shared] attachToPlayer:self];
 }
 
 @end

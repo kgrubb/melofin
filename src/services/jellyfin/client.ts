@@ -4,7 +4,7 @@ import Constants from 'expo-constants'
 import { appError, err, ok, type Result } from '@/src/domain/result'
 import { getOrCreateDeviceId } from '@/src/storage/sessionStore'
 
-const APP_NAME = 'Melio'
+const APP_NAME = 'Melofin'
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0'
 const REQUEST_TIMEOUT_MS = 15_000
 
@@ -44,11 +44,11 @@ const createAxios = (baseURL: string, accessToken?: string): AxiosInstance => {
     async (error) => {
       const config = error.config
       if (!config) throw error
-      const retryCount = config.__melioRetryCount ?? 0
+      const retryCount = config.__melofinRetryCount ?? 0
       if (retryCount >= 2 || !shouldRetry(config.method, error.response?.status)) {
         throw error
       }
-      config.__melioRetryCount = retryCount + 1
+      config.__melofinRetryCount = retryCount + 1
       const backoff = Math.min(2_000, 200 * 2 ** retryCount)
       await delay(backoff)
       return instance.request(config)
@@ -60,7 +60,7 @@ const createAxios = (baseURL: string, accessToken?: string): AxiosInstance => {
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
-    __melioRetryCount?: number
+    __melofinRetryCount?: number
   }
 }
 

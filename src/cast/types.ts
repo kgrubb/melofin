@@ -48,9 +48,9 @@ export type CastStatus = {
   readonly positionMs: number
   readonly buffering: boolean
   readonly ended: boolean
-  /** Jellyfin / Melio media item id when the sink reports it. */
+  /** Jellyfin / Melofin media item id when the sink reports it. */
   readonly itemId?: string
-  /** Melio queue entry id when the sink reports it. */
+  /** Melofin queue entry id when the sink reports it. */
   readonly queueEntryId?: string
 }
 

@@ -1,7 +1,7 @@
 services:
   jellyfin:
     image: jellyfin/jellyfin:latest
-    container_name: melio-demo-jellyfin
+    container_name: melofin-demo-jellyfin
     ports:
       - "8096:8096"
     volumes:

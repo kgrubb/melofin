@@ -111,7 +111,7 @@ export const loginWithSsoAuthorizeUrl = async (
           : err(
               appError(
                 'cancelled',
-                'SSO window closed before Melio could finish sign-in',
+                'SSO window closed before Melofin could finish sign-in',
               ),
             ),
       )

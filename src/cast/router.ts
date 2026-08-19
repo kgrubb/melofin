@@ -14,7 +14,7 @@ import {
   setJellyfinDiscovery,
 } from '@/src/cast/providers/jellyfinRemote'
 import { localProvider } from '@/src/cast/providers/local'
-import { isLocalAudible, shouldMelioScrobble } from '@/src/cast/scrobblePolicy'
+import { isLocalAudible, shouldMelofinScrobble } from '@/src/cast/scrobblePolicy'
 import { localDeviceName, playbackSnapshot } from '@/src/cast/snapshot'
 import {
   beginTransfer,
@@ -40,7 +40,7 @@ import {
 } from '@/src/cast/transferPlan'
 import {
   setLocalOutputEnabled,
-  setMelioScrobbleEnabled,
+  setMelofinScrobbleEnabled,
 } from '@/src/player/outputPolicy'
 import { queueReport, reportForCurrent, stopAnchoredScrobble } from '@/src/player/scrobbleBridge'
 import { usePlayerStore } from '@/src/store/player'
@@ -81,7 +81,7 @@ const publishDevices = () => {
 
 const applyOutputPolicy = (kind: CastDevice['kind']) => {
   setLocalOutputEnabled(isLocalAudible(kind))
-  setMelioScrobbleEnabled(shouldMelioScrobble(kind))
+  setMelofinScrobbleEnabled(shouldMelofinScrobble(kind))
   useCastStore.getState().setVolumeSupported(kind === 'chromecast')
 }
 
@@ -100,7 +100,7 @@ const bindStatus = (provider: CastProvider) => {
       return
     }
     if (!isLocalAudible(useCastStore.getState().transfer.active.kind)) {
-      // Cast queue windows are finite. When a track ends near EOF while Melio
+      // Cast queue windows are finite. When a track ends near EOF while Melofin
       // still wants playback, advance so syncTo loads the next window.
       const currentTrack = store.tracks[store.currentIndex]
       const sinkOnCurrent = status.queueEntryId
@@ -275,7 +275,7 @@ export const transferTo = async (deviceId: string): Promise<void> => {
     if (snapshot) await localProvider.connect(device, snapshot)
     else {
       setLocalOutputEnabled(true)
-      setMelioScrobbleEnabled(true)
+      setMelofinScrobbleEnabled(true)
     }
     applyOutputPolicy('local')
     clearTransferTimer()
@@ -326,7 +326,7 @@ export const transferTo = async (deviceId: string): Promise<void> => {
     }),
   )
   bindStatus(target)
-  if (shouldMelioScrobble(device.kind) && snapshot.isPlaying) {
+  if (shouldMelofinScrobble(device.kind) && snapshot.isPlaying) {
     void queueReport(async () => {
       await stopAnchoredScrobble()
       usePlayerStore.getState().setPlaySessionId(newPlaySessionId())

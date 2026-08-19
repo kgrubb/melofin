@@ -2,7 +2,7 @@
 
 @class AVPlayer;
 
-@interface MelioEq : NSObject
+@interface MelofinEq : NSObject
 
 + (instancetype)shared;
 - (void)setGainsDb:(NSArray<NSNumber *> *)gains;

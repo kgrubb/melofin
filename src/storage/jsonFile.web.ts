@@ -1,11 +1,11 @@
 import { resolveOfflineFileUri as resolveOfflinePath } from '@/src/domain/offline'
 import { appError, err, ok, type Result } from '@/src/domain/result'
 
-const key = (relativePath: string) => `melio.fs.${relativePath}`
+const key = (relativePath: string) => `melofin.fs.${relativePath}`
 
 /** Browser preview: JSON settings/index via localStorage. No real audio files. */
 export const ensureDir = async (_relativePath = ''): Promise<Result<string>> =>
-  ok('web://melio')
+  ok('web://melofin')
 
 export const readJsonFile = async <T>(
   relativePath: string,
@@ -38,11 +38,11 @@ export const writeJsonFile = async (
 export const deleteFile = async (_uri: string): Promise<Result<void>> =>
   ok(undefined)
 
-export const audioFilePath = (itemId: string): string => `web://melio/audio/${itemId}`
+export const audioFilePath = (itemId: string): string => `web://melofin/audio/${itemId}`
 
-export const melioRootUri = (): string => 'web://melio'
+export const melofinRootUri = (): string => 'web://melofin'
 
 export const resolveOfflineFileUri = (path: string): string =>
-  resolveOfflinePath(path, melioRootUri())
+  resolveOfflinePath(path, melofinRootUri())
 
 export const deleteAudioCacheDir = async (): Promise<Result<void>> => ok(undefined)

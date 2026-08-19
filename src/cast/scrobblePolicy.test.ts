@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { shouldMelioScrobble, isLocalAudible } from '@/src/cast/scrobblePolicy'
+import { shouldMelofinScrobble, isLocalAudible } from '@/src/cast/scrobblePolicy'
 
 describe('scrobblePolicy', () => {
   it('scrobbles local airplay cast but not jellyfin', () => {
-    expect(shouldMelioScrobble('local')).toBe(true)
-    expect(shouldMelioScrobble('airplay')).toBe(true)
-    expect(shouldMelioScrobble('chromecast')).toBe(true)
-    expect(shouldMelioScrobble('jellyfin')).toBe(false)
+    expect(shouldMelofinScrobble('local')).toBe(true)
+    expect(shouldMelofinScrobble('airplay')).toBe(true)
+    expect(shouldMelofinScrobble('chromecast')).toBe(true)
+    expect(shouldMelofinScrobble('jellyfin')).toBe(false)
   })
 
   it('marks local and airplay as audible on device', () => {

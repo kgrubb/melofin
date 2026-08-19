@@ -9,22 +9,22 @@ const isProductionBuild = process.env.EAS_BUILD_PROFILE === 'production'
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   owner: 'kgrubb',
-  name: 'Melio',
-  slug: 'melio',
+  name: 'Melofin',
+  slug: 'melofin',
   version: '1.0.0', // x-release-please-version
   orientation: 'portrait',
   icon: './assets/images/icon.png',
-  scheme: 'melio',
+  scheme: 'melofin',
   userInterfaceStyle: 'dark',
   ios: {
     supportsTablet: false,
-    bundleIdentifier: 'app.melio.player',
+    bundleIdentifier: 'app.melofin.player',
     buildNumber: '1',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       UIBackgroundModes: ['audio'],
       NSLocalNetworkUsageDescription:
-        'Melio uses the local network to reach your Jellyfin server and find Cast or AirPlay speakers.',
+        'Melofin uses the local network to reach your Jellyfin server and find Cast or AirPlay speakers.',
       // Triggers the Local Network permission prompt on device.
       NSBonjourServices: [
         ...(isProductionBuild ? [] : ['_expo._tcp']),
@@ -72,7 +72,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       : {},
   },
   android: {
-    package: 'app.melio.player',
+    package: 'app.melofin.player',
     adaptiveIcon: {
       backgroundColor: '#9333EA',
       foregroundImage: './assets/images/android-icon-foreground.png',
@@ -123,7 +123,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   extra: {
     carPlayEnabled: CARPLAY_ENABLED,
-    privacyPolicyUrl: 'https://github.com/kgrubb/melio/blob/main/PRIVACY.md',
+    privacyPolicyUrl: 'https://github.com/kgrubb/melofin/blob/main/PRIVACY.md',
+    sourceUrl: 'https://github.com/kgrubb/melofin',
     eas: {
       projectId: '402e26b5-7bf9-430f-a1b8-c03751cba89d',
       owner: 'kgrubb',

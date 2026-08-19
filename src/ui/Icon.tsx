@@ -142,7 +142,7 @@ const TrackSkip = ({
   )
 }
 
-/** Readable off-iOS stand-ins for the SF names Melio actually uses. */
+/** Readable off-iOS stand-ins for the SF names Melofin actually uses. */
 const FALLBACK_GLYPH: Record<string, string> = {
   shuffle: '⇄',
   heart: '♡',

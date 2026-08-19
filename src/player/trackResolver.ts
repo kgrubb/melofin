@@ -20,8 +20,8 @@ export type ResolveTrackOpts = {
   readonly jfReachable?: boolean
   /** Pass `Platform.OS` from RN call sites. Default is non-web (prefer local). */
   readonly platform?: string
-  /** file://.../melio root for relative offline paths */
-  readonly melioRootUri?: string
+  /** file://.../melofin root for relative offline paths */
+  readonly melofinRootUri?: string
   /** When set, skip cache entries whose file is missing (instant remote fallback). */
   readonly fileExists?: (uri: string) => boolean
   readonly maxBitrate?: number
@@ -39,12 +39,12 @@ export type ResolvedSource = {
 const cachedFileUri = (
   offlineIndex: OfflineIndex,
   itemId: string,
-  melioRootUri?: string,
+  melofinRootUri?: string,
   fileExists?: (uri: string) => boolean,
 ): string | null => {
   const cached = offlineIndex.entries[itemId]
   if (!cached?.complete) return null
-  const uri = resolveOfflineFileUri(cached.path, melioRootUri)
+  const uri = resolveOfflineFileUri(cached.path, melofinRootUri)
   if (fileExists && !fileExists(uri)) return null
   return uri
 }
@@ -63,7 +63,7 @@ export const resolveTrackSource = (
   const fileUri = cachedFileUri(
     offlineIndex,
     track.id,
-    opts?.melioRootUri,
+    opts?.melofinRootUri,
     opts?.fileExists,
   )
   const remoteUris = context

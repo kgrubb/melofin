@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   bindLocalOutputChange,
   isLocalOutputEnabled,
-  isMelioScrobbleEnabled,
+  isMelofinScrobbleEnabled,
   setLocalOutputEnabled,
-  setMelioScrobbleEnabled,
+  setMelofinScrobbleEnabled,
 } from '@/src/player/outputPolicy'
 
 describe('outputPolicy', () => {
@@ -24,10 +24,10 @@ describe('outputPolicy', () => {
     bindLocalOutputChange(null)
   })
 
-  it('toggles melio scrobble flag', () => {
-    setMelioScrobbleEnabled(false)
-    expect(isMelioScrobbleEnabled()).toBe(false)
-    setMelioScrobbleEnabled(true)
-    expect(isMelioScrobbleEnabled()).toBe(true)
+  it('toggles melofin scrobble flag', () => {
+    setMelofinScrobbleEnabled(false)
+    expect(isMelofinScrobbleEnabled()).toBe(false)
+    setMelofinScrobbleEnabled(true)
+    expect(isMelofinScrobbleEnabled()).toBe(true)
   })
 })

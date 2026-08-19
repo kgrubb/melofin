@@ -1,4 +1,4 @@
-import { melioAudioGraph } from 'melio-audio-graph'
+import { melofinAudioGraph } from 'melofin-audio-graph'
 import { effectiveEqGains, type EqSettings } from '@/src/domain/eqPresets'
 import { nextIndex } from '@/src/domain/queue'
 import { resolveTrackSource } from '@/src/player/trackResolver'
@@ -8,7 +8,7 @@ import { clearNativeNextQueue } from '@/src/player/nativeHandoff'
 import { getPlaybackNetworkCached } from '@/src/services/network'
 import { getJellyfinReachable } from '@/src/services/jellyfin/reachabilityState'
 import { bitrateForPreset, resolveStreamPreset } from '@/src/domain/streamQuality'
-import { melioRootUri, offlineAudioExists } from '@/src/storage/jsonFile'
+import { melofinRootUri, offlineAudioExists } from '@/src/storage/jsonFile'
 import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
@@ -16,10 +16,10 @@ import { Platform } from 'react-native'
 
 export const applyNativeEq = (eq?: EqSettings): void => {
   if (!isLocalOutputEnabled()) {
-    melioAudioGraph.resetEq()
+    melofinAudioGraph.resetEq()
     return
   }
-  melioAudioGraph.setEqGains(
+  melofinAudioGraph.setEqGains(
     effectiveEqGains(eq ?? useSettingsStore.getState().eq),
   )
 }
@@ -54,7 +54,7 @@ export const primeNextTrack = async (): Promise<void> => {
       network,
       jfReachable: getJellyfinReachable(),
       platform: Platform.OS,
-      melioRootUri: melioRootUri(),
+      melofinRootUri: melofinRootUri(),
       fileExists: offlineAudioExists,
       maxBitrate: bitrateForPreset(
         resolveStreamPreset(settings.streamQuality, network),
@@ -65,5 +65,5 @@ export const primeNextTrack = async (): Promise<void> => {
     clearNativeNextQueue()
     return
   }
-  await melioAudioGraph.setNextUri(resolved.uri, resolved.headers)
+  await melofinAudioGraph.setNextUri(resolved.uri, resolved.headers)
 }

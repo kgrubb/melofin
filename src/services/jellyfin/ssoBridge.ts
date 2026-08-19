@@ -50,9 +50,9 @@ export const openSsoPopup = (
   }
 
   const url = ssoStartUrl(serverUrl, provider)
-  const popup = window.open(url, 'melio-sso', 'popup=yes,width=480,height=720')
+  const popup = window.open(url, 'melofin-sso', 'popup=yes,width=480,height=720')
   if (!popup) {
-    return Promise.reject(new Error('Popup blocked. Allow popups for Melio, or use Quick Connect.'))
+    return Promise.reject(new Error('Popup blocked. Allow popups for Melofin, or use Quick Connect.'))
   }
 
   return new Promise((resolve, reject) => {
@@ -78,7 +78,7 @@ export const openSsoPopup = (
         if (parsed) finish(parsed)
         return
       }
-      if (data.type === 'melio-sso') {
+      if (data.type === 'melofin-sso') {
         const parsed = parseSsoBridgeMessage(
           typeof data.payload === 'string' ? data.payload : JSON.stringify(data.payload),
         )
@@ -95,7 +95,7 @@ export const openSsoPopup = (
         clearInterval(timer)
         reject(
           new Error(
-            'SSO window closed before Melio received credentials. On web, use Quick Connect or password, or try Authentik again.',
+            'SSO window closed before Melofin received credentials. On web, use Quick Connect or password, or try Authentik again.',
           ),
         )
       }

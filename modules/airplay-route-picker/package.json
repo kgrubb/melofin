@@ -2,7 +2,7 @@
   "name": "airplay-route-picker",
   "version": "1.0.0",
   "license": "GPL-3.0-only",
-  "description": "AVRoutePickerView Expo module for Melio",
+  "description": "AVRoutePickerView Expo module for Melofin",
   "main": "index.ts",
   "types": "index.ts",
   "scripts": {},

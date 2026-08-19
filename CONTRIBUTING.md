@@ -1,6 +1,6 @@
-# Contributing to Melio
+# Contributing to Melofin
 
-Thanks for wanting to help. This guide is how changes get into `main`. Contributions are licensed under [GPL-3.0](./LICENSE).
+Thanks for wanting to help. This guide is how changes get into `main`. Contributions are licensed under [GPL-3.0](./LICENSE) with the App Store additional permission in that file.
 
 ## Ways to contribute
 
@@ -21,8 +21,8 @@ You need:
 - A Jellyfin server to talk to
 
 ```bash
-git clone https://github.com/kgrubb/melio.git
-cd melio
+git clone https://github.com/kgrubb/melofin.git
+cd melofin
 npm ci
 
 npx expo prebuild --clean --platform ios
@@ -85,8 +85,8 @@ When you touch library sync, downloads, or playback failover:
 - Describe what changed and why
 - Link related issues
 - Call out risk areas (playback, offline, casting, CarPlay)
-- Include screenshots or a short screen recording for UI changes when you can. [assets/screenshots](./assets/screenshots) is the current product UI if you need a visual reference.
-- App Store screenshots must be from **your** Jellyfin library, not a catalog of other people’s albums as the product. Do not reuse the README stills as listing art if they are not from the review account’s library.
+- Include screenshots or a short screen recording for UI changes when you can. [store/screenshots](./store/screenshots) is the current product UI if you need a visual reference.
+- `npm run screenshots` writes the App Store 6.9" set (ten 1320×2868 RGB PNGs) to [store/screenshots](./store/screenshots) from the local demo catalog (CC-licensed Jamendo). Upload that folder in App Store Connect in filename order. iPad / other size classes are not required (`supportsTablet: false`). Do not list other people’s albums as the product.
 
 Maintainers review for correctness, regressions, and fit with the architecture above.
 

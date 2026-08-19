@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Seed CC BY albums, boot local Jellyfin, create user melio/melio at http://127.0.0.1:8096.
+/** Seed CC BY albums, boot local Jellyfin, create user melofin/melofin at http://127.0.0.1:8096.
  *  Re-runs skip Archive.org when album folders already have mp3s. */
 import { Buffer } from 'node:buffer'
 import { spawnSync } from 'node:child_process'
@@ -11,9 +11,9 @@ const HERE = import.meta.dirname
 const DEMO = join(HERE, '../../.demo-jellyfin')
 const MEDIA = join(DEMO, 'media')
 const COMPOSE = join(HERE, 'docker-compose.yml')
-const JF = process.env.MELIO_JF_URL ?? 'http://127.0.0.1:8096'
+const JF = process.env.MELOFIN_JF_URL ?? 'http://127.0.0.1:8096'
 const AUTH =
-  'MediaBrowser Client="Melio Seed", Device="seed", DeviceId="melio-demo", Version="1.0.0"'
+  'MediaBrowser Client="Melofin Seed", Device="seed", DeviceId="melofin-demo", Version="1.0.0"'
 const IA = 'https://archive.org'
 const COVER_TARGET_EDGE = 1800
 const COVER_SHARP_EDGE = 960
@@ -84,7 +84,7 @@ const download = async (url, dest, tries = 3) => {
   await retry(async () => {
     const r = await fetch(url, {
       signal: AbortSignal.timeout(120_000),
-      headers: { 'User-Agent': 'MelioDemo/1.0 (cover seed)' },
+      headers: { 'User-Agent': 'MelofinDemo/1.0 (cover seed)' },
     })
     if (!r.ok || !r.body) throw new Error(`download ${r.status} ${url}`)
     await writeFile(tmp, Buffer.from(await r.arrayBuffer()))

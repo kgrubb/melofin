@@ -14,7 +14,7 @@ export type ScrobbleAnchor = {
   readonly runtimeTicks: number
 }
 
-export const GLOBAL_ENGINE_KEY = '__melioPlaybackEngine'
+export const GLOBAL_ENGINE_KEY = '__melofinPlaybackEngine'
 
 type GlobalEngineSlot = {
   readonly dispose: () => void

@@ -332,7 +332,7 @@ export const stampOfflineScope = async (
         await ensureDir(`scopes/${scopeKey}/audio`)
         const dest = new File(
           Paths.document,
-          'melio',
+          'melofin',
           'scopes',
           scopeKey,
           'audio',
@@ -426,7 +426,7 @@ const downloadTrackUnlocked = async (
       }
       const destination = new File(
         Paths.document,
-        'melio',
+        'melofin',
         'scopes',
         scopeKey,
         'audio',

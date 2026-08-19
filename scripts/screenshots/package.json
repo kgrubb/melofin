@@ -1,7 +1,8 @@
 {
-  "name": "melio-screenshots",
+  "name": "melofin-screenshots",
   "private": true,
   "dependencies": {
-    "playwright": "1.55.0"
+    "playwright": "1.55.0",
+    "sharp": "0.34.4"
   }
 }

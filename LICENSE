@@ -1,3 +1,27 @@
+Melofin — GNU GPL version 3 with an App Store additional permission
+
+Copyright (C) Melofin contributors
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation, version 3.
+
+The GNU General Public License is reproduced below. Do not edit that
+text. The following is an additional permission under GPLv3 section 7:
+
+    As an additional permission under GNU GPL version 3 section 7, you
+    may distribute this Program through an app store, even if that
+    store's terms of service impose restrictions that are otherwise
+    incompatible with the GPL, provided that the Corresponding Source
+    is also available under the GPL (with or without this additional
+    permission) through a channel that does not impose those
+    restrictions.
+
+The public git repository is that unrestricted channel. Recipients of
+an App Store binary may obtain the source from
+https://github.com/kgrubb/melofin and use it under the GPL with or
+without this permission.
+
                     GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 

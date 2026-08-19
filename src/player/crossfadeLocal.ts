@@ -1,6 +1,6 @@
 import type { AudioPlayer } from 'expo-audio'
 import { Platform } from 'react-native'
-import { melioAudioGraph } from 'melio-audio-graph'
+import { melofinAudioGraph } from 'melofin-audio-graph'
 import type { LocalHandoffMode } from '@/src/domain/crossfade'
 import { isLocalOutputEnabled } from '@/src/player/outputPolicy'
 import { useSettingsStore } from '@/src/store/settings'
@@ -49,18 +49,18 @@ export const startLocalHandoff = async (
   },
 ): Promise<boolean> => {
   if (Platform.OS === 'web' || !isLocalOutputEnabled()) return false
-  if (!melioAudioGraph.isAvailable()) return false
+  if (!melofinAudioGraph.isAvailable()) return false
   if (mode === 'crossfade') {
     const durationSec = opts?.crossfadeSeconds ?? 0
     return durationSec > 0
-      ? melioAudioGraph.crossfadeToNext(durationSec)
+      ? melofinAudioGraph.crossfadeToNext(durationSec)
       : false
   }
-  return melioAudioGraph.playNextImmediate(opts?.volume ?? 1)
+  return melofinAudioGraph.playNextImmediate(opts?.volume ?? 1)
 }
 
 export const localHandoffPositionSec = (): number =>
-  melioAudioGraph.handoffPositionSec()
+  melofinAudioGraph.handoffPositionSec()
 
 export const localCrossfadeSeconds = (): number =>
   useSettingsStore.getState().crossfadeSeconds

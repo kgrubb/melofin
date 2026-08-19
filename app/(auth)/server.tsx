@@ -63,7 +63,7 @@ export default function ServerScreen() {
     <Screen padBottom={false}>
       <AuthScroll>
         <AuthHero
-          brand="Melio"
+          brand="Melofin"
           subtitle={
             addingAccount
               ? 'Add another Jellyfin server.'

@@ -1,5 +1,5 @@
 {
-  "name": "melio-audio-graph",
+  "name": "melofin-audio-graph",
   "version": "1.0.0",
   "license": "GPL-3.0-only",
   "description": "Gapless/crossfade handoff and local EQ",

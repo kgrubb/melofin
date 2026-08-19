@@ -17,7 +17,7 @@ const withCarPlayAudio = (config) => {
       : [...modes, 'audio']
     mod.modResults.NSLocalNetworkUsageDescription =
       mod.modResults.NSLocalNetworkUsageDescription ??
-      'Melio uses the local network to find Jellyfin servers.'
+      'Melofin uses the local network to find Jellyfin servers.'
     return mod
   })
 }

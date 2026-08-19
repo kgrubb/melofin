@@ -1,6 +1,6 @@
 import { stableHash } from '@/src/domain/accountScope'
 
-/** Saturated Melio palette — not Spotify category greens/navy. */
+/** Saturated Melofin palette — not Spotify category greens/navy. */
 export const BROWSE_TILE_COLORS = [
   '#D946EF',
   '#9333EA',

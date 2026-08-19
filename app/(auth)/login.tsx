@@ -214,7 +214,7 @@ export default function LoginScreen() {
         <Animated.View entering={authCardEntering(enabled)}>
           {qcCode ? (
             <>
-              <GlassGroup footer="Enter this code in Jellyfin under Quick Connect. Melio signs in when you approve.">
+              <GlassGroup footer="Enter this code in Jellyfin under Quick Connect. Melofin signs in when you approve.">
                 <AuthCode code={qcCode} />
               </GlassGroup>
               <GlassButton label="Cancel" onPress={onCancelQuickConnect} />

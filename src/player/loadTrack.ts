@@ -48,7 +48,7 @@ import {
 import { resolveTrackSource } from '@/src/player/trackResolver'
 import { bitrateForPreset, resolveStreamPreset } from '@/src/domain/streamQuality'
 import { fetchItem } from '@/src/services/jellyfin/library'
-import { melioRootUri, offlineAudioExists } from '@/src/storage/jsonFile'
+import { melofinRootUri, offlineAudioExists } from '@/src/storage/jsonFile'
 import { maybeRefillAutoplay } from '@/src/player/autoplayContinuation'
 import { applyNativeEq, primeNextTrack } from '@/src/player/nativeQueue'
 import { clearNativeNextQueue } from '@/src/player/nativeHandoff'
@@ -448,7 +448,7 @@ export const loadCurrent = async (
       network,
       jfReachable,
       platform: Platform.OS,
-      melioRootUri: Platform.OS === 'web' ? undefined : melioRootUri(),
+      melofinRootUri: Platform.OS === 'web' ? undefined : melofinRootUri(),
       // Prefer prefetch/user files only when the bytes are actually on disk.
       fileExists: Platform.OS === 'web' ? undefined : offlineAudioExists,
       maxBitrate: bitrateForPreset(streamPreset),

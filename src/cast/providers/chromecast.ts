@@ -16,7 +16,7 @@ import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
 import { logger } from '@/src/logging/logger'
-import { melioRootUri } from '@/src/storage/jsonFile'
+import { melofinRootUri } from '@/src/storage/jsonFile'
 
 type CastSdk = typeof import('react-native-google-cast')
 
@@ -85,7 +85,7 @@ const resolveStream = (track: QueueTrack) => {
     {
       network,
       platform: Platform.OS,
-      melioRootUri: Platform.OS === 'web' ? undefined : melioRootUri(),
+      melofinRootUri: Platform.OS === 'web' ? undefined : melofinRootUri(),
       maxBitrate: bitrateForPreset(
         resolveStreamPreset(settings.streamQuality, network),
       ),
@@ -159,7 +159,7 @@ const queueItems = async (snapshot: PlaybackSnapshot) => {
   return built.filter((item): item is NonNullable<typeof item> => item != null)
 }
 
-/** Never Cast ALL. Window is <=20. Melio owns full-queue wrap via syncTo. */
+/** Never Cast ALL. Window is <=20. Melofin owns full-queue wrap via syncTo. */
 const castRepeatMode = (mod: CastSdk, repeat: PlaybackSnapshot['repeat']) => {
   const modes = mod.MediaRepeatMode
   if (!modes) return undefined

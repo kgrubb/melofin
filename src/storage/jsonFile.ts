@@ -3,14 +3,14 @@ import { resolveOfflineFileUri as resolveOfflinePath } from '@/src/domain/offlin
 import { appError, err, ok, type Result } from '@/src/domain/result'
 import { logger } from '@/src/logging/logger'
 
-const rootDir = () => new Directory(Paths.document, 'melio')
+const rootDir = () => new Directory(Paths.document, 'melofin')
 
 export const ensureDir = async (relativePath = ''): Promise<Result<string>> => {
   try {
     const dir =
       relativePath.length === 0
         ? rootDir()
-        : new Directory(Paths.document, 'melio', relativePath)
+        : new Directory(Paths.document, 'melofin', relativePath)
     if (!dir.exists) {
       dir.create({ intermediates: true, idempotent: true })
     }
@@ -27,7 +27,7 @@ export const readJsonFile = async <T>(
   const dirResult = await ensureDir()
   if (!dirResult.ok) return dirResult
   try {
-    const file = new File(Paths.document, 'melio', relativePath)
+    const file = new File(Paths.document, 'melofin', relativePath)
     if (!file.exists) return ok(null)
     const raw = await file.text()
     return ok(JSON.parse(raw) as T)
@@ -45,10 +45,10 @@ export const writeJsonFile = async (
   if (!dirResult.ok) return dirResult
   try {
     const payload = JSON.stringify(value)
-    const temp = new File(Paths.document, 'melio', `${relativePath}.tmp`)
+    const temp = new File(Paths.document, 'melofin', `${relativePath}.tmp`)
     temp.create({ intermediates: true, overwrite: true })
     temp.write(payload)
-    const target = new File(Paths.document, 'melio', relativePath)
+    const target = new File(Paths.document, 'melofin', relativePath)
     if (target.exists) {
       target.delete()
     }
@@ -73,9 +73,9 @@ export const deleteFile = async (uri: string): Promise<Result<void>> => {
 }
 
 export const audioFilePath = (itemId: string): string =>
-  new File(Paths.document, 'melio', 'audio', itemId).uri
+  new File(Paths.document, 'melofin', 'audio', itemId).uri
 
-export const melioRootUri = (): string => rootDir().uri
+export const melofinRootUri = (): string => rootDir().uri
 
 /** Sync existence check for a playable offline URI (file:// or absolute). */
 export const offlineAudioExists = (uri: string): boolean => {
@@ -86,13 +86,13 @@ export const offlineAudioExists = (uri: string): boolean => {
   }
 }
 
-/** Resolve a stored offline path (relative under melio/ or legacy absolute) to a file URI. */
+/** Resolve a stored offline path (relative under melofin/ or legacy absolute) to a file URI. */
 export const resolveOfflineFileUri = (path: string): string =>
-  resolveOfflinePath(path, melioRootUri())
+  resolveOfflinePath(path, melofinRootUri())
 
 export const deleteAudioCacheDir = async (): Promise<Result<void>> => {
   try {
-    const dir = new Directory(Paths.document, 'melio', 'audio')
+    const dir = new Directory(Paths.document, 'melofin', 'audio')
     if (dir.exists) {
       dir.delete()
     }
@@ -102,13 +102,13 @@ export const deleteAudioCacheDir = async (): Promise<Result<void>> => {
   }
 }
 
-/** Delete a relative directory under melio/ (e.g. scopes/<key>/audio). */
+/** Delete a relative directory under melofin/ (e.g. scopes/<key>/audio). */
 export const deleteRelativeDir = async (
   relativePath: string,
 ): Promise<Result<void>> => {
   try {
     const parts = relativePath.split('/').filter(Boolean)
-    const dir = new Directory(Paths.document, 'melio', ...parts)
+    const dir = new Directory(Paths.document, 'melofin', ...parts)
     if (dir.exists) {
       dir.delete()
     }
