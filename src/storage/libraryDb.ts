@@ -120,7 +120,7 @@ const openDb = async (): Promise<SqlDatabase | null> => {
       try {
         const SQLite = await import('expo-sqlite')
         if (typeof SQLite.openDatabaseAsync !== 'function') return null
-        const db = await SQLite.openDatabaseAsync('melio-library.db')
+        const db = await SQLite.openDatabaseAsync('melofin-library.db')
         await db.execAsync(`
         PRAGMA journal_mode = WAL;
         ${SONGS_TABLE_DDL('songs')}

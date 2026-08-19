@@ -5,7 +5,7 @@ import { ok } from '@/src/domain/result'
 import { localDeviceName } from '@/src/cast/snapshot'
 import {
   setLocalOutputEnabled,
-  setMelioScrobbleEnabled,
+  setMelofinScrobbleEnabled,
 } from '@/src/player/outputPolicy'
 
 const listeners = new Set<(devices: readonly CastDevice[]) => void>()
@@ -37,7 +37,7 @@ export const localProvider: CastProvider = {
   },
   connect: async () => {
     setLocalOutputEnabled(true)
-    setMelioScrobbleEnabled(true)
+    setMelofinScrobbleEnabled(true)
     emit()
     return ok(undefined)
   },

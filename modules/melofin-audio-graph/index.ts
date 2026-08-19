@@ -1,6 +1,6 @@
 import { requireNativeModule } from 'expo-modules-core'
 
-export type MelioEqGains = readonly number[]
+export type MelofinEqGains = readonly number[]
 
 export type AudioRouteNativeEvent = {
   readonly reason: string
@@ -16,7 +16,7 @@ export type AudioInterruptNativeEvent = {
 
 type NativeSubscription = { readonly remove: () => void }
 
-type MelioAudioGraphNative = {
+type MelofinAudioGraphNative = {
   readonly clearNext: () => void
   readonly setNextUri: (
     uri: string,
@@ -25,7 +25,7 @@ type MelioAudioGraphNative = {
   readonly playNextImmediate: (volume: number) => Promise<boolean>
   readonly crossfadeToNext: (durationSec: number) => Promise<boolean>
   readonly handoffPositionSec: () => number
-  readonly setEqGains: (gainsDb: MelioEqGains) => void
+  readonly setEqGains: (gainsDb: MelofinEqGains) => void
   readonly resetEq: () => void
   readonly isAvailable: () => boolean
   readonly addListener?: (
@@ -34,19 +34,19 @@ type MelioAudioGraphNative = {
   ) => NativeSubscription
 }
 
-let native: MelioAudioGraphNative | null = null
+let native: MelofinAudioGraphNative | null = null
 
-const loadNative = (): MelioAudioGraphNative | null => {
+const loadNative = (): MelofinAudioGraphNative | null => {
   if (native) return native
   try {
-    native = requireNativeModule<MelioAudioGraphNative>('MelioAudioGraph')
+    native = requireNativeModule<MelofinAudioGraphNative>('MelofinAudioGraph')
     return native
   } catch {
     return null
   }
 }
 
-export const melioAudioGraph = {
+export const melofinAudioGraph = {
   isAvailable: (): boolean => {
     try {
       return Boolean(loadNative()?.isAvailable())
@@ -99,7 +99,7 @@ export const melioAudioGraph = {
       return 0
     }
   },
-  setEqGains: (gainsDb: MelioEqGains): void => {
+  setEqGains: (gainsDb: MelofinEqGains): void => {
     try {
       loadNative()?.setEqGains(gainsDb)
     } catch {

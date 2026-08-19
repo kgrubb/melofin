@@ -53,7 +53,12 @@ const privacyPolicyUrl = (): string => {
   const fromConfig = Constants.expoConfig?.extra?.privacyPolicyUrl
   return typeof fromConfig === 'string'
     ? fromConfig
-    : 'https://github.com/kgrubb/melio/blob/main/PRIVACY.md'
+    : 'https://github.com/kgrubb/melofin/blob/main/PRIVACY.md'
+}
+
+const sourceUrl = (): string => {
+  const fromConfig = Constants.expoConfig?.extra?.sourceUrl
+  return typeof fromConfig === 'string' ? fromConfig : 'https://github.com/kgrubb/melofin'
 }
 
 const EQ_PRESET_IDS = Object.keys(EQ_PRESETS) as Exclude<EqPresetId, 'custom'>[]
@@ -172,14 +177,14 @@ export default function SettingsScreen() {
             </View>
           </Surface>
           <Text style={styles.footer}>
-            Melio {Constants.expoConfig?.version ?? '1.0.0'}
+            Melofin {Constants.expoConfig?.version ?? '1.0.0'}
             {session?.allowInsecureHttp ? ' · HTTP' : ''}
           </Text>
         </View>
 
         <SettingsGroup
           title="Servers"
-          footer="Saved logins to your Jellyfin servers. Forgetting one only removes it from this iPhone. Melio does not host accounts."
+          footer="Saved logins to your Jellyfin servers. Forgetting one only removes it from this iPhone. Melofin does not host accounts."
         >
           {accounts.accounts.map((account) => {
             const active =
@@ -389,6 +394,13 @@ export default function SettingsScreen() {
             chevron
             onPress={() => {
               void Linking.openURL(privacyPolicyUrl())
+            }}
+          />
+          <SettingsRow
+            title="Source code"
+            chevron
+            onPress={() => {
+              void Linking.openURL(sourceUrl())
             }}
           />
         </SettingsGroup>

@@ -8,5 +8,5 @@ const dir = import.meta.dirname
 spawnSync('docker', ['compose', '-f', join(dir, 'docker-compose.yml'), 'down', '--remove-orphans'], {
   stdio: 'inherit',
 })
-spawnSync('docker', ['rm', '-f', 'melio-demo-jellyfin'], { stdio: 'ignore' })
+spawnSync('docker', ['rm', '-f', 'melofin-demo-jellyfin'], { stdio: 'ignore' })
 await rm(join(dir, '../../.demo-jellyfin'), { recursive: true, force: true })

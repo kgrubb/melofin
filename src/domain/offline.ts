@@ -4,11 +4,11 @@ export type OfflineEntry = {
   readonly artist: string
   readonly album: string
   readonly durationMs: number
-  /** Relative under melio/ (e.g. audio/<id>) or legacy absolute/file URI. */
+  /** Relative under melofin/ (e.g. audio/<id>) or legacy absolute/file URI. */
   readonly path: string
   readonly sizeBytes: number
   readonly artworkPath?: string
-  /** Relative under melio/ (e.g. lyrics/<id>.json). */
+  /** Relative under melofin/ (e.g. lyrics/<id>.json). */
   readonly lyricsPath?: string
   readonly downloadedAt: number
   readonly lastAccessedAt: number
@@ -39,16 +39,16 @@ export const offlineRelativePath = (itemId: string): string => `audio/${itemId}`
 
 /**
  * Resolve a stored offline path to a playable URI.
- * Relative paths (audio/<id>) need `melioRootUri` (.../melio). Absolute/file URIs pass through.
+ * Relative paths (audio/<id>) need `melofinRootUri` (.../melofin). Absolute/file URIs pass through.
  */
 export const resolveOfflineFileUri = (
   path: string,
-  melioRootUri?: string,
+  melofinRootUri?: string,
 ): string => {
   if (path.startsWith('file://')) return path
   if (path.startsWith('/')) return `file://${path}`
-  if (!melioRootUri) return path
-  return `${melioRootUri.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
+  if (!melofinRootUri) return path
+  return `${melofinRootUri.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
 }
 
 export const indexMatchesServer = (

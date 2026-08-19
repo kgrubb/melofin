@@ -1,69 +1,72 @@
 <p align="center">
-  <img src="assets/images/icon.png" alt="Melio" width="128" height="128" />
+  <img src="assets/images/icon.png" alt="Melofin" width="128" height="128" />
 </p>
 
-<h1 align="center">Melio</h1>
+<h1 align="center">Melofin</h1>
 
 <p align="center">
   <strong>Your Jellyfin library, tuned for iPhone.</strong><br />
-  Offline-first music player built with Expo.
+  Offline-first music player.
 </p>
 
 <p align="center">
-  <a href="https://github.com/kgrubb/melio/actions/workflows/ci.yml"><img src="https://github.com/kgrubb/melio/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://github.com/kgrubb/melio/actions/workflows/release.yml"><img src="https://github.com/kgrubb/melio/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
+  <a href="https://github.com/kgrubb/melofin/actions/workflows/ci.yml"><img src="https://github.com/kgrubb/melofin/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/kgrubb/melofin/actions/workflows/release.yml"><img src="https://github.com/kgrubb/melofin/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="GPL-3.0" /></a>
+  <a href="https://github.com/sponsors/kgrubb"><img src="https://img.shields.io/badge/sponsor-GitHub-ea4aaa.svg" alt="Sponsor" /></a>
   <img src="https://img.shields.io/badge/platform-iPhone-black.svg" alt="iPhone" />
-  <img src="https://img.shields.io/badge/Expo-SDK%2054-000020.svg?logo=expo" alt="Expo SDK 54" />
-  <img src="https://img.shields.io/badge/node-%3E%3D24.19-339933.svg?logo=node.js&logoColor=white" alt="Node >= 24.19" />
 </p>
 
 ---
 
-Melio is a native-feeling Jellyfin music client for iOS. Browse your library, queue tracks, download for the commute, cast to speakers, and keep listening when the network flakes out.
+Melofin is a Jellyfin music client for iPhone. Browse your library, queue tracks, download for the commute, cast to speakers, and keep listening when the network flakes out.
 
 ## Screenshots
 
 | Home | Mix |
 | :---: | :---: |
-| <img src="assets/screenshots/home.png" alt="Home" /> | <img src="assets/screenshots/mix.png" alt="Instant Mix" /> |
+| <img src="store/screenshots/01-home.png" alt="Home" /> | <img src="store/screenshots/02-mix.png" alt="Instant Mix" /> |
 
-| Library | Now playing |
+| Now playing | Queue |
 | :---: | :---: |
-| <img src="assets/screenshots/library.png" alt="Library albums" /> | <img src="assets/screenshots/now-playing.png" alt="Now playing" /> |
+| <img src="store/screenshots/03-now-playing.png" alt="Now playing" /> | <img src="store/screenshots/04-queue.png" alt="Queue" /> |
+
+| Library | Album |
+| :---: | :---: |
+| <img src="store/screenshots/05-library.png" alt="Library albums" /> | <img src="store/screenshots/06-album.png" alt="Album" /> |
+
+| Artist | Playlist |
+| :---: | :---: |
+| <img src="store/screenshots/07-artist.png" alt="Artist" /> | <img src="store/screenshots/08-playlist.png" alt="Playlist" /> |
 
 | Search | Downloads |
 | :---: | :---: |
-| <img src="assets/screenshots/search.png" alt="Search" /> | <img src="assets/screenshots/downloads.png" alt="Downloads" /> |
+| <img src="store/screenshots/09-search.png" alt="Search" /> | <img src="store/screenshots/10-downloads.png" alt="Downloads" /> |
 
 ## Features
 
 | | |
 |:--|:--|
-| **Library that scales** | SQLite-backed Songs catalog, FlashList scrolling, sort and filter that stay snappy on large libraries |
-| **Playback that sticks** | Gapless local handoffs, optional crossfade, Direct Play with smart failover, lock screen controls |
-| **Offline by default** | Downloads, sync packs for albums/playlists, prefetch, and listen sync that flushes when you reconnect |
-| **Home that feels personal** | Continue listening, Instant Mixes, favorites, genres, and seed-based "Your Mixes" cards |
-| **Cast wherever** | AirPlay, Chromecast, and Jellyfin remote sessions from a Devices sheet |
-| **Extras that matter** | Lyrics, ReplayGain, sleep timer, playlists, Autoplay / Start Radio, multi-server accounts |
-
-CarPlay templates and play wiring are in the tree, gated until the Audio entitlement is on the App ID.
+| **Library** | Albums, artists, playlists, genres, favorites, and search. Sort and filter without the app bogging down. |
+| **Playback** | Gapless playback, optional crossfade, and lock screen controls. |
+| **Offline** | Download albums and playlists. Keep listening on a plane or a dead VPN. Listens catch up when you reconnect. |
+| **Home** | Continue listening, Instant Mixes, favorites, and Your Mixes. |
+| **Cast** | AirPlay, Chromecast, or another Jellyfin session. |
+| **Also** | Lyrics, ReplayGain, a sleep timer, Autoplay, and more than one server. |
 
 ## Requirements
 
 - macOS 15 with **Xcode 16.1+** (16.4 is fine)
 - **Node 24** (see `.nvmrc`)
 - CocoaPods
-- Apple Developer + Expo account
+- An Apple Developer account
 - A Jellyfin server (password, Quick Connect, or SSO)
-
-Expo Go is not supported. Use a dev client. Expo SDK 55+ needs newer Xcode and is not used here.
 
 ## Quick start
 
 ```bash
-git clone https://github.com/kgrubb/melio.git
-cd melio
+git clone https://github.com/kgrubb/melofin.git
+cd melofin
 npm ci
 
 npx expo prebuild --clean --platform ios
@@ -71,7 +74,7 @@ npx expo run:ios
 npx expo start --dev-client
 ```
 
-Or open `ios/Melio.xcworkspace` in Xcode after prebuild.
+Or open `ios/Melofin.xcworkspace` in Xcode after prebuild.
 
 ### EAS
 
@@ -84,7 +87,7 @@ eas build -p ios --profile development
 npx expo start --dev-client
 ```
 
-Production iOS builds run from the [Release](https://github.com/kgrubb/melio/actions/workflows/release.yml) workflow after a version tag is cut. Set `EXPO_TOKEN` on the repo. To submit to App Store Connect as well, add `EXPO_ASC_API_KEY_ID`, `EXPO_ASC_API_KEY_ISSUER_ID`, and `EXPO_ASC_API_KEY_P8`.
+Production iOS builds run from the [Release](https://github.com/kgrubb/melofin/actions/workflows/release.yml) workflow after a version tag is cut. Set `EXPO_TOKEN` on the repo. To submit to App Store Connect as well, add `EXPO_ASC_API_KEY_ID`, `EXPO_ASC_API_KEY_ISSUER_ID`, and `EXPO_ASC_API_KEY_P8`.
 
 EAS Update is off for v1.
 
@@ -96,7 +99,7 @@ Merges to `main` open a `[release vX.Y.Z]` PR from conventional commit titles (`
 
 Ready behind a feature flag. Leave it off until Apple grants the entitlement or signing fails.
 
-1. Enable **CarPlay Audio** (`com.apple.developer.carplay-audio`) on App ID `app.melio.player`
+1. Enable **CarPlay Audio** (`com.apple.developer.carplay-audio`) on App ID `app.melofin.player`
 2. Set `"CARPLAY_ENABLED": true` in `features.json`
 3. `npx expo prebuild --platform ios` then rebuild
 
@@ -124,6 +127,6 @@ Issues and PRs are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, 
 
 ## License
 
-[GPL-3.0](./LICENSE) © Melio contributors
+[GPL-3.0](./LICENSE) with an App Store additional permission © Melofin contributors
 
-Melio is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
+Melofin is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. App Store distribution is allowed under the additional permission in [LICENSE](./LICENSE). Source is this repository.

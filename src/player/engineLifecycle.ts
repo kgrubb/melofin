@@ -40,7 +40,7 @@ import {
 import {
   bindLocalOutputChange,
   isLocalOutputEnabled,
-  isMelioScrobbleEnabled,
+  isMelofinScrobbleEnabled,
   setLocalOutputEnabled,
 } from '@/src/player/outputPolicy'
 import { clearNativeNextQueue } from '@/src/player/nativeHandoff'
@@ -87,18 +87,18 @@ const applyPause = (player?: AudioPlayer | null) => {
       // Ignore.
     }
   }
-  if (isMelioScrobbleEnabled()) {
+  if (isMelofinScrobbleEnabled()) {
     void queueReport(() => reportForCurrent('progress'))
   }
 }
 
-/** Chromecast (etc.): Melio still owns Jellyfin playstate while local audio is muted. */
+/** Chromecast (etc.): Melofin still owns Jellyfin playstate while local audio is muted. */
 const syncRemoteScrobble = (
   state: ReturnType<typeof usePlayerStore.getState>,
   prev: ReturnType<typeof usePlayerStore.getState>,
   trackChanged: boolean,
 ) => {
-  if (!isMelioScrobbleEnabled()) return
+  if (!isMelofinScrobbleEnabled()) return
   if (trackChanged) {
     if (stateRef.scrobble) void queueReport(() => stopAnchoredScrobble())
     if (state.playSessionId) usePlayerStore.getState().setPlaySessionId(null)
@@ -165,7 +165,7 @@ const advanceFromEnd = () => {
       const player = activePlayer()
       // Sleep "end of track" wins over repeat-one so the timer actually stops.
       if (store.sleep.endOfTrack) {
-        if (isMelioScrobbleEnabled() && stateRef.scrobble) {
+        if (isMelofinScrobbleEnabled() && stateRef.scrobble) {
           void queueReport(() => stopAnchoredScrobble())
         }
         if (usePlayerStore.getState().consumeEndOfTrackSleep()) {
@@ -188,7 +188,7 @@ const advanceFromEnd = () => {
         return false
       }
       // Freeze stop on the finished track before advancing the live queue.
-      if (isMelioScrobbleEnabled() && stateRef.scrobble) {
+      if (isMelofinScrobbleEnabled() && stateRef.scrobble) {
         void queueReport(() => stopAnchoredScrobble())
       }
       const leaving = currentTrack(store)
@@ -535,7 +535,7 @@ export const startPlaybackEngine = async (): Promise<Engine> => {
       recoverLocalOutput()
       if (stateRef.replacing) return
       if (!isLocalOutputEnabled()) {
-        if (!isMelioScrobbleEnabled()) return
+        if (!isMelofinScrobbleEnabled()) return
         const queue = usePlayerStore.getState()
         if (!queue.isPlaying || !queue.playSessionId) return
         stateRef.lastPositionMs = queue.positionMs

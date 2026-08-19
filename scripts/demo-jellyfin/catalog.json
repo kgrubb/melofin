@@ -1,7 +1,7 @@
 {
-  "user": "melio",
-  "password": "melio",
-  "serverName": "Melio Demo",
+  "user": "melofin",
+  "password": "melofin",
+  "serverName": "Melofin Demo",
   "albums": [
     {"identifier":"jamendo-165225","artist":"Rinzo & The Hey Hey Panthers","album":"Run run Superman","genre":"Rock","license":"CC BY 3.0","maxTracks":8},
     {"identifier":"jamendo-123961","artist":"Voz Propia","album":"Hamlet","genre":"Rock","license":"CC BY-SA 3.0","maxTracks":8},

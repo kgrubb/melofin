@@ -24,7 +24,7 @@ export const playbackSnapshot = (): PlaybackSnapshot | null => {
   }
 }
 
-/** Item ids for a remote Play command, respecting Melio shuffle order. */
+/** Item ids for a remote Play command, respecting Melofin shuffle order. */
 export const remotePlayQueue = (
   snapshot: PlaybackSnapshot,
   shuffleOrder: readonly number[],

@@ -1,10 +1,10 @@
 import type { CastSinkKind } from '@/src/cast/types'
 
 /**
- * Melio reports playstate for local/AirPlay/Cast (Melio-driven).
- * Jellyfin remotes report themselves. Melio must stay silent.
+ * Melofin reports playstate for local/AirPlay/Cast (Melofin-driven).
+ * Jellyfin remotes report themselves. Melofin must stay silent.
  */
-export const shouldMelioScrobble = (kind: CastSinkKind): boolean => kind !== 'jellyfin'
+export const shouldMelofinScrobble = (kind: CastSinkKind): boolean => kind !== 'jellyfin'
 
 export const isLocalAudible = (kind: CastSinkKind): boolean =>
   kind === 'local' || kind === 'airplay'

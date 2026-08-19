@@ -2,7 +2,7 @@ import AVFoundation
 import ExpoModulesCore
 
 /// Secondary AVPlayer for gapless / crossfade, plus session route events.
-public final class MelioAudioGraphModule: Module {
+public final class MelofinAudioGraphModule: Module {
   private var nextPlayer: AVPlayer?
   private var fadeTimer: Timer?
   private let lock = NSLock()
@@ -10,7 +10,7 @@ public final class MelioAudioGraphModule: Module {
   private var interruptObserver: NSObjectProtocol?
 
   public func definition() -> ModuleDefinition {
-    Name("MelioAudioGraph")
+    Name("MelofinAudioGraph")
 
     Events("onAudioRoute", "onAudioInterruption")
 
@@ -38,7 +38,7 @@ public final class MelioAudioGraphModule: Module {
       }
       _ = await Self.waitUntilReady(item: item, timeoutSec: 2)
       self.setNext(player)
-      MelioEq.shared().attach(to: player)
+      MelofinEq.shared().attach(to: player)
       return item.status == .readyToPlay
     }
 
@@ -94,10 +94,10 @@ public final class MelioAudioGraphModule: Module {
     }
 
     Function("setEqGains") { (gainsDb: [Double]) in
-      MelioEq.shared().setGainsDb(gainsDb.map { NSNumber(value: $0) })
+      MelofinEq.shared().setGainsDb(gainsDb.map { NSNumber(value: $0) })
     }
     Function("resetEq") {
-      MelioEq.shared().reset()
+      MelofinEq.shared().reset()
     }
   }
 

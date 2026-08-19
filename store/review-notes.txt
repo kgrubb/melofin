@@ -1,9 +1,9 @@
-Melio is a Jellyfin music player. It does not host accounts or a Melio backend.
+Melofin is a Jellyfin music player. It does not host accounts or a Melofin backend.
 
-Demo: please use the App Review demo server/user listed in App Review Information. Sign-in is that Jellyfin user. Melio stores the token and optional downloads on device only.
+Demo: please use the App Review demo server/user listed in App Review Information. Sign-in is that Jellyfin user. Melofin stores the token and optional downloads on device only.
 
 HTTP (NSAllowsArbitraryLoads): users self-host Jellyfin, often as HTTP on a LAN or a custom hostname (not only .local / RFC1918). The server screen defaults to HTTPS. NSAllowsLocalNetworking is also enabled. Local Network / Bonjour: Lan Jellyfin, Chromecast, and AirPlay. Please grant Local Network when prompted. The Cast button in Devices is the system permission surface. The review device may not see any speakers; that is expected.
 
 CarPlay is compiled out (CARPLAY_ENABLED=false). This binary does not include the CarPlay Audio entitlement.
 
-Artwork in screenshots and in the app is from the signed-in Jellyfin library, not a Melio storefront.
+Artwork in screenshots and in the app is from the signed-in Jellyfin library, not a Melofin storefront.

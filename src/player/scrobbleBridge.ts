@@ -3,19 +3,19 @@ import { msToTicks } from '@/src/domain/jellyfin'
 import { currentTrack } from '@/src/domain/queue'
 import { enqueueReport, stateRef } from '@/src/player/engineState'
 import { resolveTrackSource } from '@/src/player/trackResolver'
-import { melioRootUri } from '@/src/storage/jsonFile'
+import { melofinRootUri } from '@/src/storage/jsonFile'
 import {
   safeReportProgress,
   safeReportStart,
   safeReportStop,
 } from '@/src/services/jellyfin/playstateSync'
-import { isMelioScrobbleEnabled } from '@/src/player/outputPolicy'
+import { isMelofinScrobbleEnabled } from '@/src/player/outputPolicy'
 import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
 
 export const reportForCurrent = async (phase: 'start' | 'progress' | 'stop') => {
-  if (!isMelioScrobbleEnabled()) return
+  if (!isMelofinScrobbleEnabled()) return
   const queue = usePlayerStore.getState()
   const session = useSessionStore.getState()
   const settings = useSettingsStore.getState()
@@ -29,7 +29,7 @@ export const reportForCurrent = async (phase: 'start' | 'progress' | 'stop') => 
     session.session.userId,
     {
       platform: Platform.OS,
-      melioRootUri: Platform.OS === 'web' ? undefined : melioRootUri(),
+      melofinRootUri: Platform.OS === 'web' ? undefined : melofinRootUri(),
     },
   )
   const runtimeTicks = msToTicks(track.durationMs)

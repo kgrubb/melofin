@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render Melio app icons from geometry.
+"""Render Melofin app icons from geometry.
 
 Mark: three thick capsule bars on a full-bleed brand gradient.
 iOS / Android apply the home-screen mask — do not pre-round or stroke the plate.

@@ -46,7 +46,7 @@ const AuthGate = ({ children }: { readonly children: React.ReactNode }) => {
   if (!hydrated) {
     return (
       <Screen centered>
-        <LoadingState label="Starting Melio" />
+        <LoadingState label="Starting Melofin" />
       </Screen>
     )
   }

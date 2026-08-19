@@ -19,10 +19,10 @@ const withPinnedGoogleCast = (config) =>
       const needle = 'target '
       const idx = src.indexOf(needle)
       if (idx < 0) return mod
-      // Insert after the first `target 'Melio' do` line.
+      // Insert after the first `target 'Melofin' do` line.
       const lines = src.split('\n')
       const targetIdx = lines.findIndex((line) =>
-        /^\s*target ['"]Melio['"]\s+do\s*$/.test(line),
+        /^\s*target ['"]Melofin['"]\s+do\s*$/.test(line),
       )
       if (targetIdx < 0) return mod
       const next = [

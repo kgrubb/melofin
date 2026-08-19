@@ -289,7 +289,7 @@ export default function DownloadsScreen() {
     const current = nearestBudgetGb(budgetBytes)
     Alert.alert(
       'Storage Limit',
-      'How much music Melio may keep on this device, including playback cache.',
+      'How much music Melofin may keep on this device, including playback cache.',
       [
         ...DOWNLOAD_BUDGET_GB.map((gb) => ({
           text: `${current === gb ? '✓ ' : ''}${gb} GB`,

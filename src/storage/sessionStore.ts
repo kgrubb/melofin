@@ -10,9 +10,9 @@ import {
 } from '@/src/domain/accounts'
 import { appError, err, ok, type Result } from '@/src/domain/result'
 
-const DEVICE_ID_KEY = 'melio.deviceId'
-const SESSION_KEY = 'melio.session'
-const ACCOUNTS_KEY = 'melio.accounts'
+const DEVICE_ID_KEY = 'melofin.deviceId'
+const SESSION_KEY = 'melofin.session'
+const ACCOUNTS_KEY = 'melofin.accounts'
 
 export type StoredSession = {
   readonly serverUrl: string
@@ -41,7 +41,7 @@ const makeId = (): string => {
   } catch {
     // fall through
   }
-  return `melio-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  return `melofin-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 const webGet = (key: string): string | null => {
