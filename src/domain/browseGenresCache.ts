@@ -5,7 +5,7 @@ import type { LibraryItem } from '@/src/domain/libraryItem'
 
 export const BROWSE_GENRES_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000
 /** Bump when browse eligibility or tile payload changes. */
-export const BROWSE_GENRES_CACHE_VERSION = 5
+export const BROWSE_GENRES_CACHE_VERSION = 6
 
 type CachedArt = {
   readonly id: string
