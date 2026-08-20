@@ -22,6 +22,7 @@ import {
   BROWSE_GENRES_DISPLAY_LIMIT,
   BROWSE_GENRES_PROBE_LIMIT,
   genreTileCovers,
+  mergeBrowseGenresForDisplay,
   sampleBrowseGenresStable,
   type BrowseGenre,
 } from '@/src/domain/browseGenres'
@@ -362,7 +363,7 @@ export default function SearchScreen() {
         controller.signal,
         (entries) => {
           if (controller.signal.aborted || browseAccountRef.current !== account) return
-          setBrowseGenres(entries)
+          setBrowseGenres((prev) => mergeBrowseGenresForDisplay(prev, entries))
         },
       )
       if (
@@ -372,7 +373,7 @@ export default function SearchScreen() {
       ) {
         return
       }
-      setBrowseGenres(result.value)
+      setBrowseGenres((prev) => mergeBrowseGenresForDisplay(prev, result.value))
       void persistBrowseGenres(session.serverUrl, session.userId, result.value)
     })()
     return () => controller.abort()

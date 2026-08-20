@@ -68,6 +68,21 @@ export const sampleBrowseGenresStable = (
   )
 }
 
+/** First paint once the display grid can fill; ignore later pool growth. */
+export const shouldPublishBrowseProgress = (
+  entryCount: number,
+  alreadyPublished: boolean,
+  displayLimit = BROWSE_GENRES_DISPLAY_LIMIT,
+): boolean => !alreadyPublished && entryCount >= displayLimit
+
+/** Keep a painted grid; only replace when the screen is still empty/incomplete. */
+export const mergeBrowseGenresForDisplay = (
+  current: readonly BrowseGenre[],
+  next: readonly BrowseGenre[],
+  displayLimit = BROWSE_GENRES_DISPLAY_LIMIT,
+): readonly BrowseGenre[] =>
+  current.length >= displayLimit ? current : next
+
 /** Probe candidates until `target` genres qualify. Skips the rest. */
 export const collectBrowseGenres = async (
   candidates: readonly LibraryItem[],

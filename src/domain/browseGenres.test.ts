@@ -4,9 +4,11 @@ import {
   BROWSE_GENRES_DISPLAY_LIMIT,
   browseGenreAlbumCount,
   collectBrowseGenres,
+  mergeBrowseGenresForDisplay,
   genreTileCovers,
   sampleBrowseGenres,
   sampleBrowseGenresStable,
+  shouldPublishBrowseProgress,
   type BrowseGenre,
 } from '@/src/domain/browseGenres'
 
@@ -130,6 +132,22 @@ describe('collectBrowseGenres', () => {
       },
     )
     expect(snapshots).toEqual([['a'], ['a', 'b']])
+  })
+})
+
+describe('browse progress publish', () => {
+  it('publishes once the display grid can fill', () => {
+    expect(shouldPublishBrowseProgress(9, false)).toBe(false)
+    expect(shouldPublishBrowseProgress(10, false)).toBe(true)
+    expect(shouldPublishBrowseProgress(30, true)).toBe(false)
+  })
+
+  it('keeps a painted grid instead of reshuffling as the pool grows', () => {
+    const painted = Array.from({ length: 10 }, (_, i) => browseEntry(`a${i}`))
+    const larger = Array.from({ length: 30 }, (_, i) => browseEntry(`b${i}`))
+    expect(mergeBrowseGenresForDisplay(painted, larger)).toBe(painted)
+    expect(mergeBrowseGenresForDisplay([], larger)).toBe(larger)
+    expect(mergeBrowseGenresForDisplay([browseEntry('x')], larger)).toBe(larger)
   })
 })
 

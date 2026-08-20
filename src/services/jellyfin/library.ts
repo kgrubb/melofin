@@ -18,6 +18,7 @@ import {
   BROWSE_GENRES_PROBE_LIMIT,
   browseGenreAlbumCount,
   collectBrowseGenres,
+  shouldPublishBrowseProgress,
   type BrowseGenre,
 } from '@/src/domain/browseGenres'
 import { uniqueCollageItems } from '@/src/domain/collageArt'
@@ -712,6 +713,7 @@ export const fetchBrowseGenres = async (
     sortBy: ['Random'],
   })
   if (!preview.ok) return preview
+  let published = false
   const probes = await collectBrowseGenres(
     preview.value,
     (genre) =>
@@ -721,7 +723,12 @@ export const fetchBrowseGenres = async (
     {
       target: BROWSE_GENRES_CACHE_POOL_SIZE,
       shouldContinue: () => !signal?.aborted,
-      onProgress,
+      onProgress: (entries) => {
+        if (!onProgress) return
+        if (!shouldPublishBrowseProgress(entries.length, published)) return
+        published = true
+        onProgress(entries)
+      },
     },
   )
   if (signal?.aborted) return err(appError('cancelled', 'Request cancelled'))
