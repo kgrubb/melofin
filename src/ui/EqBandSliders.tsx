@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { useTranslation } from 'react-i18next'
 import {
   EQ_UI_BANDS,
   clampEqGain,
@@ -34,6 +35,7 @@ type Props = {
 }
 
 export const EqBandSliders = ({ gainsDb, onChange, onCommit }: Props) => {
+  const { t } = useTranslation()
   const [draft, setDraft] = useState(gainsDb)
   const draftRef = useRef(draft)
   draftRef.current = draft
@@ -56,7 +58,7 @@ export const EqBandSliders = ({ gainsDb, onChange, onCommit }: Props) => {
   const five = fiveBandGainsFromTen(draft)
 
   return (
-    <View style={styles.wrap} accessibilityLabel="Equalizer bands">
+    <View style={styles.wrap} accessibilityLabel={t('settings.eqBands')}>
       <View style={styles.zeroLine} pointerEvents="none" />
       <View style={styles.row}>
         {EQ_UI_BANDS.map((band, bandIndex) => {
@@ -90,13 +92,13 @@ export const EqBandSliders = ({ gainsDb, onChange, onCommit }: Props) => {
                 <View
                   style={styles.hit}
                   accessibilityRole="adjustable"
-                  accessibilityLabel={`${band.label} band`}
-                  accessibilityHint="Swipe up or down to adjust"
+                  accessibilityLabel={t('settings.eqBand', { label: band.label })}
+                  accessibilityHint={t('settings.eqBandHint')}
                   accessibilityValue={{
                     min: -MAX_DB,
                     max: MAX_DB,
                     now: rounded,
-                    text: `${rounded} decibels`,
+                    text: t('settings.eqDecibels', { value: rounded }),
                   }}
                   accessibilityActions={[
                     { name: 'increment' },

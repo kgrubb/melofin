@@ -7,6 +7,7 @@ import {
   View,
   type ListRenderItemInfo,
 } from 'react-native'
+import { useTranslation } from 'react-i18next'
 import {
   activeLyricIndex,
   seekMsForLine,
@@ -23,6 +24,7 @@ type Props = {
 }
 
 export const LyricsPanel = ({ lyrics, status, reduceMotion }: Props) => {
+  const { t } = useTranslation()
   const listRef = useRef<FlatList<LyricLine>>(null)
   const seekTo = usePlayerStore((s) => s.seekTo)
   const lines = lyrics?.lines ?? []
@@ -44,21 +46,21 @@ export const LyricsPanel = ({ lyrics, status, reduceMotion }: Props) => {
   if (status === 'loading') {
     return (
       <View style={styles.center}>
-        <Text style={styles.secondary}>Loading lyrics…</Text>
+        <Text style={styles.secondary}>{t('player.loadingLyrics')}</Text>
       </View>
     )
   }
   if (status === 'error') {
     return (
       <View style={styles.center}>
-        <Text style={styles.secondary}>Couldn’t load lyrics</Text>
+        <Text style={styles.secondary}>{t('player.couldNotLoadLyrics')}</Text>
       </View>
     )
   }
   if (status === 'empty' || lines.length === 0) {
     return (
       <View style={styles.center}>
-        <Text style={styles.secondary}>No lyrics for this track</Text>
+        <Text style={styles.secondary}>{t('player.noLyricsForTrack')}</Text>
       </View>
     )
   }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Animated from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
+import { useTranslation } from 'react-i18next'
 import { isInsecureHttpUrl, normalizeServerUrl } from '@/src/domain/jellyfin'
 import { probePublicInfo } from '@/src/services/jellyfin/client'
 import { useSessionStore } from '@/src/store/session'
@@ -16,6 +17,7 @@ import {
 import { authCardEntering, useMotionEnabled } from '@/src/theme/motion'
 
 export default function ServerScreen() {
+  const { t } = useTranslation()
   const router = useRouter()
   const enabled = useMotionEnabled()
   const addingAccount = useSessionStore((s) => s.addingAccount)
@@ -65,22 +67,14 @@ export default function ServerScreen() {
         <AuthHero
           brand="Melofin"
           subtitle={
-            addingAccount
-              ? 'Add another Jellyfin server.'
-              : 'Connect to your Jellyfin server.'
+            addingAccount ? t('auth.addServerSubtitle') : t('auth.connectSubtitle')
           }
         />
 
         <Animated.View entering={authCardEntering(enabled)}>
-          <GlassGroup
-            footer={
-              useHttps
-                ? undefined
-                : 'HTTP is for a Jellyfin server on your local network. Use HTTPS if this server is on the internet.'
-            }
-          >
+          <GlassGroup footer={useHttps ? undefined : t('auth.httpFooter')}>
             <AuthField
-              label="Server"
+              label={t('auth.server')}
               autoCapitalize="none"
               autoCorrect={false}
               spellCheck={false}
@@ -91,7 +85,7 @@ export default function ServerScreen() {
               enablesReturnKeyAutomatically
               clearButtonMode="while-editing"
               autoFocus={addingAccount}
-              placeholder="jellyfin.example.com"
+              placeholder={t('auth.serverPlaceholder')}
               value={url}
               onChangeText={(value) => {
                 setError(null)
@@ -102,7 +96,7 @@ export default function ServerScreen() {
               onSubmitEditing={() => void onContinue()}
             />
             <AuthSwitchRow
-              label="Use HTTPS"
+              label={t('auth.useHttps')}
               value={useHttps}
               onValueChange={(value) => {
                 setError(null)
@@ -112,12 +106,12 @@ export default function ServerScreen() {
           </GlassGroup>
           {error ? <AuthError message={error} /> : null}
           <PrimaryButton
-            label={busy ? 'Checking...' : 'Continue'}
+            label={busy ? t('auth.checking') : t('auth.continue')}
             onPress={() => void onContinue()}
             disabled={busy || url.trim().length === 0}
           />
           {addingAccount ? (
-            <GlassButton label="Cancel" onPress={onCancelAdd} />
+            <GlassButton label={t('common.cancel')} onPress={onCancelAdd} />
           ) : null}
         </Animated.View>
       </AuthScroll>

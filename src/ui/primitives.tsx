@@ -10,6 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTranslation } from 'react-i18next'
 import { AccentGradient, Atmosphere } from '@/src/theme/Atmosphere'
 import { Glass } from '@/src/theme/Glass'
 import { PressableScale } from '@/src/theme/motion'
@@ -83,6 +84,7 @@ export const PrimaryButton = ({
   <PressableScale
     accessibilityRole="button"
     accessibilityLabel={label}
+    accessibilityState={{ disabled: Boolean(disabled) }}
     disabled={disabled}
     onPress={onPress}
     style={[styles.buttonPress, disabled ? styles.buttonDisabled : null]}
@@ -107,6 +109,7 @@ export const GlassButton = ({
   <PressableScale
     accessibilityRole="button"
     accessibilityLabel={label}
+    accessibilityState={{ disabled: Boolean(disabled) }}
     disabled={disabled}
     onPress={onPress}
     style={[styles.secondaryPress, disabled ? styles.buttonDisabled : null]}
@@ -188,18 +191,26 @@ export const ErrorState = ({
 }: {
   readonly message: string
   readonly onRetry?: () => void
-}) => (
+}) => {
+  const { t } = useTranslation()
+  return (
   <View style={styles.centered}>
-    <Text style={styles.error}>{message}</Text>
-    {onRetry ? <PrimaryButton label="Try again" onPress={onRetry} /> : null}
+    <Text style={styles.error} accessibilityRole="alert">
+      {message}
+    </Text>
+    {onRetry ? <PrimaryButton label={t('common.retry')} onPress={onRetry} /> : null}
   </View>
-)
+  )
+}
 
-export const LoadingState = ({ label = 'Loading' }: { readonly label?: string }) => (
-  <View style={styles.centered} accessibilityLabel={label}>
-    <ActivityIndicator color={colors.accent} />
-  </View>
-)
+export const LoadingState = ({ label }: { readonly label?: string }) => {
+  const { t } = useTranslation()
+  return (
+    <View style={styles.centered} accessibilityLabel={label ?? t('common.loading')}>
+      <ActivityIndicator color={colors.accent} />
+    </View>
+  )
+}
 
 const styles = StyleSheet.create({
   screen: {

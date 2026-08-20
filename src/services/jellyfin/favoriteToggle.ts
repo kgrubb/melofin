@@ -1,4 +1,5 @@
 import { Alert } from 'react-native'
+import i18n from '@/src/i18n'
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
 import { markFavorite, unmarkFavorite } from '@/src/services/jellyfin/library'
 import { usePlayerStore } from '@/src/store/player'
@@ -19,6 +20,6 @@ export const toggleFavoriteItem = async (opts: {
   if (result.ok) return true
   opts.onLocal?.(!next)
   usePlayerStore.getState().setTrackFavorite(opts.itemId, !next)
-  Alert.alert("Couldn't update favorite", result.error.message)
+  Alert.alert(i18n.t('library.couldNotUpdateFavorite'), result.error.message)
   return false
 }

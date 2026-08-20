@@ -1,4 +1,5 @@
 import { StyleSheet, View } from 'react-native'
+import { useTranslation } from 'react-i18next'
 import { Glass } from '@/src/theme/Glass'
 import { PressableScale } from '@/src/theme/motion'
 import { colors, motion, radii } from '@/src/theme/tokens'
@@ -35,11 +36,13 @@ const BackChevron = ({
 
 export const BackButton = ({
   onPress,
-  label = 'Back',
-}: PressProps & { readonly label?: string }) => (
+  label,
+}: PressProps & { readonly label?: string }) => {
+  const { t } = useTranslation()
+  return (
   <PressableScale
     accessibilityRole="button"
-    accessibilityLabel={label}
+    accessibilityLabel={label ?? t('common.back')}
     scaleTo={motion.scale.button}
     onPress={onPress}
     hitSlop={8}
@@ -49,13 +52,16 @@ export const BackButton = ({
       <BackChevron />
     </Glass>
   </PressableScale>
-)
+  )
+}
 
 /** Sheet grabber (tappable, swipe-down is primary). */
-export const CloseChip = ({ onPress }: PressProps) => (
+export const CloseChip = ({ onPress }: PressProps) => {
+  const { t } = useTranslation()
+  return (
   <PressableScale
     accessibilityRole="button"
-    accessibilityLabel="Close"
+    accessibilityLabel={t('common.close')}
     scaleTo={motion.scale.button}
     onPress={onPress}
     hitSlop={12}
@@ -63,15 +69,18 @@ export const CloseChip = ({ onPress }: PressProps) => (
   >
     <View style={styles.grabber} />
   </PressableScale>
-)
+  )
+}
 
 export const MoreButton = ({
   onPress,
-  label = 'More',
-}: PressProps & { readonly label?: string }) => (
+  label,
+}: PressProps & { readonly label?: string }) => {
+  const { t } = useTranslation()
+  return (
   <PressableScale
     accessibilityRole="button"
-    accessibilityLabel={label}
+    accessibilityLabel={label ?? t('common.more')}
     scaleTo={motion.scale.button}
     onPress={onPress}
     hitSlop={8}
@@ -85,7 +94,8 @@ export const MoreButton = ({
       </View>
     </Glass>
   </PressableScale>
-)
+  )
+}
 
 const styles = StyleSheet.create({
   press: {

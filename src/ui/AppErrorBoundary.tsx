@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { StyleSheet, Text } from 'react-native'
 import { logger } from '@/src/logging/logger'
+import i18n from '@/src/i18n'
 import { Atmosphere } from '@/src/theme/Atmosphere'
 import { colors, spacing } from '@/src/theme/tokens'
 import { PrimaryButton } from '@/src/ui/primitives'
@@ -30,10 +31,12 @@ export class AppErrorBoundary extends Component<Props, State> {
     if (!this.state.hasError) return this.props.children
     return (
       <Atmosphere style={styles.wrap}>
-        <Text style={styles.title}>{this.props.fallbackTitle ?? 'Something went wrong'}</Text>
+        <Text style={styles.title}>
+          {this.props.fallbackTitle ?? i18n.t('common.somethingWentWrong')}
+        </Text>
         <Text style={styles.message}>{this.state.message}</Text>
         <PrimaryButton
-          label="Reset"
+          label={i18n.t('common.reset')}
           onPress={() => this.setState({ hasError: false, message: '' })}
         />
       </Atmosphere>

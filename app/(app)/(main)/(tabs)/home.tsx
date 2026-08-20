@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated from 'react-native-reanimated'
+import { useTranslation } from 'react-i18next'
 import { mapPool } from '@/src/domain/asyncPool'
 import { uniqueCollageItems } from '@/src/domain/collageArt'
 import { uniqueAlbumsFromTracks } from '@/src/domain/genreAlbums'
@@ -21,7 +22,9 @@ import {
   assembleFavoriteArtists,
   assembleInstantMixSeeds,
   assembleMixSeeds,
+  displayHomeMixCard,
   downloadsFromOffline,
+  type AlbumCardCopy,
   HOME_FAVORITE_ARTISTS_LIMIT,
   HOME_GENRE_CATALOG_LIMIT,
   HOME_GENRE_PREVIEW_LIMIT,
@@ -35,7 +38,7 @@ import {
   titleCaseGenreLabel,
   withArtistsFromTracks,
 } from '@/src/domain/homeFeed'
-import { homeGreeting, msUntilNextHomeGreeting } from '@/src/domain/homeGreeting'
+import { homeGreetingPeriod, msUntilNextHomeGreeting } from '@/src/domain/homeGreeting'
 import {
   createMixFoldQueue,
   dedupeById,
@@ -98,6 +101,7 @@ import { MixCollage } from '@/src/ui/MixCollage'
 import { EmptyState, ErrorState, Screen } from '@/src/ui/primitives'
 import { Icon } from '@/src/ui/Icon'
 import { colors, motion, radii, scrollUnderChromePad, spacing } from '@/src/theme/tokens'
+import { albumCardCopyFromT, homeMixCopyFromT } from '@/src/i18n/homeMixCopy'
 
 const MIX_CARD_W = 168
 
@@ -112,6 +116,7 @@ const HomeRail = memo(function HomeRail({
   onPressItem,
   artFor,
   artsFor,
+  albumCopy,
   large = false,
   variant = 'album',
 }: {
@@ -120,6 +125,7 @@ const HomeRail = memo(function HomeRail({
   readonly onPressItem: (item: LibraryItem) => void
   readonly artFor: (item: LibraryItem) => string | undefined
   readonly artsFor?: (item: LibraryItem) => readonly (string | undefined)[]
+  readonly albumCopy: AlbumCardCopy
   readonly large?: boolean
   readonly variant?: 'album' | 'artist' | 'genre'
 }) {
@@ -148,7 +154,7 @@ const HomeRail = memo(function HomeRail({
       >
         {uniqueItems.map((entry) => {
           const art = artFor(entry)
-          const subtitleText = albumCardSubtitle(entry)
+          const subtitleText = albumCardSubtitle(entry, albumCopy)
           const showSubtitle = variant === 'album' && Boolean(subtitleText)
 
           if (variant === 'genre') {
@@ -172,11 +178,7 @@ const HomeRail = memo(function HomeRail({
                     style={styles.genreScrim}
                   />
                   <View pointerEvents="none" style={styles.genreLabelWrap}>
-                    <Text
-                      style={styles.genreLabel}
-                      numberOfLines={2}
-                      allowFontScaling={false}
-                    >
+                    <Text style={styles.genreLabel} numberOfLines={2}>
                       {genreName}
                     </Text>
                   </View>
@@ -265,6 +267,7 @@ const ActionChip = ({
 )
 
 const HomeGreeting = () => {
+  const { t } = useTranslation()
   const enabled = useMotionEnabled()
   const seen = useRef(false)
   const [now, setNow] = useState(() => new Date())
@@ -289,7 +292,13 @@ const HomeGreeting = () => {
       sub.remove()
     }
   }, [])
-  const text = homeGreeting(now)
+  const period = homeGreetingPeriod(now)
+  const text =
+    period === 'morning'
+      ? t('home.greetingMorning')
+      : period === 'afternoon'
+        ? t('home.greetingAfternoon')
+        : t('home.greetingEvening')
   const animate = seen.current && enabled
   seen.current = true
   return (
@@ -303,7 +312,6 @@ const HomeGreeting = () => {
         entering={miniEntering(animate)}
         exiting={miniExiting(animate)}
         style={styles.greeting}
-        allowFontScaling={false}
         accessible={false}
       >
         {text}
@@ -313,6 +321,9 @@ const HomeGreeting = () => {
 }
 
 export default function HomeScreen() {
+  const { t } = useTranslation()
+  const mixCopy = useMemo(() => homeMixCopyFromT(t), [t])
+  const albumCopy = useMemo(() => albumCardCopyFromT(t), [t])
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const context = useSessionStore((s) => s.context)
@@ -852,6 +863,11 @@ export default function HomeScreen() {
     [context, offlineIndex.entries],
   )
 
+  const localizedHomeMixes = useMemo(
+    () => homeMixes.map((mix) => ({ ...mix, ...displayHomeMixCard(mix, mixCopy) })),
+    [homeMixes, mixCopy],
+  )
+
   const mixCollageArts = useMemo(() => {
     const occupied = new Set<string>()
     const byId: Record<string, readonly (string | undefined)[]> = {}
@@ -1033,7 +1049,7 @@ export default function HomeScreen() {
     <View style={styles.header}>
       <PressableScale
         accessibilityRole="button"
-        accessibilityLabel="Profile and settings"
+        accessibilityLabel={t('home.profileSettings')}
         scaleTo={motion.scale.button}
         onPress={() => router.push('/(app)/settings')}
         style={styles.avatarPress}
@@ -1087,20 +1103,20 @@ export default function HomeScreen() {
               contentContainerStyle={styles.chipRow}
             >
               <ActionChip
-                label="Shuffle"
+                label={t('home.shuffle')}
                 icon="shuffle"
                 primary
                 busy={busy === 'library'}
                 onPress={() => void shuffleLibrary()}
               />
               <ActionChip
-                label="Favorites"
+                label={t('home.favorites')}
                 icon="heart.fill"
                 busy={busy === 'favorites'}
                 onPress={() => void shuffleFavorites()}
               />
               <ActionChip
-                label="Downloads"
+                label={t('home.downloads')}
                 icon="arrow.down.circle.fill"
                 disabled={downloads.length === 0}
                 onPress={shuffleDownloads}
@@ -1115,19 +1131,19 @@ export default function HomeScreen() {
           </View>
         ) : showEmpty ? (
           <View style={styles.padded}>
-            <EmptyState title="Nothing here" message="Add music on your Jellyfin server." />
+            <EmptyState title={t('home.nothingHereTitle')} message={t('home.nothingHereMessage')} />
           </View>
         ) : (
           <>
-            {homeMixes.length > 0 ? (
+            {localizedHomeMixes.length > 0 ? (
               <Animated.View entering={settleEntering(motionOn)} style={styles.section}>
-                <Text style={styles.sectionTitle}>Your Mixes</Text>
+                <Text style={styles.sectionTitle}>{t('home.yourMixes')}</Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.rail}
                 >
-                  {homeMixes.map((mix) => {
+                  {localizedHomeMixes.map((mix) => {
                     const arts = mixCollageArts[mix.id] ?? []
                     return (
                       <PressableScale
@@ -1142,7 +1158,7 @@ export default function HomeScreen() {
                           <MixCollage arts={arts} size={MIX_CARD_W} radius={radii.cover} recyclingKey={mix.id} />
                           <PressableScale
                             accessibilityRole="button"
-                            accessibilityLabel={`Shuffle play ${mix.title}`}
+                            accessibilityLabel={t('home.shufflePlayMix', { title: mix.title })}
                             scaleTo={motion.scale.button}
                             hitSlop={8}
                             onPress={(event) => {
@@ -1169,7 +1185,7 @@ export default function HomeScreen() {
               </Animated.View>
             ) : mixesPending ? (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Your Mixes</Text>
+                <Text style={styles.sectionTitle}>{t('home.yourMixes')}</Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -1192,50 +1208,56 @@ export default function HomeScreen() {
             ) : null}
 
             <HomeRail
-              title="Your Favorite Artists"
+              title={t('home.favoriteArtists')}
               items={favoriteArtists}
               onPressItem={openItem}
               artFor={artFor}
+              albumCopy={albumCopy}
               variant="artist"
             />
 
             {continueItems.length > 0 ? (
               <HomeRail
-                title="Continue Listening"
+                title={t('home.continueListening')}
                 items={continueItems}
                 onPressItem={(entry) => openItem(entry, { resume: true })}
                 artFor={artFor}
+                albumCopy={albumCopy}
                 large
               />
             ) : null}
 
             <HomeRail
-              title="Recently Added"
+              title={t('home.recentlyAdded')}
               items={albums}
               onPressItem={openItem}
               artFor={artFor}
+              albumCopy={albumCopy}
             />
 
             <HomeRail
-              title="Explore Your Genres"
+              title={t('home.exploreGenres')}
               items={genres}
               onPressItem={openGenre}
               artFor={artFor}
               artsFor={artsForGenre}
+              albumCopy={albumCopy}
               variant="genre"
             />
 
             <HomeRail
-              title="Playlists"
+              title={t('home.playlists')}
               items={playlists}
               onPressItem={openItem}
               artFor={artFor}
+              albumCopy={albumCopy}
             />
             <HomeRail
-              title="Favorites"
+              title={t('home.favorites')}
               items={favorites}
               onPressItem={openItem}
               artFor={artFor}
+              albumCopy={albumCopy}
             />
           </>
         )}

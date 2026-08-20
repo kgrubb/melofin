@@ -1,5 +1,10 @@
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Modal, FlatList } from 'react-native'
+import { useTranslation } from 'react-i18next'
+import {
+  castErrorMessageFromT,
+  localizeCastDevice,
+} from '@/src/i18n/castCopy'
 import { useCastStore } from '@/src/cast/castStore'
 import {
   scheduleStopDiscovery,
@@ -38,10 +43,13 @@ const DeviceRow = ({
   readonly transferring: boolean
   readonly disabled: boolean
   readonly onPress: () => void
-}) => (
+}) => {
+  const { t } = useTranslation()
+  const label = localizeCastDevice(device, t)
+  return (
   <PressableScale
     accessibilityRole="button"
-    accessibilityLabel={device.name}
+    accessibilityLabel={label.name}
     accessibilityState={{ selected: active, disabled, busy: transferring }}
     disabled={disabled || transferring}
     onPress={onPress}
@@ -56,11 +64,11 @@ const DeviceRow = ({
       />
       <View style={styles.rowMeta}>
         <Text style={[styles.rowTitle, active && styles.rowTitleActive]} numberOfLines={1}>
-          {device.name}
+          {label.name}
         </Text>
-        {device.subtitle ? (
+        {label.subtitle ? (
           <Text style={styles.rowSubtitle} numberOfLines={1}>
-            {device.subtitle}
+            {label.subtitle}
           </Text>
         ) : null}
       </View>
@@ -71,9 +79,11 @@ const DeviceRow = ({
       ) : null}
     </Surface>
   </PressableScale>
-)
+  )
+}
 
 export const DevicesSheet = () => {
+  const { t } = useTranslation()
   const sheetOpen = useCastStore((s) => s.sheetOpen)
   const devices = useCastStore((s) => s.devices)
   const transfer = useCastStore((s) => s.transfer)
@@ -98,7 +108,7 @@ export const DevicesSheet = () => {
         startDiscovery()
       }}
     >
-      <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="Dismiss">
+      <Pressable style={styles.backdrop} onPress={close} accessibilityLabel={t('common.dismiss')}>
         <Pressable
           style={styles.sheetWrap}
           onPress={(e) => e.stopPropagation()}
@@ -109,14 +119,17 @@ export const DevicesSheet = () => {
               <CloseChip onPress={close} />
             </View>
             <View style={styles.headingRow}>
-              <Text style={styles.heading}>Devices</Text>
+              <Text style={styles.heading} accessibilityRole="header">
+                {t('player.devices')}
+              </Text>
               <CastRouteButton style={styles.castBtn} />
             </View>
             <Text style={styles.caption}>
-              Uses the local network to find Chromecast and AirPlay speakers. Grant Local
-              Network when iOS asks, including on a network with no speakers.
+              {t('player.devicesCaption')}
             </Text>
-            {lastError ? <Text style={styles.error}>{lastError.message}</Text> : null}
+            {lastError ? (
+              <Text style={styles.error}>{castErrorMessageFromT(lastError, t)}</Text>
+            ) : null}
             <FlatList
               data={[
                 ...devices.filter((d) => d.kind !== 'airplay'),
@@ -124,9 +137,9 @@ export const DevicesSheet = () => {
                   ? [
                       {
                         id: 'airplay',
-                        name: 'AirPlay',
+                        name: t('player.airplay'),
                         kind: 'airplay' as const,
-                        subtitle: 'System devices',
+                        subtitle: t('player.systemDevices'),
                       },
                     ]
                   : []),
@@ -140,8 +153,8 @@ export const DevicesSheet = () => {
                       <Surface style={styles.row} contentStyle={styles.rowInner}>
                         <Icon name="airplayaudio" size={22} tintColor={colors.text} />
                         <View style={styles.rowMeta}>
-                          <Text style={styles.rowTitle}>AirPlay</Text>
-                          <Text style={styles.rowSubtitle}>System devices</Text>
+                          <Text style={styles.rowTitle}>{t('player.airplay')}</Text>
+                          <Text style={styles.rowSubtitle}>{t('player.systemDevices')}</Text>
                         </View>
                         <AirPlayRouteButton style={styles.airplayBtn} />
                       </Surface>

@@ -12,6 +12,7 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list'
 import Animated from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTranslation } from 'react-i18next'
 import {
   artworkUrl,
   fetchMusicGenres,
@@ -21,7 +22,7 @@ import {
 import { createPlaylist, addTracksToPlaylist } from '@/src/services/jellyfin/playlists'
 import { materializeQueueTracks, materializeQueueTracksFromPages } from '@/src/services/jellyfin/queueMaterialize'
 import { buildAlphabetIndex, type AlphabetIndexLetter } from '@/src/domain/alphabetIndex'
-import { formatLibrarySyncProgress } from '@/src/domain/librarySync'
+import { formatLibrarySyncProgressLabel } from '@/src/i18n/librarySyncCopy'
 import { playlistStub } from '@/src/domain/playlists'
 import { useSessionStore } from '@/src/store/session'
 import { useLibraryStore } from '@/src/store/library'
@@ -50,8 +51,8 @@ import {
   applyLibraryView,
   LIBRARY_FILTERS,
   LIBRARY_SORTS,
-  libraryFilterLabel,
-  librarySortLabel,
+  type LibraryFilter,
+  type LibrarySort,
 } from '@/src/domain/libraryView'
 import { useSettingsStore } from '@/src/store/settings'
 import {
@@ -62,7 +63,6 @@ import { toggleFavoriteItem } from '@/src/services/jellyfin/favoriteToggle'
 import { SegmentControl } from '@/src/ui/SegmentControl'
 import { TRACK_ROW_HEIGHT, TrackRow } from '@/src/ui/TrackRow'
 import { colors, motion, radii, scrollUnderChromePad, spacing, typography } from '@/src/theme/tokens'
-
 type Segment = 'songs' | 'albums' | 'artists' | 'genres' | 'playlists'
 
 const SEGMENTS: readonly Segment[] = ['songs', 'albums', 'artists', 'genres', 'playlists']
@@ -79,30 +79,34 @@ const PlaylistCard = ({
   readonly art?: string
   readonly width: number
   readonly onPress: () => void
-}) => (
-  <PressableScale
-    accessibilityRole="button"
-    accessibilityLabel={item.name}
-    scaleTo={motion.scale.card}
-    onPress={onPress}
-    style={[styles.playlistCard, { width }]}
-  >
-    <Artwork
-      uri={art}
-      style={[styles.playlistArt, { width, height: width }]}
-    />
-    <Text style={styles.playlistTitle} numberOfLines={2}>
-      {item.name}
-    </Text>
-    <Muted>
-      {item.childCount !== undefined
-        ? `${item.childCount} track${item.childCount === 1 ? '' : 's'}`
-        : 'Playlist'}
-    </Muted>
-  </PressableScale>
-)
+}) => {
+  const { t } = useTranslation()
+  return (
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={item.name}
+      scaleTo={motion.scale.card}
+      onPress={onPress}
+      style={[styles.playlistCard, { width }]}
+    >
+      <Artwork
+        uri={art}
+        style={[styles.playlistArt, { width, height: width }]}
+      />
+      <Text style={styles.playlistTitle} numberOfLines={2}>
+        {item.name}
+      </Text>
+      <Muted>
+        {item.childCount !== undefined
+          ? t('library.playlistCount', { count: item.childCount })
+          : t('library.playlistFallback')}
+      </Muted>
+    </PressableScale>
+  )
+}
 
 export default function LibraryScreen() {
+  const { t } = useTranslation()
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
@@ -123,6 +127,35 @@ export default function LibraryScreen() {
   const [busy, setBusy] = useState(false)
   const [genres, setGenres] = useState<readonly LibraryItem[]>([])
   const [genresLoading, setGenresLoading] = useState(false)
+
+  const segmentLabel = useCallback(
+    (value: Segment) => {
+      if (value === 'songs') return t('library.segmentSongs')
+      if (value === 'albums') return t('library.segmentAlbums')
+      if (value === 'artists') return t('library.segmentArtists')
+      if (value === 'genres') return t('library.segmentGenres')
+      return t('library.segmentPlaylists')
+    },
+    [t],
+  )
+
+  const sortLabel = useCallback(
+    (sort: LibrarySort) => {
+      if (sort === 'name') return t('library.sortName')
+      if (sort === 'dateAdded') return t('library.sortDateAdded')
+      return t('library.sortRecentlyPlayed')
+    },
+    [t],
+  )
+
+  const filterLabel = useCallback(
+    (filter: LibraryFilter) => {
+      if (filter === 'all') return t('library.filterAll')
+      if (filter === 'favorites') return t('library.filterFavorites')
+      return t('library.filterUnplayed')
+    },
+    [t],
+  )
   const [genresError, setGenresError] = useState<string | null>(null)
   const songs = useLibraryStore((s) => s.songs)
   const songsCount = useLibraryStore((s) => s.songsCount)
@@ -423,7 +456,7 @@ export default function LibraryScreen() {
 
   const requireSession = (): boolean => {
     if (context && session) return true
-    Alert.alert('Sign in required', 'Sign in to manage playlists.')
+    Alert.alert(t('library.signInRequired'), t('library.signInManagePlaylists'))
     return false
   }
 
@@ -457,7 +490,7 @@ export default function LibraryScreen() {
         seedTrackId ? [seedTrackId] : undefined,
       )
       if (!result.ok) {
-        Alert.alert("Couldn't create playlist", result.error.message)
+        Alert.alert(t('library.couldNotCreatePlaylist'), result.error.message)
         return
       }
       await upsertPlaylist({
@@ -484,7 +517,7 @@ export default function LibraryScreen() {
         trackId,
       ])
       if (!result.ok) {
-        Alert.alert("Couldn't add to playlist", result.error.message)
+        Alert.alert(t('library.couldNotAddToPlaylist'), result.error.message)
         return
       }
       setPickerOpen(false)
@@ -522,7 +555,7 @@ export default function LibraryScreen() {
         isFavorite: Boolean(item.isFavorite),
         onToggleFavorite: () => {
           if (!context || !session) {
-            Alert.alert('Sign in required', 'Sign in to manage favorites.')
+            Alert.alert(t('library.signInRequired'), t('library.signInManageFavorites'))
             return
           }
           void toggleFavoriteItem({
@@ -536,7 +569,7 @@ export default function LibraryScreen() {
         isPlayed: Boolean(item.isPlayed),
         onTogglePlayed: () => {
           if (!context || !session) {
-            Alert.alert('Sign in required', 'Sign in to update play state.')
+            Alert.alert(t('library.signInRequired'), t('library.signInUpdatePlayState'))
             return
           }
           const nextPlayed = !item.isPlayed
@@ -554,22 +587,22 @@ export default function LibraryScreen() {
           ).then((result) => {
             if (!result.ok) {
               patchPlayed(item.id, Boolean(item.isPlayed))
-              Alert.alert("Couldn't update", result.error.message)
+              Alert.alert(t('library.couldNotUpdate'), result.error.message)
             }
           })
         },
-      }),
+      }, t),
     )
   }
 
   const openViewMenu = () => {
-    presentTrackActions('Library view', [
+    presentTrackActions(t('library.viewTitle'), [
       ...LIBRARY_SORTS.map((sort) => ({
-        text: `${librarySort === sort ? '✓ ' : ''}${librarySortLabel(sort)}`,
+        text: `${librarySort === sort ? '✓ ' : ''}${sortLabel(sort)}`,
         onPress: () => void setLibrarySort(sort),
       })),
       ...LIBRARY_FILTERS.map((filter) => ({
-        text: `${libraryFilter === filter ? '✓ ' : ''}${libraryFilterLabel(filter)}`,
+        text: `${libraryFilter === filter ? '✓ ' : ''}${filterLabel(filter)}`,
         onPress: () => void setLibraryFilter(filter),
       })),
     ])
@@ -577,9 +610,9 @@ export default function LibraryScreen() {
 
   const openLibraryMenu = () => {
     if (busy) return
-    presentTrackActions('Playlists', [
+    presentTrackActions(t('library.playlistsTitle'), [
       {
-        text: 'New playlist',
+        text: t('library.newPlaylist'),
         onPress: () => openCreate(),
       },
     ])
@@ -589,30 +622,35 @@ export default function LibraryScreen() {
     <Screen padBottom={false}>
       <View style={styles.titleRow}>
         <View style={styles.titleText}>
-          <Title>Library</Title>
+          <Title>{t('library.title')}</Title>
         </View>
         {segment === 'songs' || segment === 'albums' || segment === 'artists' ? (
-          <MoreButton label="Sort and filter" onPress={openViewMenu} />
+          <MoreButton label={t('library.sortAndFilter')} onPress={openViewMenu} />
         ) : null}
         {segment === 'playlists' ? (
           <MoreButton
-            label="Playlist options"
+            label={t('library.playlistOptions')}
             onPress={openLibraryMenu}
           />
         ) : null}
       </View>
-      <SegmentControl values={SEGMENTS} value={segment} onChange={setSegment} />
+      <SegmentControl
+        values={SEGMENTS}
+        value={segment}
+        onChange={setSegment}
+        labelFor={segmentLabel}
+      />
       {segment === 'songs' || segment === 'albums' || segment === 'artists' ? (
         <Muted>
-          {librarySortLabel(librarySort)}
-          {libraryFilter !== 'all' ? ` · ${libraryFilterLabel(libraryFilter)}` : ''}
+          {sortLabel(librarySort)}
+          {libraryFilter !== 'all' ? ` · ${filterLabel(libraryFilter)}` : ''}
         </Muted>
       ) : null}
       {syncing && displayItems.length === 0 && songsCount === 0 && segment !== 'genres' ? (
-        <LoadingState label={formatLibrarySyncProgress(syncProgress)} />
+        <LoadingState label={formatLibrarySyncProgressLabel(syncProgress, t)} />
       ) : null}
       {segment === 'genres' && genresLoading && genres.length === 0 ? (
-        <LoadingState label="Loading genres" />
+        <LoadingState label={t('library.loadingGenres')} />
       ) : null}
       {syncError && displayItems.length === 0 && songsCount === 0 && segment !== 'genres' ? (
         <ErrorState message={syncError} onRetry={refresh} />
@@ -639,20 +677,20 @@ export default function LibraryScreen() {
       segment !== 'playlists' &&
       segment !== 'genres' ? (
         <EmptyState
-          title="Library empty"
-          message="Tap Sync library to pull from your Jellyfin server."
+          title={t('library.emptyLibraryTitle')}
+          message={t('library.emptyLibraryMessage')}
         />
       ) : null}
       {!genresLoading && !genresError && genres.length === 0 && segment === 'genres' ? (
-        <EmptyState title="No genres" message="Your server didn't return any music genres." />
+        <EmptyState title={t('library.noGenresTitle')} message={t('library.noGenresMessage')} />
       ) : null}
       {!syncing && !syncError && displayItems.length === 0 && segment === 'playlists' ? (
         <View style={styles.emptyPlaylists}>
           <EmptyState
-            title="No playlists yet"
-            message="Tap ··· above to create one, or long-press a song → Add to playlist."
+            title={t('library.noPlaylistsTitle')}
+            message={t('library.noPlaylistsMessage')}
           />
-          <GlassButton label="Sync library" onPress={refresh} />
+          <GlassButton label={t('library.syncLibrary')} onPress={refresh} />
         </View>
       ) : null}
       {displayItems.length === 0 &&
@@ -661,7 +699,7 @@ export default function LibraryScreen() {
       !syncError &&
       segment !== 'playlists' &&
       segment !== 'genres' ? (
-        <GlassButton label="Sync library" onPress={refresh} />
+        <GlassButton label={t('library.syncLibrary')} onPress={refresh} />
       ) : null}
       {displayItems.length > 0 || (segment === 'songs' && songsCount > 0) ? (
         <Animated.View
@@ -670,7 +708,7 @@ export default function LibraryScreen() {
           style={styles.listWrap}
         >
           {syncError && segment !== 'genres' ? (
-            <GlassButton label="Retry sync" onPress={refresh} />
+            <GlassButton label={t('library.retrySync')} onPress={refresh} />
           ) : null}
           {segment === 'playlists' ? (
             <FlatList
@@ -729,7 +767,7 @@ export default function LibraryScreen() {
                     playSongsFromIndex(index, displayItems)
                   }}
                   onLongPress={() => onSongLongPress(item)}
-                  accessibilityHint="Long press for playlist actions"
+                  accessibilityHint={t('library.longPressHint')}
                 />
               )}
             />
@@ -793,7 +831,7 @@ export default function LibraryScreen() {
       ) : null}
       <PlaylistNameModal
         visible={nameOpen}
-        title="New playlist"
+        title={t('library.newPlaylist')}
         busy={busy}
         onCancel={cancelCreate}
         onSubmit={(name) => {

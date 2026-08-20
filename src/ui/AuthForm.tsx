@@ -157,11 +157,17 @@ export const AuthHint = ({ children }: { readonly children: ReactNode }) => (
   </View>
 )
 
-export const AuthCode = ({ code }: { readonly code: string }) => (
+export const AuthCode = ({
+  code,
+  accessibilityLabel,
+}: {
+  readonly code: string
+  readonly accessibilityLabel: string
+}) => (
   <View
     style={styles.codeRow}
     accessibilityRole="text"
-    accessibilityLabel={`Quick Connect code ${code}`}
+    accessibilityLabel={accessibilityLabel}
   >
     <Text selectable style={styles.code}>
       {code}

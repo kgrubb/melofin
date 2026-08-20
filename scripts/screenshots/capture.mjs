@@ -8,7 +8,45 @@ import { join } from 'node:path'
 
 const HERE = import.meta.dirname
 const ROOT = join(HERE, '../..')
-const STORE_OUT = join(ROOT, 'store/screenshots')
+const STORE_OUT = process.env.MELOFIN_SCREENSHOT_OUT
+  ? join(ROOT, process.env.MELOFIN_SCREENSHOT_OUT)
+  : join(ROOT, 'store/screenshots')
+const HOME_ONLY = process.env.MELOFIN_SCREENSHOT_HOME_ONLY === '1'
+const FORCE_WEB_RESTART = process.env.MELOFIN_WEB_FORCE_RESTART === '1'
+
+/** App Store Connect locale tag -> app i18n folder name. */
+const APP_STORE_LOCALE_TO_LANG = {
+  'en-US': 'en',
+  'sv-SE': 'sv',
+  'is-IS': 'is',
+  'es-ES': 'es',
+  'fr-FR': 'fr',
+  'de-DE': 'de',
+  'pt-BR': 'pt-BR',
+  'pt-PT': 'pt-PT',
+  'it-IT': 'it',
+  'nl-NL': 'nl',
+  'ja-JP': 'ja',
+  'ko-KR': 'ko',
+  'zh-CN': 'zh',
+  'zh-TW': 'zh-Hant',
+  'nb-NO': 'nb',
+  'da-DK': 'da',
+  'fi-FI': 'fi',
+  'pl-PL': 'pl',
+  'tr-TR': 'tr',
+  'id-ID': 'id',
+  'th-TH': 'th',
+  'vi-VN': 'vi',
+  'hi-IN': 'hi',
+  'uk-UA': 'uk',
+}
+
+const ALL_APP_STORE_LOCALES = Object.keys(APP_STORE_LOCALE_TO_LANG)
+const LOCALES = (process.env.MELOFIN_SCREENSHOT_LOCALES ?? ALL_APP_STORE_LOCALES.join(','))
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter(Boolean)
 
 // App Store Connect iPhone 6.9" is the only required size class for this
 // iPhone-only portrait app (supportsTablet: false). Apple accepts 1–10 PNGs
@@ -58,8 +96,8 @@ const waitForUrl = async (url, ms) => {
 }
 
 const ensureWeb = async () => {
-  if (await ping(WEB_URL)) return null
-  const child = spawn('npx', ['expo', 'start', '--web', '--port', String(WEB_PORT), '--non-interactive'], {
+  if (!FORCE_WEB_RESTART && (await ping(WEB_URL))) return null
+  const child = spawn('npx', ['expo', 'start', '--web', '--clear', '--port', String(WEB_PORT)], {
     cwd: ROOT,
     env: { ...process.env, CI: '1', EXPO_NO_TELEMETRY: '1' },
     stdio: 'inherit',
@@ -79,6 +117,13 @@ const loadDeps = async () => {
   }
   return { playwright: pw, sharp: require('sharp') }
 }
+
+const loadStrings = async (appLang) => {
+  const file = join(ROOT, 'src/i18n/locales', appLang, 'common.json')
+  return JSON.parse(await readFile(file, 'utf8'))
+}
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const jf = async (serverUrl, token, path, init = {}) => {
   const r = await fetch(`${serverUrl}${path}`, {
@@ -154,11 +199,17 @@ const waitForArt = async (page) => {
 }
 
 const waitForHome = async (page) => {
-  for (const text of [/Good (morning|afternoon|evening)/i, 'Your Mixes', 'Recently Added']) {
-    await page.getByText(text).waitFor({ timeout: 90_000 })
-  }
-  await page.getByRole('button', { name: /Mix\./ }).nth(5).waitFor({ timeout: 90_000 })
+  await page
+    .waitForFunction(() => {
+      const imgs = [...document.querySelectorAll('img')]
+      const loaded = imgs.filter((img) => img.complete && img.naturalWidth > 8)
+      const mixCards = [...document.querySelectorAll('[role="button"][aria-label]')].filter((el) =>
+        (el.getAttribute('aria-label') ?? '').includes('. '),
+      )
+      return loaded.length >= 10 && mixCards.length >= 3
+    }, { timeout: 180_000 })
   await waitForArt(page)
+  await sleep(900)
 }
 
 const pngChunkLen = (buf, offset) => buf.readUInt32BE(offset)
@@ -217,13 +268,13 @@ const compressPng = async (sharp, buf) => {
   return packed.length < buf.length ? packed : buf
 }
 
-const createShot = (sharp) => {
+const createShot = (sharp, outDir) => {
   const taken = []
   const shot = async (page, name) => {
     if (taken.length >= STORE_MAX) {
       throw new Error(`App Store allows at most ${STORE_MAX} screenshots; extra shot "${name}"`)
     }
-    const dest = join(STORE_OUT, `${String(taken.length + 1).padStart(2, '0')}-${name}.png`)
+    const dest = join(outDir, `${String(taken.length + 1).padStart(2, '0')}-${name}.png`)
     const raw = await page.screenshot({
       type: 'png',
       animations: 'disabled',
@@ -242,8 +293,8 @@ const createShot = (sharp) => {
   return { shot, taken }
 }
 
-const waitForPlayHero = async (page) => {
-  await page.getByRole('button', { name: 'Play' }).first().waitFor({ timeout: 20_000 })
+const waitForPlayHero = async (page, playLabel) => {
+  await page.getByRole('button', { name: playLabel, exact: true }).first().waitFor({ timeout: 20_000 })
   await waitForArt(page)
   await sleep(500)
 }
@@ -251,157 +302,213 @@ const waitForPlayHero = async (page) => {
 const open = (page, path, timeout = 45_000) =>
   page.goto(path ? `${WEB_URL}${path}` : WEB_URL, { waitUntil: 'domcontentloaded', timeout })
 
-const login = async (page, creds) => {
+const login = async (page, creds, strings) => {
+  const auth = strings.auth
   await open(page, '', 90_000)
-  const server = page.getByLabel('Server')
+  const server = page.getByLabel(auth.server)
   try {
     await server.waitFor({ timeout: 8_000 })
   } catch {
     return
   }
   await server.fill(creds.serverUrl)
-  await page.getByRole('button', { name: 'Continue' }).click()
-  const user = page.getByLabel('Username')
+  await page.getByRole('button', { name: auth.continue }).click()
+  const user = page.getByLabel(auth.username)
   await user.waitFor({ timeout: 30_000 })
   await user.fill(creds.username)
-  await page.getByLabel('Password').fill(creds.password)
-  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByLabel(auth.password).fill(creds.password)
+  await page.getByRole('button', { name: auth.signIn }).click()
 }
 
-const main = async () => {
-  await rm(STORE_OUT, { recursive: true, force: true })
-  await mkdir(STORE_OUT, { recursive: true })
-  const creds = await credentials()
-  process.stdout.write(
-    `capturing App Store 6.9" ${STORE_PX.width}×${STORE_PX.height} RGB PNG (max ${STORE_MAX})\n`,
-  )
-  await waitForUrl(`${creds.serverUrl}/System/Info/Public`, 10_000)
-  const web = await ensureWeb()
-  const { playwright, sharp } = await loadDeps()
-  const { shot, taken } = createShot(sharp)
-  const browser = await playwright.chromium.launch({ headless: true, args: ['--disable-web-security'] })
-  const page = await (
-    await browser.newContext({
-      viewport: VIEWPORT,
-      deviceScaleFactor: DEVICE_SCALE,
-      colorScheme: 'dark',
-      hasTouch: true,
-      isMobile: true,
-      locale: 'en-US',
-      timezoneId: 'America/New_York',
-      userAgent:
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
-    })
-  ).newPage()
-  try {
-    await login(page, creds)
-    await waitForHome(page)
-    await seedDownloadsIndex(page, creds)
-    await waitForHome(page)
-    await shot(page, 'home')
+const captureFullSet = async (page, strings, outDir, sharp) => {
+  const s = strings
+  const { shot, taken } = createShot(sharp, outDir)
 
-    await page.getByRole('button', { name: /Mix\./ }).first().click()
-    await page.getByText(/tracks/i).waitFor({ timeout: 30_000 })
-    await sleep(1_200)
-    await waitForArt(page)
-    await shot(page, 'mix')
+  await waitForHome(page)
+  await seedDownloadsIndex(page, creds)
+  await waitForHome(page)
+  await shot(page, 'home')
 
-    await open(page, '/search')
-    const search = page.getByRole('textbox', { name: 'Search' })
-    await search.waitFor({ timeout: 20_000 })
-    await search.fill('The Run')
-    const run = page.getByText('The Run', { exact: true }).first()
-    await run.waitFor({ timeout: 25_000 })
-    await run.click()
-    await page.getByRole('button', { name: 'Play' }).first().waitFor({ timeout: 20_000 })
-    await page.getByRole('button', { name: 'Play' }).click()
-    const mini = page.getByRole('button', { name: /^Now playing / }).first()
-    await mini.waitFor({ timeout: 45_000 })
-    await mini.click()
-    await page.locator('[aria-label="Now Playing"]').waitFor({ timeout: 20_000 })
-    await page
-      .waitForFunction(() => {
-        const root = document.querySelector('[aria-label="Now Playing"]')
+  await page.locator('[role="button"][aria-label*=". "]').first().click()
+  await waitForPlayHero(page, s.player.play)
+  await sleep(700)
+  await shot(page, 'mix')
+
+  await open(page, '/search')
+  const search = page.getByRole('textbox', { name: s.search.title })
+  await search.waitFor({ timeout: 20_000 })
+  await search.fill('The Run')
+  const run = page.getByText('The Run', { exact: true }).first()
+  await run.waitFor({ timeout: 25_000 })
+  await run.click()
+  await page.getByRole('button', { name: s.player.play, exact: true }).first().waitFor({ timeout: 20_000 })
+  await page.getByRole('button', { name: s.player.play, exact: true }).first().click()
+  const mini = page
+    .getByRole('button', { name: new RegExp(`^${escapeRegExp(s.player.nowPlayingLabel)} `) })
+    .first()
+  await mini.waitFor({ timeout: 45_000 })
+  await mini.click()
+  await page.locator(`[aria-label="${s.player.nowPlaying}"]`).waitFor({ timeout: 20_000 })
+  await page
+    .waitForFunction(
+      (label) => {
+        const root = document.querySelector(`[aria-label="${label}"]`)
         if (!root) return false
         return [...root.querySelectorAll('img')].some((img) => {
           const box = img.getBoundingClientRect()
           return img.complete && img.naturalWidth >= 900 && box.width > 200
         })
-      }, { timeout: 20_000 })
-      .catch(() => {})
-    await sleep(800)
-    await shot(page, 'now-playing')
+      },
+      s.player.nowPlaying,
+      { timeout: 20_000 },
+    )
+    .catch(() => {})
+  await sleep(800)
+  await shot(page, 'now-playing')
 
-    try {
-      await page.getByLabel('Open queue').click({ timeout: 8_000 })
-    } catch {
-      await open(page, '/queue')
+  try {
+    await page.getByLabel(s.player.openQueue).click({ timeout: 8_000 })
+  } catch {
+    await open(page, '/queue')
+  }
+  await page.getByText(s.queue.title, { exact: true }).first().waitFor({ timeout: 20_000 })
+  await sleep(600)
+  await shot(page, 'queue')
+
+  await open(page, '/library')
+  await page.getByRole('tab', { name: s.library.segmentAlbums }).click()
+  await page.getByText(s.library.title).first().waitFor({ timeout: 20_000 })
+  await waitForArt(page)
+  await shot(page, 'library')
+
+  await page.getByText('The Run', { exact: true }).first().click()
+  await waitForPlayHero(page, s.player.play)
+  await shot(page, 'album')
+
+  await open(page, '/library')
+  await page.getByRole('tab', { name: s.library.segmentArtists }).click()
+  await page.getByText(s.library.title).first().waitFor({ timeout: 20_000 })
+  await waitForArt(page)
+  const artist = page.getByText('Adragante', { exact: true }).first()
+  try {
+    await artist.waitFor({ timeout: 8_000 })
+    await artist.click()
+  } catch {
+    await page.getByRole('tab', { name: s.library.segmentArtists }).click()
+    await page.locator('img').nth(2).click()
+  }
+  await waitForPlayHero(page, s.player.play)
+  await shot(page, 'artist')
+
+  await open(page, '/library')
+  await page.getByRole('tab', { name: s.library.segmentPlaylists }).click()
+  await page.getByText(s.library.title).first().waitFor({ timeout: 20_000 })
+  const playlist = page.getByText('Late Night', { exact: true }).first()
+  try {
+    await playlist.waitFor({ timeout: 8_000 })
+    await playlist.click()
+  } catch {
+    const focus = page.getByText('Focus', { exact: true }).first()
+    await focus.waitFor({ timeout: 12_000 })
+    await focus.click()
+  }
+  await waitForPlayHero(page, s.player.play)
+  await shot(page, 'playlist')
+
+  await open(page, '/search')
+  await page.getByText(s.search.title, { exact: true }).first().waitFor({ timeout: 20_000 })
+  try {
+    await page.getByText(s.search.browse, { exact: true }).waitFor({ timeout: 25_000 })
+  } catch {
+    await page.getByLabel(s.search.title).fill('jazz')
+    await page.getByText(s.search.sectionSongs, { exact: true }).first().waitFor({ timeout: 20_000 })
+    await page.keyboard.press('Escape')
+  }
+  await waitForArt(page)
+  await shot(page, 'search')
+
+  await open(page, '/downloads')
+  await page.getByText(s.tabs.downloads, { exact: true }).first().waitFor({ timeout: 20_000 })
+  await page.getByText(s.downloads.onThisDevice, { exact: true }).waitFor({ timeout: 20_000 })
+  await page.getByRole('tab', { name: s.library.segmentAlbums }).waitFor({ timeout: 20_000 })
+  await waitForArt(page)
+  await shot(page, 'downloads')
+
+  if (taken.length !== STORE_MAX) {
+    throw new Error(`expected ${STORE_MAX} App Store screenshots, captured ${taken.length}`)
+  }
+}
+
+let creds
+
+const RESUME = process.env.MELOFIN_SCREENSHOT_RESUME === '1'
+
+const main = async () => {
+  if (!RESUME) {
+    await rm(STORE_OUT, { recursive: true, force: true })
+  }
+  await mkdir(STORE_OUT, { recursive: true })
+  creds = await credentials()
+  process.stdout.write(`capturing App Store 6.9" ${STORE_PX.width}×${STORE_PX.height} RGB PNG\n`)
+  process.stdout.write(`locales: ${LOCALES.join(', ')}\n`)
+  await waitForUrl(`${creds.serverUrl}/System/Info/Public`, 10_000)
+  const web = await ensureWeb()
+  const { playwright, sharp } = await loadDeps()
+  const browser = await playwright.chromium.launch({ headless: true, args: ['--disable-web-security'] })
+  try {
+    if (HOME_ONLY) {
+      for (const locale of LOCALES) {
+        const appLang = APP_STORE_LOCALE_TO_LANG[locale] ?? 'en'
+        const strings = await loadStrings(appLang)
+        const outDir = join(STORE_OUT, locale)
+        await mkdir(outDir, { recursive: true })
+        const context = await browser.newContext({
+          viewport: VIEWPORT,
+          deviceScaleFactor: DEVICE_SCALE,
+          colorScheme: 'dark',
+          hasTouch: true,
+          isMobile: true,
+          locale,
+          timezoneId: 'America/New_York',
+          userAgent:
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+        })
+        const page = await context.newPage()
+        const { shot } = createShot(sharp, outDir)
+        process.stdout.write(`capturing locale ${locale} (${appLang}) -> ${outDir}\n`)
+        await login(page, creds, strings)
+        await waitForHome(page)
+        await shot(page, 'home')
+        await context.close()
+      }
+      return
     }
-    await page.getByText('Queue', { exact: true }).first().waitFor({ timeout: 20_000 })
-    await sleep(600)
-    await shot(page, 'queue')
 
-    await open(page, '/library')
-    await page.getByRole('tab', { name: 'albums' }).click()
-    await page.getByText('Library').first().waitFor({ timeout: 20_000 })
-    await waitForArt(page)
-    await shot(page, 'library')
-
-    await page.getByText('The Run', { exact: true }).first().click()
-    await waitForPlayHero(page)
-    await shot(page, 'album')
-
-    await open(page, '/library')
-    await page.getByRole('tab', { name: 'artists' }).click()
-    await page.getByText('Library').first().waitFor({ timeout: 20_000 })
-    await waitForArt(page)
-    const artist = page.getByText('Adragante', { exact: true }).first()
-    try {
-      await artist.waitFor({ timeout: 8_000 })
-      await artist.click()
-    } catch {
-      await page.getByRole('tab', { name: 'artists' }).click()
-      await page.locator('img').nth(2).click()
-    }
-    await waitForPlayHero(page)
-    await shot(page, 'artist')
-
-    await open(page, '/library')
-    await page.getByRole('tab', { name: 'playlists' }).click()
-    await page.getByText('Library').first().waitFor({ timeout: 20_000 })
-    const playlist = page.getByText('Late Night', { exact: true }).first()
-    try {
-      await playlist.waitFor({ timeout: 8_000 })
-      await playlist.click()
-    } catch {
-      const focus = page.getByText('Focus', { exact: true }).first()
-      await focus.waitFor({ timeout: 12_000 })
-      await focus.click()
-    }
-    await waitForPlayHero(page)
-    await shot(page, 'playlist')
-
-    await open(page, '/search')
-    await page.getByText('Search', { exact: true }).first().waitFor({ timeout: 20_000 })
-    try {
-      await page.getByText('Browse', { exact: true }).waitFor({ timeout: 25_000 })
-    } catch {
-      await page.getByLabel('Search').fill('jazz')
-      await page.getByText('Songs', { exact: true }).first().waitFor({ timeout: 20_000 })
-      await page.keyboard.press('Escape')
-    }
-    await waitForArt(page)
-    await shot(page, 'search')
-
-    await open(page, '/downloads')
-    await page.getByText('Downloads', { exact: true }).first().waitFor({ timeout: 20_000 })
-    await page.getByText('On This Device', { exact: true }).waitFor({ timeout: 20_000 })
-    await page.getByRole('tab', { name: 'albums' }).waitFor({ timeout: 20_000 })
-    await waitForArt(page)
-    await shot(page, 'downloads')
-
-    if (taken.length !== STORE_MAX) {
-      throw new Error(`expected ${STORE_MAX} App Store screenshots, captured ${taken.length}`)
+    for (const locale of LOCALES) {
+      const outDir = join(STORE_OUT, locale)
+      if (RESUME && existsSync(join(outDir, '10-downloads.png'))) {
+        process.stdout.write(`skipping ${locale} (already captured)\n`)
+        continue
+      }
+      const appLang = APP_STORE_LOCALE_TO_LANG[locale] ?? 'en'
+      const strings = await loadStrings(appLang)
+      await mkdir(outDir, { recursive: true })
+      const context = await browser.newContext({
+        viewport: VIEWPORT,
+        deviceScaleFactor: DEVICE_SCALE,
+        colorScheme: 'dark',
+        hasTouch: true,
+        isMobile: true,
+        locale,
+        timezoneId: 'America/New_York',
+        userAgent:
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+      })
+      const page = await context.newPage()
+      process.stdout.write(`\ncapturing full set ${locale} (${appLang}) -> ${outDir}\n`)
+      await login(page, creds, strings)
+      await captureFullSet(page, strings, outDir, sharp)
+      await context.close()
     }
   } finally {
     await browser.close()

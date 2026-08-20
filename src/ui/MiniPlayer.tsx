@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import { StyleSheet, Text, View, type View as RNView } from 'react-native'
 import { usePathname, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTranslation } from 'react-i18next'
 import { usePlayerStore } from '@/src/store/player'
 import { useCastStore } from '@/src/cast/castStore'
 import { AccentGradient } from '@/src/theme/Atmosphere'
@@ -35,6 +36,7 @@ const MiniProgress = ({
 }
 
 export const MiniPlayer = () => {
+  const { t } = useTranslation()
   const router = useRouter()
   const pathname = usePathname()
   const insets = useSafeAreaInsets()
@@ -99,7 +101,7 @@ export const MiniPlayer = () => {
       >
         <PressableScale
           accessibilityRole="button"
-          accessibilityLabel={`Now playing ${track.title}`}
+          accessibilityLabel={`${t('player.nowPlayingLabel')} ${track.title}`}
           scaleTo={motion.scale.card}
           onPress={() => {
             void (async () => {
@@ -132,7 +134,7 @@ export const MiniPlayer = () => {
         </PressableScale>
         <PressableScale
           accessibilityRole="button"
-          accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+          accessibilityLabel={isPlaying ? t('player.pause') : t('player.play')}
           onPress={togglePlaying}
           style={styles.playHit}
           hitSlop={12}

@@ -87,14 +87,12 @@ describe('downloadsView storage', () => {
     expect(meter.usedBytes).toBe(1200)
     expect(meter.ratio).toBe(1)
     expect(meter.overBudget).toBe(true)
-    expect(meter.detail).toBe('1.2 KB on this device')
-    expect(meter.accessibilityLabel).toBe('1.2 KB used, over the 1000 B limit')
+    expect(meter.usedLabel).toBe('1.2 KB')
+    expect(meter.budgetLabel).toBe('1000 B')
 
     const empty = storageMeter(emptyOfflineIndex(0), new Set())
     expect(empty.ratio).toBe(0)
     expect(empty.overBudget).toBe(false)
-    expect(empty.detail).toContain('on this device')
-    expect(empty.accessibilityLabel).toContain('of')
   })
 
   it('treats pack-backed prefetch as a download, not cache', () => {
@@ -183,7 +181,7 @@ describe('downloadsView collections', () => {
       pack('album', 'al1', 'Not a playlist', ['t']),
     ])
     expect(playlists.map((row) => row.title)).toEqual(['Alpha', 'Zebra'])
-    expect(playlists[0]?.artist).toBe('Playlist')
+    expect(playlists[0]?.artist).toBe('')
     expect(playlists[0]?.completeCount).toBe(0)
     expect(playlists[1]?.artworkUrl).toBe('file://p')
   })

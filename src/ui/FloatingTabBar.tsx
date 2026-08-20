@@ -3,6 +3,7 @@ import { Platform, StyleSheet, Text, View, type ColorValue, type LayoutChangeEve
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import { usePathname, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTranslation } from 'react-i18next'
 import { usePlayerStore } from '@/src/store/player'
 import { Glass, nativeLiquidGlass } from '@/src/theme/Glass'
 import { PressableScale, useMotionEnabled } from '@/src/theme/motion'
@@ -26,15 +27,15 @@ type TabLayout = {
 
 const TABS: readonly {
   readonly name: TabName
-  readonly title: string
+  readonly key: `tabs.${TabName}`
   readonly outline: string
   readonly filled: string
   readonly href: `/(app)/(main)/(tabs)/${TabName}`
 }[] = [
-  { name: 'home', title: 'Home', outline: 'house', filled: 'house.fill', href: '/(app)/(main)/(tabs)/home' },
-  { name: 'search', title: 'Search', outline: 'magnifyingglass', filled: 'magnifyingglass', href: '/(app)/(main)/(tabs)/search' },
-  { name: 'library', title: 'Library', outline: 'rectangle.stack', filled: 'rectangle.stack.fill', href: '/(app)/(main)/(tabs)/library' },
-  { name: 'downloads', title: 'Downloads', outline: 'arrow.down.circle', filled: 'arrow.down.circle.fill', href: '/(app)/(main)/(tabs)/downloads' },
+  { name: 'home', key: 'tabs.home', outline: 'house', filled: 'house.fill', href: '/(app)/(main)/(tabs)/home' },
+  { name: 'search', key: 'tabs.search', outline: 'magnifyingglass', filled: 'magnifyingglass', href: '/(app)/(main)/(tabs)/search' },
+  { name: 'library', key: 'tabs.library', outline: 'rectangle.stack', filled: 'rectangle.stack.fill', href: '/(app)/(main)/(tabs)/library' },
+  { name: 'downloads', key: 'tabs.downloads', outline: 'arrow.down.circle', filled: 'arrow.down.circle.fill', href: '/(app)/(main)/(tabs)/downloads' },
 ]
 
 const tabFromPath = (pathname: string): TabName | null => {
@@ -46,6 +47,7 @@ const tabFromPath = (pathname: string): TabName | null => {
 }
 
 export const FloatingTabBar = () => {
+  const { t } = useTranslation()
   const router = useRouter()
   const pathname = usePathname()
   const insets = useSafeAreaInsets()
@@ -102,12 +104,13 @@ export const FloatingTabBar = () => {
         <Animated.View pointerEvents="none" style={[styles.pill, pillStyle]} />
         {TABS.map((tab) => {
           const focused = active === tab.name
+          const title = t(tab.key)
           const color: ColorValue = focused ? '#FFFFFF' : UNSELECTED
           return (
             <PressableScale
               key={tab.name}
               accessibilityRole="tab"
-              accessibilityLabel={tab.title}
+              accessibilityLabel={title}
               accessibilityState={{ selected: focused }}
               scaleTo={motion.scale.button}
               onPress={() => {
@@ -125,8 +128,14 @@ export const FloatingTabBar = () => {
               style={styles.tab}
             >
               <Icon name={focused ? tab.filled : tab.outline} tintColor={color} size={25} />
-              <Text style={[styles.label, { color }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
-                {tab.title}
+              <Text
+                style={[styles.label, { color }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+                maxFontSizeMultiplier={1.4}
+              >
+                {title}
               </Text>
             </PressableScale>
           )

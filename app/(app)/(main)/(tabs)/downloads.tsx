@@ -3,6 +3,8 @@ import { Alert, Platform, StyleSheet, Text, View } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { toQueueTrack } from '@/src/services/jellyfin/library'
 import { removeDownloadedTrack } from '@/src/offline/downloader'
 import { useSessionStore } from '@/src/store/session'
@@ -31,6 +33,7 @@ import {
   bytesFromGb,
   completeEntriesForIds,
   downloadsPackTrackIds,
+  formatStorageBytes,
   keptOfflineEntries,
   nearestBudgetGb,
   playAllEntries,
@@ -55,6 +58,21 @@ const queueTrackFromEntry = (entry: OfflineEntry): QueueTrack =>
     entry.artworkPath,
   )
 
+const formatCollectionSubtitle = (
+  item: DownloadCollection,
+  label: TFunction,
+): string => {
+  const { completeCount, totalCount, sizeBytes } = item
+  const countLabel =
+    totalCount <= 0
+      ? label('downloads.trackCount', { count: 0 })
+      : completeCount >= totalCount
+        ? label('downloads.trackCount', { count: totalCount })
+        : label('downloads.trackProgress', { complete: completeCount, total: totalCount })
+  const sizePart = sizeBytes > 0 ? formatStorageBytes(sizeBytes) : undefined
+  return [countLabel, sizePart].filter(Boolean).join(' · ')
+}
+
 const OfflineCollectionRow = memo(function OfflineCollectionRow({
   item,
   onPress,
@@ -64,12 +82,14 @@ const OfflineCollectionRow = memo(function OfflineCollectionRow({
   readonly onPress: () => void
   readonly onLongPress: () => void
 }) {
+  const { t } = useTranslation()
   const downloading = item.progress < 1 && item.totalCount > 0
+  const subtitle = formatCollectionSubtitle(item, t)
   return (
     <PressableHighlight
       accessibilityRole="button"
-      accessibilityLabel={`${item.title}, ${item.artist}, ${item.subtitle}`}
-      accessibilityHint="Plays downloaded songs. Long press for more actions."
+      accessibilityLabel={`${item.title}, ${item.artist}, ${subtitle}`}
+      accessibilityHint={t('downloads.collectionLongPressHint')}
       onPress={onPress}
       onLongPress={onLongPress}
       style={styles.collectionPress}
@@ -81,7 +101,7 @@ const OfflineCollectionRow = memo(function OfflineCollectionRow({
           {item.title}
         </Text>
         <Text style={styles.collectionSubtitle} numberOfLines={1}>
-          {item.artist ? `${item.artist} · ${item.subtitle}` : item.subtitle}
+          {item.artist ? `${item.artist} · ${subtitle}` : subtitle}
         </Text>
       </View>
       <Icon
@@ -94,6 +114,7 @@ const OfflineCollectionRow = memo(function OfflineCollectionRow({
 })
 
 export default function DownloadsScreen() {
+  const { t } = useTranslation()
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const session = useSessionStore((s) => s.session)
@@ -108,6 +129,15 @@ export default function DownloadsScreen() {
   const enqueueTracks = usePlayerStore((s) => s.enqueueTracks)
   const playNextTracks = usePlayerStore((s) => s.playNextTracks)
   const [segment, setSegment] = useState<DownloadSegment>('albums')
+
+  const segmentLabel = useCallback(
+    (value: DownloadSegment) => {
+      if (value === 'albums') return t('library.segmentAlbums')
+      if (value === 'playlists') return t('library.segmentPlaylists')
+      return t('library.segmentSongs')
+    },
+    [t],
+  )
 
   const packTrackIds = useMemo(() => downloadsPackTrackIds(syncPacks), [syncPacks])
   const packs = useMemo(() => Object.values(syncPacks.packs), [syncPacks])
@@ -126,6 +156,17 @@ export default function DownloadsScreen() {
   const meter = useMemo(
     () => storageMeter({ ...offlineIndex, budgetBytes }, packTrackIds),
     [budgetBytes, offlineIndex, packTrackIds],
+  )
+  const meterAccessibilityLabel = useMemo(
+    () =>
+      meter.overBudget
+        ? t('downloads.usedOverBudget', { used: meter.usedLabel, budget: meter.budgetLabel })
+        : t('downloads.usedOnDeviceA11y', { used: meter.usedLabel, budget: meter.budgetLabel }),
+    [meter, t],
+  )
+  const meterDetail = useMemo(
+    () => t('downloads.usedOnDevice', { used: meter.usedLabel }),
+    [meter.usedLabel, t],
   )
   const hasLibrary = albums.length > 0 || playlists.length > 0 || songs.length > 0
   const listPad = useMemo(
@@ -148,15 +189,15 @@ export default function DownloadsScreen() {
 
   const deleteEntry = useCallback(
     (itemId: string, title: string) => {
-      Alert.alert('Remove Download?', `Remove "${title}" from this device.`, [
-        { text: 'Cancel', style: 'cancel' },
+      Alert.alert(t('downloads.removeDownloadTitle'), t('downloads.removeDownloadMessage', { title }), [
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Remove',
+          text: t('common.remove'),
           style: 'destructive',
           onPress: () => {
             void removeDownloadedTrack(itemId).then((result) => {
               if (!result.ok) {
-                Alert.alert("Couldn't remove download", result.error.message)
+                Alert.alert(t('downloads.couldNotRemoveDownload'), result.error.message)
                 return
               }
               void setOfflineIndex(result.value)
@@ -165,18 +206,18 @@ export default function DownloadsScreen() {
         },
       ])
     },
-    [setOfflineIndex],
+    [setOfflineIndex, t],
   )
 
   const removeCollection = useCallback(
     (item: DownloadCollection) => {
       Alert.alert(
-        'Remove from This Device?',
-        `Delete downloaded songs in "${item.title}".`,
+        t('downloads.removeCollectionTitle'),
+        t('downloads.removeCollectionMessage', { title: item.title }),
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: t('common.cancel'), style: 'cancel' },
           {
-            text: 'Remove',
+            text: t('common.remove'),
             style: 'destructive',
             onPress: () => {
               void (async () => {
@@ -187,7 +228,7 @@ export default function DownloadsScreen() {
                 for (const entry of ids) {
                   const result = await removeDownloadedTrack(entry.itemId)
                   if (!result.ok) {
-                    Alert.alert("Couldn't remove download", result.error.message)
+                    Alert.alert(t('downloads.couldNotRemoveDownload'), result.error.message)
                     return
                   }
                   await setOfflineIndex(result.value)
@@ -203,7 +244,7 @@ export default function DownloadsScreen() {
         ],
       )
     },
-    [setOfflineIndex, setSyncPacks],
+    [setOfflineIndex, setSyncPacks, t],
   )
 
   const viewCollection = useCallback(
@@ -237,11 +278,11 @@ export default function DownloadsScreen() {
         ...(playable.length > 0
           ? [
               {
-                text: 'Play',
+                text: t('player.play'),
                 onPress: () => playEntries(playable, 0, false),
               },
               {
-                text: 'Shuffle',
+                text: t('home.shuffle'),
                 onPress: () => playEntries(playable, 0, true),
               },
             ]
@@ -249,19 +290,22 @@ export default function DownloadsScreen() {
         ...(item.collectionId
           ? [
               {
-                text: item.kind === 'playlist' ? 'View Playlist' : 'View Album',
+                text:
+                  item.kind === 'playlist'
+                    ? t('downloads.viewPlaylist')
+                    : t('downloads.viewAlbum'),
                 onPress: () => viewCollection(item),
               },
             ]
           : []),
         {
-          text: 'Remove from This Device',
+          text: t('downloads.removeFromDevice'),
           style: 'destructive' as const,
           onPress: () => setTimeout(() => removeCollection(item), 50),
         },
       ])
     },
-    [offlineIndex.entries, playEntries, removeCollection, viewCollection],
+    [offlineIndex.entries, playEntries, removeCollection, t, viewCollection],
   )
 
   const onSongLongPress = useCallback(
@@ -274,51 +318,47 @@ export default function DownloadsScreen() {
           onAddToQueue: () => enqueueTracks([track]),
           extra: [
             {
-              text: 'Remove Download',
+              text: t('downloads.removeDownload'),
               style: 'destructive',
               onPress: () => setTimeout(() => deleteEntry(item.itemId, item.title), 50),
             },
           ],
-        }),
+        }, t),
       )
     },
-    [deleteEntry, enqueueTracks, playNextTracks],
+    [deleteEntry, enqueueTracks, playNextTracks, t],
   )
 
   const pickBudget = useCallback(() => {
     const current = nearestBudgetGb(budgetBytes)
-    Alert.alert(
-      'Storage Limit',
-      'How much music Melofin may keep on this device, including playback cache.',
-      [
-        ...DOWNLOAD_BUDGET_GB.map((gb) => ({
-          text: `${current === gb ? '✓ ' : ''}${gb} GB`,
-          onPress: () => {
-            if (gb !== current) void setBudgetBytes(bytesFromGb(gb))
-          },
-        })),
-        { text: 'Cancel', style: 'cancel' as const },
-      ],
-    )
-  }, [budgetBytes, setBudgetBytes])
+    Alert.alert(t('downloads.storageLimitTitle'), t('downloads.storageLimitMessage'), [
+      ...DOWNLOAD_BUDGET_GB.map((gb) => ({
+        text: `${current === gb ? '✓ ' : ''}${gb} GB`,
+        onPress: () => {
+          if (gb !== current) void setBudgetBytes(bytesFromGb(gb))
+        },
+      })),
+      { text: t('common.cancel'), style: 'cancel' as const },
+    ])
+  }, [budgetBytes, setBudgetBytes, t])
 
   const openMore = useCallback(() => {
-    presentTrackActions('Downloads', [
-      { text: 'Storage Limit', onPress: () => setTimeout(pickBudget, 50) },
+    presentTrackActions(t('downloads.menuTitle'), [
+      { text: t('downloads.storageLimitTitle'), onPress: () => setTimeout(pickBudget, 50) },
       ...(hasLibrary || meter.usedBytes > 0
         ? [
             {
-              text: 'Remove All Downloads',
+              text: t('downloads.removeAll'),
               style: 'destructive' as const,
               onPress: () => {
                 setTimeout(() => {
                   Alert.alert(
-                    'Remove All Downloads?',
-                    'This deletes music saved on this device. Playback cache is cleared too.',
+                    t('downloads.removeAllTitle'),
+                    t('downloads.removeAllMessage'),
                     [
-                      { text: 'Cancel', style: 'cancel' },
+                      { text: t('common.cancel'), style: 'cancel' },
                       {
-                        text: 'Remove All',
+                        text: t('downloads.removeAllConfirm'),
                         style: 'destructive',
                         onPress: () => {
                           const scope = session
@@ -333,16 +373,16 @@ export default function DownloadsScreen() {
                                 ).some((entry) => entry.complete)
                               ) {
                                 Alert.alert(
-                                  "Couldn't remove downloads",
-                                  'Some files may still be on this device.',
+                                  t('downloads.couldNotRemoveDownloads'),
+                                  t('downloads.couldNotRemoveDownloadsMessage'),
                                 )
                                 return
                               }
                               await setSyncPacks(emptySyncPackIndex())
                             } catch {
                               Alert.alert(
-                                "Couldn't remove downloads",
-                                'Some files may still be on this device.',
+                                t('downloads.couldNotRemoveDownloads'),
+                                t('downloads.couldNotRemoveDownloadsMessage'),
                               )
                             }
                           })()
@@ -356,7 +396,7 @@ export default function DownloadsScreen() {
           ]
         : []),
     ])
-  }, [clearOfflineCache, hasLibrary, meter.usedBytes, pickBudget, session, setSyncPacks])
+  }, [clearOfflineCache, hasLibrary, meter.usedBytes, pickBudget, session, setSyncPacks, t])
 
   const renderAlbum = useCallback(
     ({ item }: { item: DownloadCollection }) => (
@@ -382,47 +422,48 @@ export default function DownloadsScreen() {
         artworkUrl={item.artworkPath}
         onPress={() => playEntries(songs, index)}
         onLongPress={() => onSongLongPress(item)}
-        accessibilityHint="Long press for play next, queue, or remove download"
+        accessibilityHint={t('downloads.songLongPressHint')}
       />
     ),
-    [onSongLongPress, playEntries, songs],
+    [onSongLongPress, playEntries, songs, t],
   )
 
   const collections = segment === 'playlists' ? playlists : albums
-  const collectionEmptyTitle = segment === 'playlists' ? 'No playlists' : 'No albums'
+  const collectionEmptyTitle =
+    segment === 'playlists' ? t('downloads.noPlaylists') : t('downloads.noAlbums')
   const collectionEmptyMessage =
     segment === 'playlists'
-      ? 'Keep a playlist offline from its screen.'
-      : 'Keep an album offline from its screen, or download songs to group them here.'
+      ? t('downloads.noPlaylistsMessage')
+      : t('downloads.noAlbumsMessage')
 
   return (
     <Screen padBottom={false}>
       <View style={styles.titleRow}>
         <View style={styles.titleText}>
-          <Title>Downloads</Title>
+          <Title>{t('tabs.downloads')}</Title>
         </View>
-        <MoreButton label="Downloads options" onPress={openMore} />
+        <MoreButton label={t('downloads.options')} onPress={openMore} />
       </View>
 
       <PressableScale
         accessibilityRole="button"
-        accessibilityLabel={meter.accessibilityLabel}
-        accessibilityHint="Opens storage limit options"
+        accessibilityLabel={meterAccessibilityLabel}
+        accessibilityHint={t('downloads.storageHint')}
         scaleTo={motion.scale.card}
         onPress={pickBudget}
         style={styles.meterPress}
       >
         <Surface style={styles.meter} contentStyle={styles.meterInner}>
           <View style={styles.meterText}>
-            <Text style={styles.meterTitle}>On This Device</Text>
+            <Text style={styles.meterTitle}>{t('downloads.onThisDevice')}</Text>
             <Text
               style={[styles.meterUsed, meter.overBudget ? styles.meterOver : null]}
             >
-              {meter.usedLabel} of {meter.budgetLabel}
+              {t('downloads.usedOf', { used: meter.usedLabel, budget: meter.budgetLabel })}
             </Text>
           </View>
           <Text style={styles.meterDetail} numberOfLines={1}>
-            {meter.detail}
+            {meterDetail}
           </Text>
           <View
             style={styles.meterTrack}
@@ -446,26 +487,26 @@ export default function DownloadsScreen() {
             <View style={styles.actions}>
               <PressableScale
                 accessibilityRole="button"
-                accessibilityLabel="Play all downloads"
+                accessibilityLabel={t('downloads.playAll')}
                 scaleTo={motion.scale.button}
                 onPress={() => playEntries(playAllEntries(songs), 0, false)}
                 style={styles.actionPress}
               >
                 <AccentGradient style={styles.actionPrimary}>
                   <Icon name="play.fill" tintColor={colors.onAccent} size={16} />
-                  <Text style={styles.actionPrimaryLabel}>Play</Text>
+                  <Text style={styles.actionPrimaryLabel}>{t('player.play')}</Text>
                 </AccentGradient>
               </PressableScale>
               <PressableScale
                 accessibilityRole="button"
-                accessibilityLabel="Shuffle all downloads"
+                accessibilityLabel={t('downloads.shuffleAll')}
                 scaleTo={motion.scale.button}
                 onPress={() => playEntries(playAllEntries(songs), 0, true)}
                 style={styles.actionPress}
               >
                 <View style={styles.actionSecondary}>
                   <Icon name="shuffle" tintColor={colors.text} size={16} />
-                  <Text style={styles.actionSecondaryLabel}>Shuffle</Text>
+                  <Text style={styles.actionSecondaryLabel}>{t('home.shuffle')}</Text>
                 </View>
               </PressableScale>
             </View>
@@ -475,13 +516,14 @@ export default function DownloadsScreen() {
             values={DOWNLOAD_SEGMENTS}
             value={segment}
             onChange={setSegment}
+            labelFor={segmentLabel}
           />
 
           {segment === 'songs' ? (
             songs.length === 0 ? (
               <EmptyState
-                title="No songs"
-                message="Downloaded albums and playlists show up here as songs too."
+                title={t('downloads.noSongs')}
+                message={t('downloads.noSongsMessage')}
               />
             ) : (
               <View style={styles.flex}>
@@ -523,15 +565,13 @@ export default function DownloadsScreen() {
           style={styles.empty}
           accessible
           accessibilityRole="summary"
-          accessibilityLabel="Nothing saved yet. On an album or playlist, tap the download button to keep it on this device."
+          accessibilityLabel={t('downloads.emptyAccessibilityLabel')}
         >
           <View style={styles.emptyGlyph} accessibilityElementsHidden>
             <Icon name="arrow.down.circle" tintColor={colors.textSecondary} size={36} />
           </View>
-          <Text style={styles.emptyTitle}>Nothing saved yet</Text>
-          <Text style={styles.emptyMessage}>
-            On an album or playlist, tap the download button to keep it on this device.
-          </Text>
+          <Text style={styles.emptyTitle}>{t('downloads.emptyTitle')}</Text>
+          <Text style={styles.emptyMessage}>{t('downloads.emptyMessage')}</Text>
         </View>
       )}
     </Screen>
