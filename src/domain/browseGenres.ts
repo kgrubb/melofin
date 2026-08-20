@@ -1,12 +1,13 @@
 import { unitRandomFromSeed } from '@/src/domain/accountScope'
+import { mapPool } from '@/src/domain/asyncPool'
 import type { LibraryItem } from '@/src/domain/libraryItem'
 import { uniqueCollageItems } from '@/src/domain/collageArt'
 
 export const BROWSE_GENRES_DISPLAY_LIMIT = 10
-export const BROWSE_GENRES_PROBE_LIMIT = 40
+export const BROWSE_GENRES_PROBE_LIMIT = 24
 export const BROWSE_GENRE_MIN_ALBUMS = 3
 export const BROWSE_GENRE_ART_SAMPLES = 4
-export const BROWSE_GENRE_PROBE_ALBUMS = 24
+export const BROWSE_GENRE_PROBE_ALBUMS = 8
 
 export type BrowseGenre = {
   readonly genre: LibraryItem
@@ -63,4 +64,33 @@ export const sampleBrowseGenresStable = (
     limit,
     unitRandomFromSeed(ordered.map((entry) => entry.genre.id).join('|')),
   )
+}
+
+/** Probe candidates until `target` genres qualify. Skips the rest. */
+export const collectBrowseGenres = async (
+  candidates: readonly LibraryItem[],
+  probe: (genre: LibraryItem) => Promise<BrowseGenre | null>,
+  options?: {
+    readonly target?: number
+    readonly concurrency?: number
+    readonly shouldContinue?: () => boolean
+  },
+): Promise<readonly BrowseGenre[]> => {
+  const target = options?.target ?? BROWSE_GENRES_DISPLAY_LIMIT
+  if (target <= 0 || candidates.length === 0) return []
+  const found: BrowseGenre[] = []
+  await mapPool(
+    candidates,
+    options?.concurrency ?? 6,
+    async (genre) => {
+      const entry = await probe(genre)
+      if (entry) found.push(entry)
+      return entry
+    },
+    {
+      shouldContinue: () =>
+        found.length < target && (options?.shouldContinue?.() ?? true),
+    },
+  )
+  return found.slice(0, target)
 }

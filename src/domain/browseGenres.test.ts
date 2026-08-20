@@ -3,6 +3,7 @@ import type { LibraryItem } from '@/src/domain/libraryItem'
 import {
   BROWSE_GENRES_DISPLAY_LIMIT,
   browseGenreAlbumCount,
+  collectBrowseGenres,
   genreTileCovers,
   sampleBrowseGenres,
   sampleBrowseGenresStable,
@@ -83,6 +84,33 @@ describe('genreTileCovers', () => {
         album('d', 'td'),
       ]).map((row) => row.id),
     ).toEqual(['a', 'b', 'c', 'd'])
+  })
+})
+
+describe('collectBrowseGenres', () => {
+  it('stops probing once enough genres qualify', async () => {
+    const started: string[] = []
+    const rows = await collectBrowseGenres(
+      Array.from({ length: 20 }, (_, i) => genre(`g${i}`)),
+      async (item) => {
+        started.push(item.id)
+        await new Promise((resolve) => setTimeout(resolve, 1))
+        return browseEntry(item.id)
+      },
+      { target: 4, concurrency: 2 },
+    )
+    expect(rows).toHaveLength(4)
+    expect(started.length).toBeLessThan(20)
+    expect(started.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('skips genres that fail the probe', async () => {
+    const rows = await collectBrowseGenres(
+      [genre('skip'), genre('keep'), genre('also')],
+      async (item) => (item.id === 'skip' ? null : browseEntry(item.id)),
+      { target: 2, concurrency: 2 },
+    )
+    expect(rows.map((row) => row.genre.id)).toEqual(['keep', 'also'])
   })
 })
 

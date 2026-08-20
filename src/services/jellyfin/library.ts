@@ -10,12 +10,13 @@ import type { ItemFilter } from '@jellyfin/sdk/lib/generated-client/models/item-
 import type { ItemFields } from '@jellyfin/sdk/lib/generated-client/models/item-fields'
 import type { ItemSortBy } from '@jellyfin/sdk/lib/generated-client/models/item-sort-by'
 import type { SortOrder } from '@jellyfin/sdk/lib/generated-client/models/sort-order'
-import { mapPool } from '@/src/domain/asyncPool'
 import {
   BROWSE_GENRE_ART_SAMPLES,
   BROWSE_GENRE_MIN_ALBUMS,
   BROWSE_GENRE_PROBE_ALBUMS,
+  BROWSE_GENRES_DISPLAY_LIMIT,
   browseGenreAlbumCount,
+  collectBrowseGenres,
   type BrowseGenre,
 } from '@/src/domain/browseGenres'
 import { uniqueCollageItems } from '@/src/domain/collageArt'
@@ -80,6 +81,7 @@ type ItemQuery = {
   readonly enableUserData?: boolean
   readonly imageTypeLimit?: number
   readonly fields?: readonly ItemFields[]
+  readonly enableTotalRecordCount?: boolean
 }
 
 export const artistAlbumsQuery = (userId: string, artistId: string) => ({
@@ -212,7 +214,7 @@ export const fetchItemsPage = async (
         ...(query.imageTypeLimit !== undefined
           ? { imageTypeLimit: query.imageTypeLimit }
           : {}),
-        enableTotalRecordCount: true,
+        enableTotalRecordCount: query.enableTotalRecordCount ?? true,
         fields: query.fields
           ? [...query.fields]
           : ['PrimaryImageAspectRatio', 'Genres', 'ChildCount', 'ParentId'],
@@ -569,7 +571,7 @@ export const fetchMusicGenresPreview = async (
   }
 }
 
-const BROWSE_GENRE_TRACK_PROBE = 48
+const BROWSE_GENRE_TRACK_PROBE = 24
 
 const albumCountFromPage = (
   page: Result<{ readonly items: readonly LibraryItem[]; readonly total: number }>,
@@ -591,10 +593,19 @@ const pickBrowseGenreAlbums = (
   return uniqueCollageItems(merged, BROWSE_GENRE_ART_SAMPLES)
 }
 
-const randomGenreAlbumsQuery = (userId: string, genreId: string, genreName?: string) =>
-  genreName
-    ? { ...genreAlbumsByNameQuery(userId, genreName), sortBy: ['Random'] as const }
-    : { ...genreAlbumsByIdQuery(userId, genreId), sortBy: ['Random'] as const }
+const browseGenreAlbumsProbeQuery = (
+  userId: string,
+  genreId: string,
+  genreName?: string,
+) => ({
+  ...(genreName
+    ? genreAlbumsByNameQuery(userId, genreName)
+    : genreAlbumsByIdQuery(userId, genreId)),
+  enableUserData: false as const,
+  enableTotalRecordCount: false as const,
+  imageTypeLimit: 1,
+  fields: ['PrimaryImageAspectRatio'] as const,
+})
 
 const loadGenreAlbumProbe = async (
   context: JellyfinContext,
@@ -607,40 +618,45 @@ const loadGenreAlbumProbe = async (
   readonly albumCount: number
 }> => {
   const name = genre.name.trim()
-  const [byId, byName] = await Promise.all([
-    fetchItemsPage(
+  const uniqueIds = new Set<string>()
+  let albumCount = 0
+  let sampleAlbums: readonly LibraryItem[] = []
+  const artTarget = minAlbums !== undefined ? 1 : BROWSE_GENRE_ART_SAMPLES
+  const needMore = () =>
+    sampleAlbums.length < artTarget ||
+    (minAlbums !== undefined && albumCount < minAlbums)
+
+  const ingestAlbums = (page: Result<Page>) => {
+    const items = page.ok ? page.value.items : []
+    for (const album of items) {
+      if (album.id) uniqueIds.add(album.id)
+    }
+    albumCount = Math.max(albumCount, albumCountFromPage(page), uniqueIds.size)
+    sampleAlbums = pickBrowseGenreAlbums(sampleAlbums, items)
+  }
+
+  ingestAlbums(
+    await fetchItemsPage(
       context,
-      randomGenreAlbumsQuery(userId, genre.id),
+      browseGenreAlbumsProbeQuery(userId, genre.id),
       0,
       BROWSE_GENRE_PROBE_ALBUMS,
       signal,
     ),
-    name
-      ? fetchItemsPage(
-          context,
-          randomGenreAlbumsQuery(userId, genre.id, name),
-          0,
-          BROWSE_GENRE_PROBE_ALBUMS,
-          signal,
-        )
-      : Promise.resolve(ok({ items: [], total: 0 })),
-  ])
-  const byIdItems = byId.ok ? byId.value.items : []
-  const byNameItems = byName.ok ? byName.value.items : []
-  const uniqueIds = new Set<string>()
-  for (const album of [...byIdItems, ...byNameItems]) {
-    if (album.id) uniqueIds.add(album.id)
-  }
-  let albumCount = Math.max(
-    albumCountFromPage(byId),
-    albumCountFromPage(byName),
-    uniqueIds.size,
   )
-  let sampleAlbums = pickBrowseGenreAlbums(byIdItems, byNameItems)
-  const needMore = () =>
-    sampleAlbums.length < BROWSE_GENRE_ART_SAMPLES ||
-    (minAlbums !== undefined && albumCount < minAlbums)
-  if (!needMore()) return { sampleAlbums, albumCount }
+  if (!needMore() || signal?.aborted) return { sampleAlbums, albumCount }
+  if (name) {
+    ingestAlbums(
+      await fetchItemsPage(
+        context,
+        browseGenreAlbumsProbeQuery(userId, genre.id, name),
+        0,
+        BROWSE_GENRE_PROBE_ALBUMS,
+        signal,
+      ),
+    )
+  }
+  if (!needMore() || signal?.aborted) return { sampleAlbums, albumCount }
   for (const query of genreTrackQueries(userId, genre.id, name || undefined)) {
     if (signal?.aborted) break
     const tracks = await fetchItemsPage(context, query, 0, BROWSE_GENRE_TRACK_PROBE, signal)
@@ -690,15 +706,23 @@ export const fetchBrowseGenres = async (
   limit = 28,
   signal?: AbortSignal,
 ): Promise<Result<readonly BrowseGenre[]>> => {
-  const preview = await fetchMusicGenresPreview(context, userId, Math.max(limit * 2, 24), {
+  const preview = await fetchMusicGenresPreview(context, userId, limit, {
     sortBy: ['Random'],
   })
   if (!preview.ok) return preview
-  const probes = await mapPool(preview.value, 6, (genre) =>
-    signal?.aborted ? Promise.resolve(null) : probeBrowseGenre(context, userId, genre, signal),
+  const probes = await collectBrowseGenres(
+    preview.value,
+    (genre) =>
+      signal?.aborted
+        ? Promise.resolve(null)
+        : probeBrowseGenre(context, userId, genre, signal),
+    {
+      target: BROWSE_GENRES_DISPLAY_LIMIT,
+      shouldContinue: () => !signal?.aborted,
+    },
   )
   if (signal?.aborted) return err(appError('cancelled', 'Request cancelled'))
-  return ok(probes.filter((entry): entry is BrowseGenre => entry !== null))
+  return ok(probes)
 }
 
 export const markFavorite = async (
