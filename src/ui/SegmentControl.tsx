@@ -19,12 +19,14 @@ type Props<T extends string> = {
   readonly values: readonly T[]
   readonly value: T
   readonly onChange: (next: T) => void
+  readonly labelFor?: (value: T) => string
 }
 
 export const SegmentControl = <T extends string>({
   values,
   value,
   onChange,
+  labelFor,
 }: Props<T>) => {
   const enabled = useMotionEnabled()
   const [layouts, setLayouts] = useState<Readonly<Record<string, SegmentLayout>>>({})
@@ -53,11 +55,13 @@ export const SegmentControl = <T extends string>({
       <Animated.View style={[styles.pill, pillStyle]} />
       {values.map((item) => {
         const selected = item === value
+        const label = labelFor ? labelFor(item) : item
         return (
           <Pressable
             key={item}
             onPress={() => onChange(item)}
             accessibilityRole="tab"
+            accessibilityLabel={label}
             accessibilityState={{ selected }}
             style={styles.chipPress}
             onLayout={(event: LayoutChangeEvent) => {
@@ -70,7 +74,7 @@ export const SegmentControl = <T extends string>({
             }}
           >
             <View style={styles.chip}>
-              <Text style={selected ? styles.chipLabelActive : styles.chipLabel}>{item}</Text>
+              <Text style={selected ? styles.chipLabelActive : styles.chipLabel}>{label}</Text>
             </View>
           </Pressable>
         )
@@ -114,13 +118,11 @@ const styles = StyleSheet.create({
   },
   chipLabel: {
     color: colors.textSecondary,
-    textTransform: 'capitalize',
     fontWeight: '600',
     fontSize: 13,
   },
   chipLabelActive: {
     color: '#1A0B2E',
-    textTransform: 'capitalize',
     fontWeight: '700',
     fontSize: 13,
   },

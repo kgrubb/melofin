@@ -28,6 +28,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTranslation } from 'react-i18next'
+import { localizeCastLabel } from '@/src/i18n/castCopy'
 import { useLibraryStore } from '@/src/store/library'
 import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
@@ -86,6 +88,7 @@ const PlayerProgress = ({ durationMs }: { readonly durationMs: number }) => {
 }
 
 export default function PlayerScreen() {
+  const { t } = useTranslation()
   const router = useRouter()
   const navigation = useNavigation()
   const insets = useSafeAreaInsets()
@@ -133,6 +136,7 @@ export default function PlayerScreen() {
   >('idle')
   /** Square art sized to the smaller of the hero slot's width/height. */
   const [artSide, setArtSide] = useState(0)
+  const volumeTrackWidth = useRef(0)
 
   useEffect(() => {
     if (!isSleepArmed(sleep) || sleep.deadlineMs === null) return
@@ -394,11 +398,11 @@ export default function PlayerScreen() {
       <View
         style={styles.root}
         accessibilityViewIsModal
-        accessibilityLabel="Now Playing"
+        accessibilityLabel={t('player.nowPlaying')}
       >
         <Pressable style={StyleSheet.absoluteFill} onPress={animateClosed} />
         <View style={[styles.emptySheet, { paddingBottom: insets.bottom + spacing.lg }]}>
-          <Text style={styles.empty}>Nothing playing</Text>
+          <Text style={styles.empty}>{t('player.nothingPlaying')}</Text>
         </View>
       </View>
     )
@@ -419,27 +423,27 @@ export default function PlayerScreen() {
   const sleepArmed = isSleepArmed(sleep)
   const sleepRemaining = remainingMs(sleep, nowTick)
   const sleepLabel = sleep.endOfTrack
-    ? 'End'
+    ? 'End' // i18n-ignore abbreviated chip label
     : sleepArmed
       ? `${Math.max(1, Math.ceil(sleepRemaining / 60_000))}m`
       : null
 
   const openSleepMenu = () => {
-    presentTrackActions('Sleep timer', [
+    presentTrackActions(t('player.sleepTitle'), [
       ...SLEEP_PRESETS_MINUTES.map((minutes) => ({
-        text: `${minutes} minutes`,
+        text: t('player.minutes', { count: minutes }),
         onPress: () => setSleepMinutes(minutes),
       })),
-      { text: 'End of track', onPress: () => setSleepEndOfTrack() },
+      { text: t('player.endOfTrack'), onPress: () => setSleepEndOfTrack() },
       ...(sleepArmed
-        ? [{ text: 'Turn off timer', style: 'destructive' as const, onPress: () => clearSleep() }]
+        ? [{ text: t('player.turnOffTimer'), style: 'destructive' as const, onPress: () => clearSleep() }]
         : []),
     ])
   }
 
   const onToggleFavorite = () => {
     if (!context || !session || !track) {
-      Alert.alert('Sign in required', 'Sign in to manage favorites.')
+      Alert.alert(t('player.signInRequired'), t('player.signInManageFavorites'))
       return
     }
     void toggleFavoriteItem({
@@ -455,13 +459,13 @@ export default function PlayerScreen() {
     <GestureHandlerRootView
       style={styles.root}
       accessibilityViewIsModal
-      accessibilityLabel="Now Playing"
+      accessibilityLabel={t('player.nowPlaying')}
     >
-      <AppErrorBoundary fallbackTitle="Player error">
+      <AppErrorBoundary fallbackTitle={t('player.error')}>
         <View style={styles.root}>
           <Animated.View style={[styles.backdrop, backdropStyle]} />
           <Pressable
-            accessibilityLabel="Dismiss player"
+            accessibilityLabel={t('player.dismissPlayer')}
             style={StyleSheet.absoluteFill}
             onPress={animateClosed}
           />
@@ -531,7 +535,7 @@ export default function PlayerScreen() {
                       </Text>
                       <PressableScale
                         accessibilityRole="link"
-                        accessibilityLabel={`Open artist ${track.artist}`}
+                        accessibilityLabel={t('player.openArtist', { artist: track.artist })}
                         disabled={!resolvedArtistId}
                         onPress={openArtist}
                         scaleTo={0.98}
@@ -544,7 +548,7 @@ export default function PlayerScreen() {
                       {track.album ? (
                         <PressableScale
                           accessibilityRole="link"
-                          accessibilityLabel={`Open album ${track.album}`}
+                          accessibilityLabel={t('player.openAlbum', { album: track.album })}
                           disabled={!resolvedAlbumId}
                           onPress={openAlbum}
                           scaleTo={0.98}
@@ -558,10 +562,14 @@ export default function PlayerScreen() {
                       {activeOutput.kind !== 'local' ? (
                         <Text
                           style={styles.playingOn}
-                          accessibilityLabel={`Playing on ${activeOutput.name}`}
+                          accessibilityLabel={t('player.playingOn', {
+                            name: localizeCastLabel(activeOutput.name, t),
+                          })}
                           numberOfLines={1}
                         >
-                          Playing on {activeOutput.name}
+                          {t('player.playingOn', {
+                            name: localizeCastLabel(activeOutput.name, t),
+                          })}
                         </Text>
                       ) : null}
                     </View>
@@ -573,7 +581,7 @@ export default function PlayerScreen() {
                       <PressableScale
                         accessibilityRole="button"
                         accessibilityLabel={
-                          track.isFavorite ? 'Unfavorite' : 'Favorite'
+                          track.isFavorite ? t('player.unfavorite') : t('player.favorite')
                         }
                         scaleTo={motion.scale.button}
                         onPress={onToggleFavorite}
@@ -593,7 +601,7 @@ export default function PlayerScreen() {
                       {track.hasLyrics !== false ? (
                         <PressableScale
                           accessibilityRole="button"
-                          accessibilityLabel={lyricsOpen ? 'Hide lyrics' : 'Show lyrics'}
+                          accessibilityLabel={lyricsOpen ? t('player.hideLyrics') : t('player.showLyrics')}
                           scaleTo={motion.scale.button}
                           onPress={() => setLyricsOpen((open) => !open)}
                         >
@@ -612,7 +620,13 @@ export default function PlayerScreen() {
                       ) : null}
                       <PressableScale
                         accessibilityRole="button"
-                        accessibilityLabel="Sleep timer"
+                        accessibilityLabel={
+                          sleepArmed
+                            ? sleep.endOfTrack
+                              ? `${t('player.sleepTimer')}, ${t('player.endOfTrack')}`
+                              : `${t('player.sleepTimer')}, ${sleepLabel}`
+                            : t('player.sleepTimer')
+                        }
                         scaleTo={motion.scale.button}
                         onPress={openSleepMenu}
                       >
@@ -637,11 +651,38 @@ export default function PlayerScreen() {
                         <Icon name="speaker.wave.2" size={16} tintColor={colors.textSecondary} />
                         <Pressable
                           accessibilityRole="adjustable"
-                          accessibilityLabel="Volume"
+                          accessibilityLabel={t('player.volume')}
+                          accessibilityActions={[
+                            { name: 'increment', label: t('player.volumeIncrease') },
+                            { name: 'decrement', label: t('player.volumeDecrease') },
+                          ]}
+                          accessibilityValue={{
+                            min: 0,
+                            max: 100,
+                            now: Math.round((volume ?? 0.7) * 100),
+                          }}
+                          onAccessibilityAction={(event) => {
+                            const current = volume ?? 0.7
+                            const step = 0.05
+                            if (event.nativeEvent.actionName === 'increment') {
+                              void setActiveVolume(Math.min(1, current + step))
+                              return
+                            }
+                            if (event.nativeEvent.actionName === 'decrement') {
+                              void setActiveVolume(Math.max(0, current - step))
+                            }
+                          }}
                           style={styles.volumeTrack}
+                          onLayout={(event) => {
+                            volumeTrackWidth.current = event.nativeEvent.layout.width
+                          }}
                           onPress={(event) => {
-                            const width = event.nativeEvent.locationX
-                            const next = Math.max(0, Math.min(1, width / 200))
+                            const width = volumeTrackWidth.current
+                            if (width <= 0) return
+                            const next = Math.max(
+                              0,
+                              Math.min(1, event.nativeEvent.locationX / width),
+                            )
                             void setActiveVolume(next)
                           }}
                         >
@@ -657,14 +698,14 @@ export default function PlayerScreen() {
 
                     <View style={styles.dock}>
                       <View style={styles.secondaryRow}>
-                        <IconButton accessibilityLabel="Shuffle" onPress={toggleShuffle}>
+                        <IconButton accessibilityLabel={t('player.shuffle')} onPress={toggleShuffle}>
                           <Icon
                             name="shuffle"
                             tintColor={shuffle ? colors.accent : colors.textSecondary}
                             size={20}
                           />
                         </IconButton>
-                        <IconButton accessibilityLabel="Repeat" onPress={cycleRepeat}>
+                        <IconButton accessibilityLabel={t('player.repeat')} onPress={cycleRepeat}>
                           <Icon
                             name={repeat === 'one' ? 'repeat.1' : 'repeat'}
                             tintColor={
@@ -674,7 +715,7 @@ export default function PlayerScreen() {
                           />
                         </IconButton>
                         <IconButton
-                          accessibilityLabel="Autoplay"
+                          accessibilityLabel={t('player.autoplay')}
                           onPress={toggleAutoplaySession}
                         >
                           <Icon
@@ -686,7 +727,7 @@ export default function PlayerScreen() {
                           />
                         </IconButton>
                         <IconButton
-                          accessibilityLabel="Devices"
+                          accessibilityLabel={t('player.devices')}
                           onPress={() => {
                             startDiscovery()
                             setSheetOpen(true)
@@ -703,7 +744,7 @@ export default function PlayerScreen() {
                           />
                         </IconButton>
                         <IconButton
-                          accessibilityLabel="Open queue"
+                          accessibilityLabel={t('player.openQueue')}
                           onPress={() => router.push('/(app)/queue')}
                         >
                           <Icon
@@ -716,7 +757,7 @@ export default function PlayerScreen() {
 
                       <View style={styles.transport}>
                         <IconButton
-                          accessibilityLabel="Previous"
+                          accessibilityLabel={t('player.previous')}
                           onPress={goPrevious}
                           size={56}
                           hitSlop={12}
@@ -725,7 +766,7 @@ export default function PlayerScreen() {
                         </IconButton>
                         <PressableScale
                           accessibilityRole="button"
-                          accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
+                          accessibilityLabel={isPlaying ? t('player.pause') : t('player.play')}
                           onPress={togglePlaying}
                           style={styles.playPress}
                           hitSlop={8}
@@ -740,7 +781,7 @@ export default function PlayerScreen() {
                           </AccentGradient>
                         </PressableScale>
                         <IconButton
-                          accessibilityLabel="Next"
+                          accessibilityLabel={t('player.next')}
                           onPress={goNext}
                           size={56}
                           hitSlop={12}

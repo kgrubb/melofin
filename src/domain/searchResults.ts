@@ -22,6 +22,13 @@ export type SearchSection = {
   readonly data: readonly LibraryItem[]
 }
 
+export type SearchSectionTitles = {
+  readonly songs: string
+  readonly albums: string
+  readonly artists: string
+  readonly playlists: string
+}
+
 export const groupSearchResults = (
   items: readonly LibraryItem[],
 ): GroupedSearch => ({
@@ -31,23 +38,17 @@ export const groupSearchResults = (
   playlists: items.filter((item) => item.type === 'Playlist'),
 })
 
-const FILTER_TITLE: Readonly<Record<Exclude<SearchFilter, 'all'>, string>> = {
-  songs: 'Songs',
-  albums: 'Albums',
-  artists: 'Artists',
-  playlists: 'Playlists',
-}
-
 export const searchSections = (
   grouped: GroupedSearch,
   filter: SearchFilter,
+  titles: SearchSectionTitles,
 ): readonly SearchSection[] => {
   const rows: readonly (SearchSection & { readonly key: Exclude<SearchFilter, 'all'> })[] =
     [
-      { key: 'songs', title: FILTER_TITLE.songs, data: grouped.songs },
-      { key: 'albums', title: FILTER_TITLE.albums, data: grouped.albums },
-      { key: 'artists', title: FILTER_TITLE.artists, data: grouped.artists },
-      { key: 'playlists', title: FILTER_TITLE.playlists, data: grouped.playlists },
+      { key: 'songs', title: titles.songs, data: grouped.songs },
+      { key: 'albums', title: titles.albums, data: grouped.albums },
+      { key: 'artists', title: titles.artists, data: grouped.artists },
+      { key: 'playlists', title: titles.playlists, data: grouped.playlists },
     ]
   const visible = filter === 'all' ? rows : rows.filter((row) => row.key === filter)
   return visible

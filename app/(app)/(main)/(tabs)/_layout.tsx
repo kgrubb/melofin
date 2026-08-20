@@ -1,7 +1,9 @@
 import { Tabs } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
+import { useTranslation } from 'react-i18next'
 
 export default function TabsLayout() {
+  const { t } = useTranslation()
   return (
     <View style={styles.root}>
       <Tabs
@@ -10,10 +12,10 @@ export default function TabsLayout() {
           tabBarStyle: { display: 'none' },
         }}
       >
-        <Tabs.Screen name="home" options={{ title: 'Home' }} />
-        <Tabs.Screen name="search" options={{ title: 'Search' }} />
-        <Tabs.Screen name="library" options={{ title: 'Library' }} />
-        <Tabs.Screen name="downloads" options={{ title: 'Downloads' }} />
+        <Tabs.Screen name="home" options={{ title: t('tabs.home') }} />
+        <Tabs.Screen name="search" options={{ title: t('tabs.search') }} />
+        <Tabs.Screen name="library" options={{ title: t('tabs.library') }} />
+        <Tabs.Screen name="downloads" options={{ title: t('tabs.downloads') }} />
       </Tabs>
     </View>
   )

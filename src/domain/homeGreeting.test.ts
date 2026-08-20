@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { homeGreeting, msUntilNextHomeGreeting } from '@/src/domain/homeGreeting'
+import {
+  homeGreeting,
+  homeGreetingPeriod,
+  msUntilNextHomeGreeting,
+} from '@/src/domain/homeGreeting'
+
+describe('homeGreetingPeriod', () => {
+  it('returns morning, afternoon, and evening by local hour', () => {
+    expect(homeGreetingPeriod(new Date(2026, 0, 1, 5, 0, 0))).toBe('morning')
+    expect(homeGreetingPeriod(new Date(2026, 0, 1, 11, 59, 0))).toBe('morning')
+    expect(homeGreetingPeriod(new Date(2026, 0, 1, 12, 0, 0))).toBe('afternoon')
+    expect(homeGreetingPeriod(new Date(2026, 0, 1, 16, 59, 0))).toBe('afternoon')
+    expect(homeGreetingPeriod(new Date(2026, 0, 1, 17, 0, 0))).toBe('evening')
+    expect(homeGreetingPeriod(new Date(2026, 0, 1, 4, 59, 0))).toBe('evening')
+  })
+})
 
 describe('homeGreeting', () => {
   it('returns morning, afternoon, and evening by local hour', () => {

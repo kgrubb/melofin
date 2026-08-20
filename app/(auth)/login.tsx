@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Platform, StyleSheet, TextInput, Keyboard } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { WebView } from 'react-native-webview'
+import { useTranslation } from 'react-i18next'
 import {
   completeSsoAuth,
   initiateQuickConnect,
@@ -39,6 +40,7 @@ type NativeSsoCapture = {
 }
 
 export default function LoginScreen() {
+  const { t } = useTranslation()
   const router = useRouter()
   const enabled = useMotionEnabled()
   const params = useLocalSearchParams<{
@@ -165,7 +167,7 @@ export default function LoginScreen() {
         await finishBridge(bridge, provider)
       } catch (cause) {
         setBusy(false)
-        setError(cause instanceof Error ? cause.message : 'SSO failed')
+        setError(cause instanceof Error ? cause.message : t('auth.ssoFailed'))
       }
       return
     }
@@ -206,7 +208,7 @@ export default function LoginScreen() {
       <AuthScroll>
         <AuthHero
           leading={
-            <BackButton onPress={goBackToServer} label="Back to server selection" />
+            <BackButton onPress={goBackToServer} label={t('auth.backToServer')} />
           }
           title={serverName}
         />
@@ -214,16 +216,19 @@ export default function LoginScreen() {
         <Animated.View entering={authCardEntering(enabled)}>
           {qcCode ? (
             <>
-              <GlassGroup footer="Enter this code in Jellyfin under Quick Connect. Melofin signs in when you approve.">
-                <AuthCode code={qcCode} />
+              <GlassGroup footer={t('auth.quickConnectFooter')}>
+                <AuthCode
+                  code={qcCode}
+                  accessibilityLabel={t('auth.quickConnectCodeA11y', { code: qcCode })}
+                />
               </GlassGroup>
-              <GlassButton label="Cancel" onPress={onCancelQuickConnect} />
+              <GlassButton label={t('common.cancel')} onPress={onCancelQuickConnect} />
             </>
           ) : (
             <>
               <GlassGroup>
                 <AuthField
-                  label="Username"
+                  label={t('auth.username')}
                   autoCapitalize="none"
                   autoCorrect={false}
                   spellCheck={false}
@@ -242,7 +247,7 @@ export default function LoginScreen() {
                 />
                 <AuthField
                   inputRef={passwordRef}
-                  label="Password"
+                  label={t('auth.password')}
                   secureTextEntry
                   autoCorrect={false}
                   autoComplete="password"
@@ -258,19 +263,23 @@ export default function LoginScreen() {
               </GlassGroup>
               {error ? <AuthError message={error} /> : null}
               <PrimaryButton
-                label={busy ? 'Signing in...' : 'Sign in'}
+                label={busy ? t('auth.signingIn') : t('auth.signIn')}
                 onPress={() => void onPasswordLogin()}
                 disabled={busy || username.trim().length === 0}
               />
               <GlassButton
-                label="Quick Connect"
+                label={t('auth.quickConnect')}
                 onPress={() => void onQuickConnect()}
                 disabled={busy}
               />
               {providers.map((provider) => (
                 <GlassButton
                   key={provider}
-                  label={busy ? `Continue with ${provider}...` : `Continue with ${provider}`}
+                  label={
+                    busy
+                      ? t('auth.continueWithProviderBusy', { provider })
+                      : t('auth.continueWithProvider', { provider })
+                  }
                   onPress={() => void onSso(provider)}
                   disabled={busy}
                 />
@@ -278,8 +287,8 @@ export default function LoginScreen() {
               {providers.length > 0 ? (
                 <AuthHint>
                   {Platform.OS === 'web'
-                    ? 'If the browser window does not return here, use Quick Connect.'
-                    : 'Opens in the browser so passkeys work.'}
+                    ? t('auth.ssoHintWeb')
+                    : t('auth.ssoHintNative')}
                 </AuthHint>
               ) : null}
             </>
@@ -305,12 +314,12 @@ export default function LoginScreen() {
           onError={() => {
             setSsoCapture(null)
             setBusy(false)
-            setError('SSO failed to open the identity provider')
+            setError(t('auth.ssoOpenFailed'))
           }}
           onHttpError={() => {
             setSsoCapture(null)
             setBusy(false)
-            setError('SSO failed to open the identity provider')
+            setError(t('auth.ssoOpenFailed'))
           }}
         />
       ) : null}

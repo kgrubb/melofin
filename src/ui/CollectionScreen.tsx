@@ -3,7 +3,11 @@ import { Alert, Platform, StyleSheet, Text, View } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 import { formatCollectionDuration } from '@/src/domain/format'
+import { displayHomeMixCard } from '@/src/domain/homeFeed'
+import { homeMixCopyFromT } from '@/src/i18n/homeMixCopy'
 import { mergeAlbumLists, uniqueAlbumsFromTracks } from '@/src/domain/genreAlbums'
 import { uniqueCollageItems } from '@/src/domain/collageArt'
 import { normalizePlaylistName, playlistStub } from '@/src/domain/playlists'
@@ -61,11 +65,11 @@ const ARTIST_SEGMENTS: readonly ArtistSegment[] = ['albums', 'songs']
 
 type CollectionKind = 'album' | 'artist' | 'playlist' | 'mix'
 
-const kindLabel = (kind: CollectionKind): string => {
-  if (kind === 'album') return 'Album'
-  if (kind === 'artist') return 'Artist'
-  if (kind === 'mix') return 'Mix'
-  return 'Playlist'
+const kindLabel = (kind: CollectionKind, t: TFunction): string => {
+  if (kind === 'album') return t('track.album')
+  if (kind === 'artist') return t('track.artist')
+  if (kind === 'mix') return t('collection.mix')
+  return t('track.playlist')
 }
 
 const CircleAction = ({
@@ -143,13 +147,14 @@ const CollectionHero = ({
   readonly onShuffle: () => void
   readonly onDownload: () => void
 }) => {
+  const { t } = useTranslation()
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const meta = [
     durationMs > 0 ? formatCollectionDuration(durationMs) : undefined,
     albumCount !== undefined
-      ? `${albumCount} album${albumCount === 1 ? '' : 's'}`
+      ? t('collection.albumCount', { count: albumCount })
       : undefined,
-    `${trackCount} track${trackCount === 1 ? '' : 's'}`,
+    t('library.playlistCount', { count: trackCount }),
   ]
     .filter(Boolean)
     .join(' · ')
@@ -176,10 +181,10 @@ const CollectionHero = ({
           <CircleAction
             label={
               downloading
-                ? 'Saving...'
+                ? t('collection.saving')
                 : keepOffline
-                  ? 'Keep offline'
-                  : 'Download'
+                  ? t('collection.keepOffline')
+                  : t('collection.download')
             }
             icon={
               keepOffline ? 'arrow.down.circle' : 'arrow.down.circle.fill'
@@ -190,7 +195,7 @@ const CollectionHero = ({
           />
           <View style={styles.heroActionsRight}>
             <CircleAction
-              label={shuffle ? 'Shuffle on' : 'Shuffle off'}
+              label={shuffle ? t('collection.shuffleOn') : t('collection.shuffleOff')}
               icon="shuffle"
               active={shuffle}
               onPress={onShuffle}
@@ -198,7 +203,7 @@ const CollectionHero = ({
               iconSize={22}
             />
             <CircleAction
-              label={showPause ? 'Pause' : 'Play'}
+              label={showPause ? t('player.pause') : t('player.play')}
               icon={showPause ? 'pause.fill' : 'play.fill'}
               primary
               onPress={onPlay}
@@ -217,6 +222,7 @@ export const CollectionScreen = ({
 }: {
   readonly kind: CollectionKind
 }) => {
+  const { t } = useTranslation()
   const insets = useSafeAreaInsets()
   const router = useRouter()
   const params = useLocalSearchParams<{ id: string | string[] }>()
@@ -225,6 +231,12 @@ export const CollectionScreen = ({
   const context = useSessionStore((s) => s.context)
   const session = useSessionStore((s) => s.session)
   const cachedMix = useHomeMixesStore((s) => (id ? s.byId[id] : undefined))
+  const mixCopy = useMemo(() => homeMixCopyFromT(t), [t])
+  const localizedMix = useMemo(
+    () =>
+      cachedMix ? { ...cachedMix, ...displayHomeMixCard(cachedMix, mixCopy) } : undefined,
+    [cachedMix, mixCopy],
+  )
   const playlists = useLibraryStore((s) => s.playlists)
   const upsertPlaylist = useLibraryStore((s) => s.upsertPlaylist)
   const removePlaylistFromCache = useLibraryStore((s) => s.removePlaylist)
@@ -252,6 +264,12 @@ export const CollectionScreen = ({
   const [pendingTrackId, setPendingTrackId] = useState<string | null>(null)
   const [createFromPicker, setCreateFromPicker] = useState(false)
   const loadSeq = useRef(0)
+
+  const artistSegmentLabel = useCallback(
+    (value: ArtistSegment) =>
+      value === 'albums' ? t('library.segmentAlbums') : t('library.segmentSongs'),
+    [t],
+  )
 
   const goBack = useCallback(() => {
     if (router.canGoBack()) router.back()
@@ -315,7 +333,7 @@ export const CollectionScreen = ({
     if (!children.ok) {
       setCollection(meta.ok ? meta.value : null)
       if (!opts?.silent) setError(children.error.message)
-      else Alert.alert("Couldn't refresh playlist", children.error.message)
+      else Alert.alert(t('collection.couldNotRefreshPlaylist'), children.error.message)
       return
     }
     setAlbums([])
@@ -326,7 +344,7 @@ export const CollectionScreen = ({
       ),
     )
     setCollection(meta.ok ? meta.value : null)
-  }, [context, session, id, kind])
+  }, [context, session, id, kind, t])
 
   useEffect(() => {
     void load()
@@ -334,30 +352,30 @@ export const CollectionScreen = ({
 
   useEffect(() => {
     if (kind !== 'mix' || !id) return
-    if (!cachedMix || cachedMix.tracks.length === 0) {
+    if (!localizedMix || localizedMix.tracks.length === 0) {
       setTracks([])
       setCollection(null)
       setAlbums([])
-      setError('This mix is no longer available. Go back to Home to refresh.')
+      setError(t('collection.mixUnavailable'))
       setLoading(false)
       return
     }
     setError(null)
     setAlbums([])
-    setTracks(cachedMix.tracks)
+    setTracks(localizedMix.tracks)
     setCollection({
-      id: cachedMix.id,
-      name: cachedMix.title,
+      id: localizedMix.id,
+      name: localizedMix.title,
       type: 'Mix',
       artists: [],
-      overview: cachedMix.subtitle,
-      durationMs: cachedMix.tracks.reduce(
+      overview: localizedMix.subtitle,
+      durationMs: localizedMix.tracks.reduce(
         (sum, track) => sum + track.durationMs,
         0,
       ),
     })
     setLoading(false)
-  }, [kind, id, cachedMix])
+  }, [kind, id, localizedMix, t])
 
   const buildQueueTracks = useCallback(
     () =>
@@ -412,7 +430,7 @@ export const CollectionScreen = ({
           const pack = createOrRefreshPack({
             kind,
             collectionId: id!,
-            title: collection?.name ?? kindLabel(kind),
+            title: collection?.name ?? kindLabel(kind, t),
             trackIds: queueTracks.map((t) => t.id),
             now: Date.now(),
             existing,
@@ -427,8 +445,8 @@ export const CollectionScreen = ({
             const { isWifiLikeConnection } = await import('@/src/services/network')
             if (!(await isWifiLikeConnection())) {
               Alert.alert(
-                'Waiting for Wi-Fi',
-                'Large offline packs download over Wi-Fi. Connect and try again.',
+                t('collection.waitingForWifiTitle'),
+                t('collection.waitingForWifiMessage'),
               )
               return
             }
@@ -454,13 +472,14 @@ export const CollectionScreen = ({
     kind,
     id,
     collection?.name,
+    t,
   ])
 
   const requireSession = useCallback((): boolean => {
     if (context && session) return true
-    Alert.alert('Sign in required', 'Sign in to manage playlists.')
+    Alert.alert(t('library.signInRequired'), t('library.signInManagePlaylists'))
     return false
-  }, [context, session])
+  }, [context, session, t])
 
   const runRename = async (name: string) => {
     if (!context || !session || !id || mutating) return
@@ -468,7 +487,7 @@ export const CollectionScreen = ({
     try {
       const result = await renamePlaylist(context, id, name)
       if (!result.ok) {
-        Alert.alert("Couldn't rename playlist", result.error.message)
+        Alert.alert(t('collection.couldNotRenamePlaylist'), result.error.message)
         return
       }
       const nextName = normalizePlaylistName(name)
@@ -493,21 +512,21 @@ export const CollectionScreen = ({
   const runDelete = () => {
     if (!requireSession() || !context || !session || !id || mutating) return
     setMutating(true)
-    Alert.alert('Delete playlist?', 'This removes the playlist from Jellyfin.', [
+    Alert.alert(t('collection.deletePlaylistTitle'), t('collection.deletePlaylistMessage'), [
       {
-        text: 'Cancel',
+        text: t('common.cancel'),
         style: 'cancel',
         onPress: () => setMutating(false),
       },
       {
-        text: 'Delete',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: () => {
           void (async () => {
             try {
               const result = await deletePlaylist(context, id)
               if (!result.ok) {
-                Alert.alert("Couldn't delete playlist", result.error.message)
+                Alert.alert(t('collection.couldNotDeletePlaylist'), result.error.message)
                 return
               }
               await removePlaylistFromCache(id)
@@ -524,16 +543,16 @@ export const CollectionScreen = ({
 
   const openPlaylistMenu = () => {
     if (kind !== 'playlist' || mutating) return
-    presentTrackActions('Playlist', [
-      { text: 'Rename', onPress: () => setRenameOpen(true) },
-      { text: 'Delete', style: 'destructive', onPress: runDelete },
+    presentTrackActions(t('track.playlist'), [
+      { text: t('collection.rename'), onPress: () => setRenameOpen(true) },
+      { text: t('common.delete'), style: 'destructive', onPress: runDelete },
     ])
   }
 
   const openMixMenu = () => {
     if (kind !== 'mix' || mutating || tracks.length === 0) return
-    presentTrackActions(cachedMix?.title ?? 'Mix', [
-      { text: 'Save to Library…', onPress: () => setSaveMixOpen(true) },
+    presentTrackActions(localizedMix?.title ?? t('collection.mix'), [
+      { text: t('search.saveToLibrary'), onPress: () => setSaveMixOpen(true) },
     ])
   }
 
@@ -541,14 +560,14 @@ export const CollectionScreen = ({
     if (!context || !session || mutating) return
     const ids = tracks.map((track) => track.id).filter((trackId) => trackId.length > 0)
     if (ids.length === 0) {
-      Alert.alert("Couldn't save mix", 'This mix has no tracks.')
+      Alert.alert(t('search.couldNotSaveMix'), t('search.mixHasNoTracks'))
       return
     }
     setMutating(true)
     try {
       const result = await createPlaylist(context, session.userId, name, ids)
       if (!result.ok) {
-        Alert.alert("Couldn't save mix", result.error.message)
+        Alert.alert(t('search.couldNotSaveMix'), result.error.message)
         return
       }
       await upsertPlaylist({
@@ -572,7 +591,7 @@ export const CollectionScreen = ({
       try {
         const result = await removeTracksFromPlaylist(context, id, [entryId])
         if (!result.ok) {
-          Alert.alert("Couldn't remove track", result.error.message)
+          Alert.alert(t('collection.couldNotRemoveTrack'), result.error.message)
           return
         }
         setTracks((prev) => prev.filter((track) => track.playlistEntryId !== entryId))
@@ -582,7 +601,7 @@ export const CollectionScreen = ({
         setMutating(false)
       }
     },
-    [context, session, id, mutating, load, refreshPlaylists],
+    [context, session, id, mutating, load, refreshPlaylists, t],
   )
 
   const addPendingToPlaylist = async (playlistId: string) => {
@@ -596,7 +615,7 @@ export const CollectionScreen = ({
         [pendingTrackId],
       )
       if (!result.ok) {
-        Alert.alert("Couldn't add to playlist", result.error.message)
+        Alert.alert(t('library.couldNotAddToPlaylist'), result.error.message)
         return
       }
       setPickerOpen(false)
@@ -615,7 +634,7 @@ export const CollectionScreen = ({
     try {
       const result = await createPlaylist(context, session.userId, name, [pendingTrackId])
       if (!result.ok) {
-        Alert.alert("Couldn't create playlist", result.error.message)
+        Alert.alert(t('library.couldNotCreatePlaylist'), result.error.message)
         return
       }
       await upsertPlaylist({
@@ -678,7 +697,7 @@ export const CollectionScreen = ({
         kind === 'playlist' && item.playlistEntryId
           ? ([
               {
-                text: 'Remove from playlist',
+                text: t('collection.removeFromPlaylist'),
                 style: 'destructive' as const,
                 onPress: () => {
                   void removeTrack(item.playlistEntryId!)
@@ -688,7 +707,8 @@ export const CollectionScreen = ({
           : undefined
       presentTrackActions(
         item.name,
-        buildTrackActions({
+        buildTrackActions(
+          {
           onPlayNext: () => playNextTracks([queueTrack]),
           onAddToQueue: () => enqueueTracks([queueTrack]),
           onStartRadio: () => {
@@ -705,7 +725,7 @@ export const CollectionScreen = ({
           isFavorite: Boolean(item.isFavorite),
           onToggleFavorite: () => {
             if (!context || !session) {
-              Alert.alert('Sign in required', 'Sign in to manage favorites.')
+              Alert.alert(t('library.signInRequired'), t('library.signInManageFavorites'))
               return
             }
             void toggleFavoriteItem({
@@ -723,7 +743,9 @@ export const CollectionScreen = ({
             })
           },
           extra,
-        }),
+        },
+          t,
+        ),
       )
     },
     [
@@ -735,6 +757,7 @@ export const CollectionScreen = ({
       session,
       removeTrack,
       requireSession,
+      t,
     ],
   )
 
@@ -755,7 +778,7 @@ export const CollectionScreen = ({
     () => (
       <View>
         <CollectionHero
-          title={collection?.name ?? kindLabel(kind)}
+          title={collection?.name ?? kindLabel(kind, t)}
           overview={overview}
           trackCount={tracks.length}
           albumCount={kind === 'artist' ? albums.length : undefined}
@@ -775,6 +798,7 @@ export const CollectionScreen = ({
             values={ARTIST_SEGMENTS}
             value={artistSegment}
             onChange={setArtistSegment}
+            labelFor={artistSegmentLabel}
           />
         ) : null}
       </View>
@@ -795,6 +819,8 @@ export const CollectionScreen = ({
       toggleShuffle,
       downloadAll,
       artistSegment,
+      artistSegmentLabel,
+      t,
     ],
   )
 
@@ -823,7 +849,7 @@ export const CollectionScreen = ({
         onLongPress={
           showAlbums ? undefined : () => onTrackLongPress(item, index)
         }
-        accessibilityHint={showAlbums ? undefined : 'Long press for track actions'}
+        accessibilityHint={showAlbums ? undefined : t('collection.longPressHint')}
       />
     ),
     [
@@ -835,6 +861,7 @@ export const CollectionScreen = ({
       buildQueueTracks,
       source,
       onTrackLongPress,
+      t,
     ],
   )
 
@@ -870,9 +897,9 @@ export const CollectionScreen = ({
           <View style={styles.topBar}>
             <BackButton onPress={goBack} />
             {kind === 'playlist' ? (
-              <MoreButton label="Playlist options" onPress={openPlaylistMenu} />
+              <MoreButton label={t('library.playlistOptions')} onPress={openPlaylistMenu} />
             ) : kind === 'mix' && tracks.length > 0 ? (
-              <MoreButton label="Mix options" onPress={openMixMenu} />
+              <MoreButton label={t('collection.mixOptions')} onPress={openMixMenu} />
             ) : null}
           </View>
           <FlashList
@@ -892,11 +919,11 @@ export const CollectionScreen = ({
                   <ErrorState message={error} onRetry={() => void load()} />
                 ) : showAlbums ? (
                   <EmptyState
-                    title="No albums"
-                    message="This artist doesn't have any albums on your server."
+                    title={t('collection.noAlbumsTitle')}
+                    message={t('collection.noAlbumsMessage')}
                   />
                 ) : (
-                  <Muted>No tracks in this {kind}.</Muted>
+                  <Muted>{t('collection.noTracksInKind', { kind: kindLabel(kind, t) })}</Muted>
                 )}
               </View>
             }
@@ -905,8 +932,8 @@ export const CollectionScreen = ({
         </View>
         <PlaylistNameModal
           visible={saveMixOpen}
-          title="Save to Library"
-          initialName={cachedMix?.title ?? ''}
+          title={t('search.saveToLibrary')}
+          initialName={localizedMix?.title ?? ''}
           busy={mutating}
           onCancel={() => {
             if (mutating) return
@@ -918,7 +945,7 @@ export const CollectionScreen = ({
         />
         <PlaylistNameModal
           visible={renameOpen}
-          title="Rename playlist"
+          title={t('collection.renamePlaylist')}
           initialName={collection?.name ?? ''}
           busy={mutating}
           onCancel={() => {
@@ -931,7 +958,7 @@ export const CollectionScreen = ({
         />
         <PlaylistNameModal
           visible={createOpen}
-          title="New playlist"
+          title={t('playlistModal.newPlaylist')}
           busy={mutating}
           onCancel={cancelCreate}
           onSubmit={(name) => {

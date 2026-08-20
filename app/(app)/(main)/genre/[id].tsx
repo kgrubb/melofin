@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTranslation } from 'react-i18next'
 import {
   artworkUrl,
   fetchAlbumsByGenre,
@@ -24,6 +25,7 @@ import {
 import { colors, motion, radii, scrollUnderChromePad, spacing, typography } from '@/src/theme/tokens'
 
 export default function GenreRoute() {
+  const { t } = useTranslation()
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const { id, name: nameParam } = useLocalSearchParams<{
@@ -108,11 +110,11 @@ export default function GenreRoute() {
       }
     } catch {
       if (!live()) return
-      setError('Failed to load genre')
+      setError(t('genre.loadFailed'))
     } finally {
       if (live()) setLoading(false)
     }
-  }, [context, genreId, passedName, session])
+  }, [context, genreId, passedName, session, t])
 
   useEffect(() => {
     void load()
@@ -135,18 +137,21 @@ export default function GenreRoute() {
             }}
           />
           <Text style={styles.title} numberOfLines={1}>
-            {passedName ?? genre?.name ?? 'Genre'}
+            {passedName ?? genre?.name ?? t('genre.fallbackTitle')}
           </Text>
           <View style={styles.headerSpacer} />
         </View>
         {loading && albums.length === 0 ? (
-          <LoadingState label="Loading genre" />
+          <LoadingState label={t('genre.loading')} />
         ) : null}
         {error && albums.length === 0 ? (
           <ErrorState message={error} onRetry={() => void load()} />
         ) : null}
         {!loading && !error && albums.length === 0 ? (
-          <EmptyState title="No albums" message="Nothing in this genre yet." />
+          <EmptyState
+            title={t('collection.noAlbumsTitle')}
+            message={t('genre.emptyMessage')}
+          />
         ) : null}
         {albums.length > 0 ? (
           <FlashList
@@ -172,7 +177,7 @@ export default function GenreRoute() {
                       {item.name}
                     </Text>
                     <Muted>
-                      {item.artists.join(', ') || 'Album'}
+                      {item.artists.join(', ') || t('track.album')}
                     </Muted>
                   </View>
                 </PressableScale>

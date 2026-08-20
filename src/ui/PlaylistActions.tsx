@@ -12,6 +12,8 @@ import {
 } from 'react-native'
 import { Field, GlassButton, PrimaryButton } from '@/src/ui/primitives'
 import { colors, radii, spacing, typography } from '@/src/theme/tokens'
+import i18n from '@/src/i18n'
+import { useTranslation } from 'react-i18next'
 
 export type PlaylistPickItem = {
   readonly id: string
@@ -35,7 +37,7 @@ export const presentTrackActions = (
       style: button.style,
       onPress: button.onPress,
     })),
-    { text: 'Cancel', style: 'cancel' as const },
+    { text: i18n.t('common.cancel'), style: 'cancel' as const },
   ])
 }
 
@@ -54,6 +56,7 @@ export const PlaylistNameModal = ({
   readonly onCancel: () => void
   readonly onSubmit: (name: string) => void
 }) => {
+  const { t } = useTranslation()
   const [name, setName] = useState(initialName)
   const canSave = name.trim().length > 0 && !busy
 
@@ -70,7 +73,7 @@ export const PlaylistNameModal = ({
         <Pressable
           style={styles.backdrop}
           onPress={busy ? undefined : onCancel}
-          accessibilityLabel="Dismiss"
+          accessibilityLabel={t('playlistModal.dismiss')}
         >
           <Pressable
             style={styles.card}
@@ -79,10 +82,10 @@ export const PlaylistNameModal = ({
           >
             <Text style={styles.title}>{title}</Text>
             <Field
-              accessibilityLabel="Playlist name"
+              accessibilityLabel={t('playlistModal.playlistName')}
               value={name}
               onChangeText={setName}
-              placeholder="Playlist name"
+              placeholder={t('playlistModal.playlistName')}
               autoFocus
               editable={!busy}
               returnKeyType="done"
@@ -93,11 +96,11 @@ export const PlaylistNameModal = ({
             />
             <View style={styles.actions} accessibilityState={{ busy }}>
               <View style={styles.actionHalf}>
-                <GlassButton label="Cancel" onPress={onCancel} disabled={busy} />
+                <GlassButton label={t('common.cancel')} onPress={onCancel} disabled={busy} />
               </View>
               <View style={styles.actionHalf}>
                 <PrimaryButton
-                  label={busy ? 'Saving...' : 'Save'}
+                  label={busy ? t('playlistModal.saving') : t('playlistModal.save')}
                   onPress={() => onSubmit(name)}
                   disabled={!canSave}
                 />
@@ -124,54 +127,61 @@ export const PlaylistPickerModal = ({
   readonly onCancel: () => void
   readonly onPick: (playlistId: string) => void
   readonly onCreateNew: () => void
-}) => (
-  <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
-    <Pressable
-      style={styles.backdrop}
-      onPress={busy ? undefined : onCancel}
-      accessibilityLabel="Dismiss"
-    >
+}) => {
+  const { t } = useTranslation()
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <Pressable
-        style={styles.card}
-        onPress={(event) => event.stopPropagation()}
-        accessibilityViewIsModal
-        accessibilityState={{ busy }}
+        style={styles.backdrop}
+        onPress={busy ? undefined : onCancel}
+        accessibilityLabel={t('playlistModal.dismiss')}
       >
-        <Text style={styles.title}>Add to playlist</Text>
-        <GlassButton label="New playlist" onPress={onCreateNew} disabled={busy} />
-        <FlatList
-          data={playlists}
-          keyExtractor={(item) => item.id}
-          style={styles.list}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={
-            <Text style={styles.empty}>No playlists yet. Create one above.</Text>
-          }
-          renderItem={({ item }) => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={item.name}
-              accessibilityState={{ disabled: busy }}
-              disabled={busy}
-              onPress={() => onPick(item.id)}
-              style={[styles.pickRow, busy ? styles.pickDisabled : null]}
-            >
-              <Text style={styles.pickName} numberOfLines={1}>
-                {item.name}
-              </Text>
-              {item.childCount !== undefined ? (
-                <Text style={styles.pickMeta}>
-                  {item.childCount} track{item.childCount === 1 ? '' : 's'}
+        <Pressable
+          style={styles.card}
+          onPress={(event) => event.stopPropagation()}
+          accessibilityViewIsModal
+          accessibilityState={{ busy }}
+        >
+          <Text style={styles.title}>{t('playlistModal.addToPlaylist')}</Text>
+          <GlassButton
+            label={t('playlistModal.newPlaylist')}
+            onPress={onCreateNew}
+            disabled={busy}
+          />
+          <FlatList
+            data={playlists}
+            keyExtractor={(item) => item.id}
+            style={styles.list}
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <Text style={styles.empty}>{t('playlistModal.noPlaylistsYet')}</Text>
+            }
+            renderItem={({ item }) => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={item.name}
+                accessibilityState={{ disabled: busy }}
+                disabled={busy}
+                onPress={() => onPick(item.id)}
+                style={[styles.pickRow, busy ? styles.pickDisabled : null]}
+              >
+                <Text style={styles.pickName} numberOfLines={1}>
+                  {item.name}
                 </Text>
-              ) : null}
-            </Pressable>
-          )}
-        />
-        <GlassButton label="Cancel" onPress={onCancel} disabled={busy} />
+                {item.childCount !== undefined ? (
+                  <Text style={styles.pickMeta}>
+                    {t('playlistModal.playlistCount', { count: item.childCount })}
+                  </Text>
+                ) : null}
+              </Pressable>
+            )}
+          />
+          <GlassButton label={t('common.cancel')} onPress={onCancel} disabled={busy} />
+        </Pressable>
       </Pressable>
-    </Pressable>
-  </Modal>
-)
+    </Modal>
+  )
+}
 
 const styles = StyleSheet.create({
   flex: {

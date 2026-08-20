@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
+import { useTranslation } from 'react-i18next'
 import type { LibraryItem } from '@/src/services/jellyfin/library'
 import { PressableHighlight } from '@/src/theme/motion'
 import { colors, radii, spacing, typography } from '@/src/theme/tokens'
@@ -26,17 +27,17 @@ export const TrackRow = memo(function TrackRow({
   readonly selected?: boolean
   readonly accessibilityHint?: string
 }) {
+  const { t } = useTranslation()
   const subtitle =
     item.artists.filter(Boolean).join(', ') || item.album || undefined
-  const a11y =
+  const label =
     subtitle && item.type !== 'MusicArtist'
-      ? `${item.name} by ${subtitle}`
+      ? t('track.byArtist', { name: item.name, subtitle })
       : item.name
-
   return (
     <PressableHighlight
       accessibilityRole="button"
-      accessibilityLabel={a11y}
+      accessibilityLabel={label}
       accessibilityHint={accessibilityHint}
       accessibilityState={selected ? { selected: true } : undefined}
       onPress={onPress}

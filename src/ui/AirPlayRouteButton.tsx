@@ -1,5 +1,6 @@
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import type { ComponentType } from 'react'
+import i18n from '@/src/i18n'
 import { notifyAirPlayRoute } from '@/src/cast/providers/airplay'
 import { colors } from '@/src/theme/tokens'
 
@@ -34,7 +35,7 @@ const loadNative = (): ComponentType<NativeProps> | null => {
 export const AirPlayRouteButton = ({ style }: Props) => {
   const NativeAirPlay = loadNative()
   if (!NativeAirPlay) {
-    return <View style={[styles.stub, style]} accessibilityLabel="AirPlay" />
+    return <View style={[styles.stub, style]} accessibilityLabel={i18n.t('player.airplay')} />
   }
   return (
     <NativeAirPlay

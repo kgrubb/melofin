@@ -1,32 +1,25 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
 import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
-  formatLibrarySyncButton,
-  formatLibrarySyncedAt,
-  formatLibrarySyncProgress,
   LIBRARY_SYNC_MODES,
-  librarySyncModeLabel,
 } from '@/src/domain/librarySync'
 import {
-  CROSSFADE_PRESETS,
-  crossfadeLabel,
-} from '@/src/domain/crossfade'
-import {
-  QUALITY_PRESETS,
-  qualityPresetLabel,
-  type QualityPreset,
-} from '@/src/domain/streamQuality'
-import {
-  REPLAY_GAIN_MODES,
-  replayGainModeLabel,
-} from '@/src/domain/replayGain'
+  formatLibrarySyncButtonLabel,
+  formatLibrarySyncedAtLabel,
+  formatLibrarySyncProgressLabel,
+  librarySyncModeLabelFromT,
+} from '@/src/i18n/librarySyncCopy'
+import { CROSSFADE_PRESETS, type CrossfadeSeconds } from '@/src/domain/crossfade'
+import { QUALITY_PRESETS, type QualityPreset } from '@/src/domain/streamQuality'
+import { REPLAY_GAIN_MODES, type ReplayGainMode } from '@/src/domain/replayGain'
 import {
   EQ_PRESETS,
   effectiveEqGains,
-  eqPresetLabel,
   type EqPresetId,
 } from '@/src/domain/eqPresets'
 import { applyNativeEq } from '@/src/player/nativeQueue'
@@ -43,12 +36,6 @@ import { SettingsGroup, SettingsRow } from '@/src/ui/SettingsList'
 import { EqBandSliders } from '@/src/ui/EqBandSliders'
 import { colors, spacing, typography } from '@/src/theme/tokens'
 
-const qualityName = (preset: QualityPreset): string => {
-  if (preset === 'low') return 'Low'
-  if (preset === 'normal') return 'Normal'
-  return 'High'
-}
-
 const privacyPolicyUrl = (): string => {
   const fromConfig = Constants.expoConfig?.extra?.privacyPolicyUrl
   return typeof fromConfig === 'string'
@@ -63,7 +50,49 @@ const sourceUrl = (): string => {
 
 const EQ_PRESET_IDS = Object.keys(EQ_PRESETS) as Exclude<EqPresetId, 'custom'>[]
 
+const crossfadeLabel = (seconds: CrossfadeSeconds, t: TFunction): string =>
+  seconds === 0 ? t('settings.crossfadeOff') : t('settings.crossfadeSeconds', { seconds })
+
+const qualityShort = (preset: QualityPreset, t: TFunction): string => {
+  if (preset === 'low') return t('settings.qualityLow')
+  if (preset === 'normal') return t('settings.qualityNormal')
+  return t('settings.qualityHigh')
+}
+
+const qualityPresetLabel = (preset: QualityPreset, t: TFunction): string => {
+  if (preset === 'low') return t('settings.qualityLowDetail')
+  if (preset === 'normal') return t('settings.qualityNormalDetail')
+  return t('settings.qualityHighDetail')
+}
+
+const replayGainModeLabel = (mode: ReplayGainMode, t: TFunction): string => {
+  if (mode === 'off') return t('settings.replayGainOff')
+  if (mode === 'track') return t('settings.replayGainTrack')
+  return t('settings.replayGainAlbum')
+}
+
+const eqPresetLabel = (id: EqPresetId, t: TFunction): string => {
+  switch (id) {
+    case 'flat':
+      return t('settings.eqFlat')
+    case 'bassBoost':
+      return t('settings.eqBassBoost')
+    case 'trebleBoost':
+      return t('settings.eqTrebleBoost')
+    case 'vocal':
+      return t('settings.eqVocal')
+    case 'custom':
+      return t('settings.eqCustom')
+  }
+}
+
+const librarySyncModeLabel = librarySyncModeLabelFromT
+const formatLibrarySyncedAt = formatLibrarySyncedAtLabel
+const formatLibrarySyncProgress = formatLibrarySyncProgressLabel
+const formatLibrarySyncButton = formatLibrarySyncButtonLabel
+
 export default function SettingsScreen() {
+  const { t } = useTranslation()
   const router = useRouter()
   const context = useSessionStore((s) => s.context)
   const session = useSessionStore((s) => s.session)
@@ -104,20 +133,28 @@ export default function SettingsScreen() {
       ? userImageUrl(context, session.userId, undefined, 'thumb')
       : undefined
 
+  const streamingFooter = useMemo(
+    () =>
+      streamQuality.automatic
+        ? t('settings.streamingAutoFooter')
+        : t('settings.streamingManualFooter'),
+    [streamQuality.automatic, t],
+  )
+
   const close = () => {
     if (router.canGoBack()) router.back()
     else router.replace('/(app)/(main)/(tabs)/home')
   }
 
   const pickCrossfade = () => {
-    Alert.alert('Crossfade', undefined, [
+    Alert.alert(t('settings.crossfade'), undefined, [
       ...CROSSFADE_PRESETS.map((seconds) => ({
-        text: crossfadeLabel(seconds),
+        text: crossfadeLabel(seconds, t),
         onPress: () => {
           if (seconds !== crossfadeSeconds) void setCrossfadeSeconds(seconds)
         },
       })),
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: t('common.cancel'), style: 'cancel' as const },
     ])
   }
 
@@ -128,12 +165,12 @@ export default function SettingsScreen() {
   ) => {
     Alert.alert(title, undefined, [
       ...QUALITY_PRESETS.map((preset) => ({
-        text: qualityPresetLabel(preset),
+        text: qualityPresetLabel(preset, t),
         onPress: () => {
           if (preset !== current) apply(preset)
         },
       })),
-      { text: 'Cancel', style: 'cancel' as const },
+      { text: t('common.cancel'), style: 'cancel' as const },
     ])
   }
 
@@ -148,7 +185,7 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.scroll}
       >
         <Text style={styles.screenTitle} accessibilityRole="header">
-          Settings
+          {t('settings.title')}
         </Text>
 
         <View style={styles.profileBlock}>
@@ -169,7 +206,7 @@ export default function SettingsScreen() {
             )}
             <View style={styles.profileMeta}>
               <Text style={styles.userName} numberOfLines={1}>
-                {session?.userName ?? 'Account'}
+                {session?.userName ?? t('settings.account')}
               </Text>
               <Text style={styles.profileDetail} numberOfLines={1}>
                 {session?.serverName || session?.serverUrl || 'Jellyfin'}
@@ -182,10 +219,7 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
-        <SettingsGroup
-          title="Servers"
-          footer="Saved logins to your Jellyfin servers. Forgetting one only removes it from this iPhone. Melofin does not host accounts."
-        >
+        <SettingsGroup title={t('settings.servers')} footer={t('settings.serversFooter')}>
           {accounts.accounts.map((account) => {
             const active =
               session != null && sessionAccountId(session) === account.accountId
@@ -200,12 +234,12 @@ export default function SettingsScreen() {
                 }}
                 onLongPress={() => {
                   Alert.alert(
-                    'Forget this server?',
-                    'Removes the saved login from this iPhone. Your Jellyfin user is unchanged.',
+                    t('settings.forgetServerTitle'),
+                    t('settings.forgetServerMessage'),
                     [
-                      { text: 'Cancel', style: 'cancel' },
+                      { text: t('common.cancel'), style: 'cancel' },
                       {
-                        text: 'Forget',
+                        text: t('settings.forget'),
                         style: 'destructive',
                         onPress: () => {
                           void removeAccount(account.accountId)
@@ -214,12 +248,12 @@ export default function SettingsScreen() {
                     ],
                   )
                 }}
-                accessibilityHint="Touch and hold to forget this server on this iPhone"
+                accessibilityHint={t('settings.forgetServerHint')}
               />
             )
           })}
           <SettingsRow
-            title="Add Server"
+            title={t('settings.addServer')}
             accent
             onPress={() => {
               beginAddAccount()
@@ -229,69 +263,62 @@ export default function SettingsScreen() {
         </SettingsGroup>
 
         <SettingsGroup
-          title="Library Sync"
-          footer={syncError ?? formatLibrarySyncedAt(syncedAt)}
+          title={t('settings.librarySync')}
+          footer={syncError ?? formatLibrarySyncedAt(syncedAt, t)}
         >
           {LIBRARY_SYNC_MODES.map((mode) => (
             <SettingsRow
               key={mode}
-              title={librarySyncModeLabel(mode)}
+              title={librarySyncModeLabel(mode, t)}
               checked={syncMode === mode}
               onPress={() => void setSyncMode(mode)}
             />
           ))}
           <SettingsRow
-            title={formatLibrarySyncButton(syncing, syncProgress)}
+            title={formatLibrarySyncButton(syncing, syncProgress, t)}
             detail={
-              syncing ? formatLibrarySyncProgress(syncProgress) : undefined
+              syncing ? formatLibrarySyncProgress(syncProgress, t) : undefined
             }
             accent
             busy={syncing}
             disabled={syncing}
             onPress={() => void syncLibrary('manual')}
-            accessibilityLabel="Sync Now"
+            accessibilityLabel={t('settings.syncNow')}
           />
         </SettingsGroup>
 
-        <SettingsGroup title="Playback">
+        <SettingsGroup title={t('settings.playback')}>
           <SettingsRow
-            title="Prefetch"
+            title={t('settings.prefetch')}
             switchValue={prefetchEnabled}
             onSwitch={(value) => void setPrefetchEnabled(value)}
           />
           <SettingsRow
-            title="Autoplay"
+            title={t('settings.autoplay')}
             switchValue={autoplayEnabled}
             onSwitch={(value) => void setAutoplayEnabled(value)}
           />
           <SettingsRow
-            title="Crossfade"
-            detail={crossfadeLabel(crossfadeSeconds)}
+            title={t('settings.crossfade')}
+            detail={crossfadeLabel(crossfadeSeconds, t)}
             chevron
             onPress={pickCrossfade}
           />
         </SettingsGroup>
 
-        <SettingsGroup
-          title="Streaming"
-          footer={
-            streamQuality.automatic
-              ? 'Automatic picks bitrate for you: High on Wi-Fi, Normal on cellular. Turn off to set Wi-Fi and cellular yourself (saves data or forces max quality).'
-              : 'Choose Wi-Fi and cellular bitrates yourself. Downloads always use the Downloads preset.'
-          }
-        >
+        <SettingsGroup title={t('settings.streaming')} footer={streamingFooter}>
           <SettingsRow
-            title="Automatic"
+            title={t('settings.automatic')}
             switchValue={streamQuality.automatic}
             onSwitch={(value) => void setStreamQuality({ automatic: value })}
           />
           {!streamQuality.automatic ? (
             <SettingsRow
-              title="Wi-Fi"
-              detail={qualityName(streamQuality.wifi)}
+              title={t('settings.wifi')}
+              detail={qualityShort(streamQuality.wifi, t)}
               chevron
               onPress={() =>
-                pickPreset('Wi-Fi', streamQuality.wifi, (preset) => {
+                pickPreset(t('settings.wifi'), streamQuality.wifi, (preset) => {
                   void setStreamQuality({ wifi: preset })
                 })
               }
@@ -299,42 +326,42 @@ export default function SettingsScreen() {
           ) : null}
           {!streamQuality.automatic ? (
             <SettingsRow
-              title="Cellular"
-              detail={qualityName(streamQuality.cellular)}
+              title={t('settings.cellular')}
+              detail={qualityShort(streamQuality.cellular, t)}
               chevron
               onPress={() =>
-                pickPreset('Cellular', streamQuality.cellular, (preset) => {
+                pickPreset(t('settings.cellular'), streamQuality.cellular, (preset) => {
                   void setStreamQuality({ cellular: preset })
                 })
               }
             />
           ) : null}
           <SettingsRow
-            title="Downloads"
-            detail={qualityName(streamQuality.download)}
+            title={t('settings.downloadsQuality')}
+            detail={qualityShort(streamQuality.download, t)}
             chevron
             onPress={() =>
-              pickPreset('Downloads', streamQuality.download, (preset) => {
+              pickPreset(t('settings.downloadsQuality'), streamQuality.download, (preset) => {
                 void setStreamQuality({ download: preset })
               })
             }
           />
         </SettingsGroup>
 
-        <SettingsGroup title="ReplayGain">
+        <SettingsGroup title={t('settings.replayGain')}>
           {REPLAY_GAIN_MODES.map((mode) => (
             <SettingsRow
               key={mode}
-              title={replayGainModeLabel(mode)}
+              title={replayGainModeLabel(mode, t)}
               checked={replayGainMode === mode}
               onPress={() => void setReplayGainMode(mode)}
             />
           ))}
         </SettingsGroup>
 
-        <SettingsGroup title="Equalizer" footer="Local playback only.">
+        <SettingsGroup title={t('settings.equalizer')} footer={t('settings.equalizerFooter')}>
           <SettingsRow
-            title="EQ"
+            title={t('settings.eq')}
             switchValue={eq.enabled}
             onSwitch={(value) => {
               void setEq({ enabled: value })
@@ -345,7 +372,7 @@ export default function SettingsScreen() {
               {EQ_PRESET_IDS.map((presetId) => (
                 <SettingsRow
                   key={presetId}
-                  title={eqPresetLabel(presetId)}
+                  title={eqPresetLabel(presetId, t)}
                   checked={eq.presetId === presetId}
                   onPress={() => {
                     void setEq({
@@ -357,7 +384,7 @@ export default function SettingsScreen() {
                 />
               ))}
               <SettingsRow
-                title="Custom"
+                title={t('settings.eqCustom')}
                 checked={eq.presetId === 'custom'}
                 onPress={() => {
                   void setEq({
@@ -390,14 +417,14 @@ export default function SettingsScreen() {
 
         <SettingsGroup>
           <SettingsRow
-            title="Privacy Policy"
+            title={t('settings.privacyPolicy')}
             chevron
             onPress={() => {
               void Linking.openURL(privacyPolicyUrl())
             }}
           />
           <SettingsRow
-            title="Source code"
+            title={t('settings.sourceCode')}
             chevron
             onPress={() => {
               void Linking.openURL(sourceUrl())
@@ -407,13 +434,13 @@ export default function SettingsScreen() {
 
         <SettingsGroup>
           <SettingsRow
-            title="Clear Cache"
+            title={t('settings.clearCache')}
             destructive
             onPress={() => {
-              Alert.alert('Clear Cache?', undefined, [
-                { text: 'Cancel', style: 'cancel' },
+              Alert.alert(t('settings.clearCacheTitle'), undefined, [
+                { text: t('common.cancel'), style: 'cancel' },
                 {
-                  text: 'Clear',
+                  text: t('settings.clear'),
                   style: 'destructive',
                   onPress: () => {
                     void clearOffline(scope)
@@ -423,13 +450,13 @@ export default function SettingsScreen() {
             }}
           />
           <SettingsRow
-            title="Sign Out"
+            title={t('settings.signOut')}
             destructive
             onPress={() => {
-              Alert.alert('Sign Out?', undefined, [
-                { text: 'Cancel', style: 'cancel' },
+              Alert.alert(t('settings.signOutTitle'), undefined, [
+                { text: t('common.cancel'), style: 'cancel' },
                 {
-                  text: 'Sign Out',
+                  text: t('settings.signOutConfirm'),
                   style: 'destructive',
                   onPress: () => {
                     resetPlayer()

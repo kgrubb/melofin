@@ -10,8 +10,11 @@ import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
 import { colors } from '@/src/theme/tokens'
 import { LoadingState, Screen } from '@/src/ui/primitives'
+import '@/src/i18n'
+import { useTranslation } from 'react-i18next'
 
 const AuthGate = ({ children }: { readonly children: React.ReactNode }) => {
+  const { t } = useTranslation()
   const hydrated = useSessionStore((s) => s.hydrated)
   const session = useSessionStore((s) => s.session)
   const addingAccount = useSessionStore((s) => s.addingAccount)
@@ -46,7 +49,7 @@ const AuthGate = ({ children }: { readonly children: React.ReactNode }) => {
   if (!hydrated) {
     return (
       <Screen centered>
-        <LoadingState label="Starting Melofin" />
+        <LoadingState label={t('app.starting')} />
       </Screen>
     )
   }

@@ -11,6 +11,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated'
+import { useTranslation } from 'react-i18next'
 import {
   ALPHABET_INDEX_LETTERS,
   alphabetIndexFromRelativeScrub,
@@ -37,6 +38,7 @@ export const AlphabetIndex = ({
   safeBottom = 0,
   topInset = 0,
 }: Props) => {
+  const { t } = useTranslation()
   const motionOn = useMotionEnabled()
   const railRef = useRef<View>(null)
   const frame = useRef({ pageY: 0, height: 0 })
@@ -179,7 +181,11 @@ export const AlphabetIndex = ({
                 key={letter}
                 accessible
                 accessibilityRole="button"
-                accessibilityLabel={`Jump to ${letter === '#' ? 'numbers and symbols' : letter}`}
+                accessibilityLabel={
+                  letter === '#'
+                    ? t('library.alphabetJumpSymbols')
+                    : t('library.alphabetJumpLetter', { letter })
+                }
                 accessibilityState={{
                   disabled: !enabled,
                   selected: scrubLetter === letter,

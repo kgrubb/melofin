@@ -40,6 +40,7 @@ Expo Go is not supported. Use a development build.
 - Avoid TrackPlayer, expo-av, AsyncStorage, lodash/ramda, uuid/nanoid, date libs, app-wide axios, React Query/SWR, immer, analytics SDKs, Redux/MobX, and UI kits.
 - Do not edit [CHANGELOG.md](./CHANGELOG.md). CI writes it from conventional PR titles when a release is cut.
 - `patches/expo-audio+1.1.1.patch`: lock-screen next/prev, catalog duration, JS-owned remote play/pause/seek, and USB/car session recovery. Drop it when upgrading past Expo SDK 54 if upstream covers those.
+- Interactive controls need correct accessibility semantics (role, label, state). Prefer shared primitives over one-off fixes.
 
 ## Branch and commits
 
@@ -86,7 +87,7 @@ When you touch library sync, downloads, or playback failover:
 - Link related issues
 - Call out risk areas (playback, offline, casting, CarPlay)
 - Include screenshots or a short screen recording for UI changes when you can. [store/screenshots](./store/screenshots) is the current product UI if you need a visual reference.
-- `npm run screenshots` writes the App Store 6.9" set (ten 1320×2868 RGB PNGs) to [store/screenshots](./store/screenshots) from the local demo catalog (CC-licensed Jamendo). Upload that folder in App Store Connect in filename order. iPad / other size classes are not required (`supportsTablet: false`). Do not list other people’s albums as the product.
+- `npm run screenshots` captures the App Store 6.9" set (ten 1320×2868 RGB PNGs per locale) under `store/screenshots/<locale>/` from the local demo catalog (CC-licensed Jamendo). By default it captures all supported locales (e.g. `en-US`, `de-DE`, `uk-UA`). Use `MELOFIN_SCREENSHOT_LOCALES=de-DE,fr-FR` for a subset, or `MELOFIN_SCREENSHOT_RESUME=1` to skip locales that already have a full set. Upload each locale folder in App Store Connect in filename order. iPad / other size classes are not required (`supportsTablet: false`). Do not list other people’s albums as the product.
 
 Maintainers review for correctness, regressions, and fit with the architecture above.
 

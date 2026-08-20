@@ -1,6 +1,43 @@
 import type { LibraryItem } from '@/src/domain/libraryItem'
 import type { OfflineEntry } from '@/src/domain/offline'
 
+export type HomeMixCopy = {
+  readonly instantMix: string
+  readonly favoritesMix: string
+  readonly yourMix: string
+  readonly madeForYou: string
+  readonly mixDot: (name: string) => string
+  readonly mixNamed: (name: string) => string
+  readonly artistsTwo: (first: string, second: string) => string
+  readonly artistsThreeAndMore: (
+    first: string,
+    second: string,
+    third: string,
+  ) => string
+}
+
+export const defaultHomeMixCopy: HomeMixCopy = {
+  instantMix: 'Instant Mix',
+  favoritesMix: 'Favorites mix',
+  yourMix: 'Your Mix',
+  madeForYou: 'Made for you',
+  mixDot: (name) => `Mix · ${name}`,
+  mixNamed: (name) => `${name} Mix`,
+  artistsTwo: (first, second) => `${first}, ${second}`,
+  artistsThreeAndMore: (first, second, third) =>
+    `${first}, ${second}, ${third} and more`,
+}
+
+export type AlbumCardCopy = {
+  readonly songCount: (count: number) => string
+  readonly addedOn: (date: string) => string
+}
+
+export const defaultAlbumCardCopy: AlbumCardCopy = {
+  songCount: (count) => (count === 1 ? '1 song' : `${count} songs`),
+  addedOn: (date) => `Added ${date}`,
+}
+
 /** Group Instant Mix seeds by artist (then album / item). */
 export const mixSeedKey = (item: LibraryItem): string => {
   if (item.artistId?.trim()) return `artist:${item.artistId.trim()}`
@@ -86,18 +123,23 @@ export const withArtistsFromTracks = (
   })
 }
 
-export const albumCardSubtitle = (item: LibraryItem): string => {
+export const albumCardSubtitle = (
+  item: LibraryItem,
+  copy: AlbumCardCopy = defaultAlbumCardCopy,
+): string => {
   const artist = primaryArtistName(item.artists)
   if (artist) return artist
   const album = item.album?.trim()
   if (album) return album
   const n = item.childCount ?? 0
-  if (item.type !== 'Audio' && n > 0) return n === 1 ? '1 song' : `${n} songs`
+  if (item.type !== 'Audio' && n > 0) return copy.songCount(n)
   if (item.type !== 'MusicAlbum' || !item.dateCreatedMs) return ''
-  return `Added ${new Date(item.dateCreatedMs).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  })}`
+  return copy.addedOn(
+    new Date(item.dateCreatedMs).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    }),
+  )
 }
 
 export const instantMixLabel = (seed: LibraryItem): string => {
@@ -107,12 +149,17 @@ export const instantMixLabel = (seed: LibraryItem): string => {
   return seed.name
 }
 
-export const instantMixCardTitle = (seed: LibraryItem | undefined): string => {
-  if (!seed) return 'Instant Mix'
-  return `Mix · ${instantMixLabel(seed)}`
+export const instantMixCardTitle = (
+  seed: LibraryItem | undefined,
+  copy: HomeMixCopy = defaultHomeMixCopy,
+): string => {
+  if (!seed) return copy.instantMix
+  return copy.mixDot(instantMixLabel(seed))
 }
 
-export const favoritesMixTitle = (): string => 'Favorites mix'
+export const favoritesMixTitle = (
+  copy: HomeMixCopy = defaultHomeMixCopy,
+): string => copy.favoritesMix
 
 export const isNumberedMixTitle = (title: string): boolean =>
   /^mix\s*\d+$/i.test(title.trim())
@@ -126,11 +173,14 @@ export const titleCaseGenreLabel = (label: string): string => {
     .replace(/(^|[\s\-/&])([a-z])/g, (_, sep: string, char: string) => sep + char.toUpperCase())
 }
 
-export const seededMixTitle = (seedLabel: string): string => {
+export const seededMixTitle = (
+  seedLabel: string,
+  copy: HomeMixCopy = defaultHomeMixCopy,
+): string => {
   const label = seedLabel.trim()
   if (!label || isNumberedMixTitle(label)) return ''
   if (/\bmix$/i.test(label)) return label
-  return `${label} Mix`
+  return copy.mixNamed(label)
 }
 
 /** Cached "AC Mix" from splitting AC/DC. Do not expand collab credits. */
@@ -181,22 +231,24 @@ export const topArtistsFromTracks = (
 export const homeMixCardTitle = (
   seedLabel: string,
   tracks: readonly LibraryItem[],
+  copy: HomeMixCopy = defaultHomeMixCopy,
 ): string => {
-  const fromSeed = seededMixTitle(restoreSlashBandSeed(seedLabel, tracks))
+  const fromSeed = seededMixTitle(restoreSlashBandSeed(seedLabel, tracks), copy)
   if (fromSeed) return fromSeed
   const top = topArtistsFromTracks(tracks, 1)
-  if (top[0]) return seededMixTitle(top[0]) || `${top[0]} Mix`
+  if (top[0]) return seededMixTitle(top[0], copy) || copy.mixNamed(top[0])
   const genre = tracks.map((track) => track.genres?.[0]?.trim()).find(Boolean)
   if (genre) {
     const cased = titleCaseGenreLabel(genre)
-    return seededMixTitle(cased) || `${cased} Mix`
+    return seededMixTitle(cased, copy) || copy.mixNamed(cased)
   }
-  return 'Your Mix'
+  return copy.yourMix
 }
 
 export const homeMixCardSubtitle = (
   seedLabel: string,
   tracks: readonly LibraryItem[],
+  copy: HomeMixCopy = defaultHomeMixCopy,
 ): string => {
   const seed = restoreSlashBandSeed(seedLabel, tracks).trim().toLowerCase()
   const exclude =
@@ -204,10 +256,53 @@ export const homeMixCardSubtitle = (
   const withoutSeed = topArtistsFromTracks(tracks, 3, exclude)
   const names =
     withoutSeed.length >= 2 ? withoutSeed : topArtistsFromTracks(tracks, 3)
-  if (names.length === 0) return 'Made for you'
-  if (names.length === 1) return names[0] ?? 'Made for you'
-  if (names.length === 2) return `${names[0]}, ${names[1]}`
-  return `${names[0]}, ${names[1]}, ${names[2]} and more`
+  if (names.length === 0) return copy.madeForYou
+  if (names.length === 1) return names[0] ?? copy.madeForYou
+  if (names.length === 2) {
+    return copy.artistsTwo(names[0] ?? '', names[1] ?? '')
+  }
+  return copy.artistsThreeAndMore(
+    names[0] ?? '',
+    names[1] ?? '',
+    names[2] ?? '',
+  )
+}
+
+/** Recover the mix seed from a cached English card title for re-localization. */
+export const mixSeedLabelFromCachedTitle = (
+  title: string,
+  copy: HomeMixCopy = defaultHomeMixCopy,
+): string => {
+  const trimmed = title.trim()
+  if (
+    !trimmed ||
+    trimmed === copy.yourMix ||
+    trimmed === defaultHomeMixCopy.yourMix
+  ) {
+    return ''
+  }
+  if (isNumberedMixTitle(trimmed)) return trimmed
+  if (/\bmix$/i.test(trimmed)) {
+    return trimmed.replace(/\s+mix$/i, '').trim()
+  }
+  return trimmed
+}
+
+export const displayHomeMixCard = <
+  T extends {
+    readonly title: string
+    readonly subtitle: string
+    readonly tracks: readonly LibraryItem[]
+  },
+>(
+  mix: T,
+  copy: HomeMixCopy = defaultHomeMixCopy,
+): Pick<T, 'title' | 'subtitle'> => {
+  const seed = mixSeedLabelFromCachedTitle(mix.title, copy)
+  return {
+    title: homeMixCardTitle(seed, mix.tracks, copy),
+    subtitle: homeMixCardSubtitle(seed, mix.tracks, copy),
+  }
 }
 
 export const HOME_INSTANT_MIX_TARGET = 6

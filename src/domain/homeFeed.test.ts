@@ -10,6 +10,7 @@ import {
   HOME_LATEST_ALBUMS_LIMIT,
   latestAlbumsFromCatalog,
   likedArtistsFromCatalog,
+  displayHomeMixCard,
   homeMixCardSubtitle,
   homeMixCardTitle,
   instantMixCardTitle,
@@ -350,5 +351,34 @@ describe('homeFeed', () => {
       new: offline('new', true, 50),
     })
     expect(rail.map((entry) => entry.id)).toEqual(['new', 'old'])
+  })
+
+  it('re-localizes cached mix cards from track data', () => {
+    const tracks = [
+      item('1', 'Audio', { artists: ['Radiohead'] }),
+      item('2', 'Audio', { artists: ['Radiohead'] }),
+      item('3', 'Audio', { artists: ['Radiohead'] }),
+      item('4', 'Audio', { artists: ['Radiohead'] }),
+    ]
+    const copy = {
+      instantMix: 'X',
+      favoritesMix: 'Y',
+      yourMix: 'Dein Mix',
+      madeForYou: 'Für dich',
+      mixDot: (name: string) => `Mix · ${name}`,
+      mixNamed: (name: string) => `${name}-Mix`,
+      artistsTwo: (first: string, second: string) => `${first} & ${second}`,
+      artistsThreeAndMore: (first: string, second: string, third: string) =>
+        `${first}, ${second}, ${third}+`,
+    }
+    expect(
+      displayHomeMixCard(
+        { title: 'Radiohead Mix', subtitle: 'Made for you', tracks },
+        copy,
+      ),
+    ).toEqual({
+      title: 'Radiohead-Mix',
+      subtitle: 'Radiohead',
+    })
   })
 })

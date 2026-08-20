@@ -1,5 +1,6 @@
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 import type { ComponentType } from 'react'
+import i18n from '@/src/i18n'
 import { colors } from '@/src/theme/tokens'
 
 type Props = {
@@ -32,7 +33,7 @@ const Native = loadCastButton()
  */
 export const CastRouteButton = ({ style }: Props) => {
   if (!Native) {
-    return <View style={[styles.stub, style]} accessibilityLabel="Chromecast" />
+    return <View style={[styles.stub, style]} accessibilityLabel={i18n.t('player.chromecast')} />
   }
   return (
     <Native

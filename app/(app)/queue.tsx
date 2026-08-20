@@ -11,6 +11,7 @@ import Animated, {
 } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTranslation } from 'react-i18next'
 import {
   playingIdentity,
   queueViewIndices,
@@ -67,6 +68,7 @@ const QueueRow = memo(function QueueRow({
   readonly onDragCommit: (from: number, to: number) => void
   readonly onDragCancel: () => void
 }) {
+  const { t } = useTranslation()
   const viewIndexSV = useSharedValue(model.viewIndex)
   viewIndexSV.value = model.viewIndex
 
@@ -165,13 +167,13 @@ const QueueRow = memo(function QueueRow({
           item={rowItem(model.track)}
           artworkUrl={model.track.artworkUrl}
           selected={active}
-          accessoryLabel={recommended ? 'Recommended' : undefined}
+          accessoryLabel={recommended ? t('queue.recommended') : undefined}
           onPress={onPlay}
         />
       </View>
       <PressableScale
         accessibilityRole="button"
-        accessibilityLabel={`Remove ${model.track.title}`}
+        accessibilityLabel={t('queue.remove', { title: model.track.title })}
         scaleTo={motion.scale.button}
         onPress={onRemove}
         style={styles.iconHit}
@@ -181,7 +183,7 @@ const QueueRow = memo(function QueueRow({
       <GestureDetector gesture={drag}>
         <View
           accessibilityRole={canDrag ? 'adjustable' : 'none'}
-          accessibilityLabel={canDrag ? `Reorder ${model.track.title}` : undefined}
+          accessibilityLabel={canDrag ? t('queue.reorder', { title: model.track.title }) : undefined}
           style={[styles.iconHit, canDrag ? null : styles.iconDisabled]}
         >
           <Icon
@@ -196,6 +198,7 @@ const QueueRow = memo(function QueueRow({
 })
 
 export default function QueueScreen() {
+  const { t } = useTranslation()
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const tracks = usePlayerStore((s) => s.tracks)
@@ -271,22 +274,22 @@ export default function QueueScreen() {
       </View>
       <View style={styles.titleRow}>
         <Text style={styles.title} accessibilityRole="header">
-          Queue
+          {t('queue.title')}
         </Text>
         {upcomingCountValue > 0 ? (
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel="Clear upcoming"
+            accessibilityLabel={t('queue.clearUpcoming')}
             scaleTo={motion.scale.button}
             hitSlop={8}
             onPress={() => {
               Alert.alert(
-                'Clear upcoming?',
-                `Remove ${upcomingCountValue} track${upcomingCountValue === 1 ? '' : 's'} after the current song.`,
+                t('queue.clearUpcomingTitle'),
+                t('queue.clearUpcomingMessage', { count: upcomingCountValue }),
                 [
-                  { text: 'Cancel', style: 'cancel' },
+                  { text: t('common.cancel'), style: 'cancel' },
                   {
-                    text: 'Clear',
+                    text: t('queue.clear'),
                     style: 'destructive',
                     onPress: () => clearUpcomingTracks(),
                   },
@@ -294,7 +297,7 @@ export default function QueueScreen() {
               )
             }}
           >
-            <Text style={styles.clearLabel}>Clear</Text>
+            <Text style={styles.clearLabel}>{t('queue.clear')}</Text>
           </PressableScale>
         ) : null}
       </View>

@@ -38,8 +38,6 @@ export type StorageMeter = {
   readonly overBudget: boolean
   readonly usedLabel: string
   readonly budgetLabel: string
-  readonly detail: string
-  readonly accessibilityLabel: string
 }
 
 export const storageMeter = (
@@ -64,10 +62,6 @@ export const storageMeter = (
   const ratio = budgetBytes <= 0 ? 0 : Math.min(1, usedBytes / budgetBytes)
   const usedLabel = formatStorageBytes(usedBytes)
   const budgetLabel = formatStorageBytes(budgetBytes)
-  const detail = `${usedLabel} on this device`
-  const accessibilityLabel = overBudget
-    ? `${usedLabel} used, over the ${budgetLabel} limit`
-    : `${usedLabel} of ${budgetLabel} on this device`
   return {
     usedBytes,
     budgetBytes,
@@ -77,8 +71,6 @@ export const storageMeter = (
     overBudget,
     usedLabel,
     budgetLabel,
-    detail,
-    accessibilityLabel,
   }
 }
 
@@ -180,9 +172,8 @@ const packToCollection = (
 ): DownloadCollection => {
   const artist =
     pack.kind === 'playlist'
-      ? 'Playlist'
-      : pack.trackIds.map((id) => byId[id]?.artist.trim()).find(Boolean) ||
-        'Album'
+      ? ''
+      : pack.trackIds.map((id) => byId[id]?.artist.trim()).find(Boolean) || ''
   return collectionFromTracks({
     id: pack.id,
     kind: pack.kind,

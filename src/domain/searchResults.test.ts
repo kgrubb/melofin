@@ -34,20 +34,32 @@ describe('searchResults', () => {
   })
 
   it('builds sections and omits empty groups', () => {
+    const titles = {
+      songs: 'Songs',
+      albums: 'Albums',
+      artists: 'Artists',
+      playlists: 'Playlists',
+    }
     const grouped = groupSearchResults([item('s', 'Audio'), item('p', 'Playlist')])
-    expect(searchSections(grouped, 'all').map((section) => section.title)).toEqual([
+    expect(searchSections(grouped, 'all', titles).map((section) => section.title)).toEqual([
       'Songs',
       'Playlists',
     ])
-    expect(searchSections(grouped, 'songs')).toEqual([
+    expect(searchSections(grouped, 'songs', titles)).toEqual([
       { title: 'Songs', data: grouped.songs },
     ])
-    expect(searchSections(grouped, 'albums')).toEqual([])
+    expect(searchSections(grouped, 'albums', titles)).toEqual([])
   })
 
   it('flattens sections into list rows', () => {
+    const titles = {
+      songs: 'Songs',
+      albums: 'Albums',
+      artists: 'Artists',
+      playlists: 'Playlists',
+    }
     const grouped = groupSearchResults([item('s', 'Audio'), item('p', 'Playlist')])
-    const sections = searchSections(grouped, 'all')
+    const sections = searchSections(grouped, 'all', titles)
     expect(flattenSearchSections(sections, true).map((row) => row.kind)).toEqual([
       'header',
       'item',

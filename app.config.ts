@@ -89,6 +89,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-sqlite',
     'expo-router',
     'expo-secure-store',
+    'expo-localization',
     'react-native-google-cast',
     './plugins/withPinnedGoogleCast.js',
     [

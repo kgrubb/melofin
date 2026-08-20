@@ -15,6 +15,8 @@ import { FlashList } from '@shopify/flash-list'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { browseTileColor, hexToRgba, pairItems } from '@/src/domain/browseTile'
 import {
   BROWSE_GENRES_DISPLAY_LIMIT,
@@ -34,7 +36,8 @@ import {
 import { assembleExplorePlaylists } from '@/src/domain/explorePlaylists'
 import { uniqueCollageItems } from '@/src/domain/collageArt'
 import { uniqueAlbumsFromTracks } from '@/src/domain/genreAlbums'
-import { titleCaseGenreLabel } from '@/src/domain/homeFeed'
+import { displayHomeMixCard, titleCaseGenreLabel } from '@/src/domain/homeFeed'
+import { homeMixCopyFromT } from '@/src/i18n/homeMixCopy'
 import { playlistStub } from '@/src/domain/playlists'
 import {
   parseSearchRecents,
@@ -89,16 +92,15 @@ import { MixCollage } from '@/src/ui/MixCollage'
 import { SegmentControl } from '@/src/ui/SegmentControl'
 import { TrackRow } from '@/src/ui/TrackRow'
 import { colors, motion, radii, scrollUnderChromePad, spacing, typography } from '@/src/theme/tokens'
-
 const MIX_THUMB = 52
 const SEARCH_DEBOUNCE_MS = 300
 const LIST_SCROLL = { disabled: true } as const
 
-const typeLabel = (type: string): string => {
-  if (type === 'Audio') return 'Song'
-  if (type === 'MusicAlbum') return 'Album'
-  if (type === 'MusicArtist') return 'Artist'
-  if (type === 'Playlist') return 'Playlist'
+const typeLabel = (type: string, label: TFunction): string => {
+  if (type === 'Audio') return label('track.song')
+  if (type === 'MusicAlbum') return label('track.album')
+  if (type === 'MusicArtist') return label('track.artist')
+  if (type === 'Playlist') return label('track.playlist')
   return type
 }
 
@@ -203,7 +205,7 @@ const GenreTile = memo(function GenreTile({
         style={styles.genreScrim}
       />
       <View pointerEvents="none" style={[styles.genreLabelWrap, { width: width - height * 0.35 }]}>
-        <Text style={styles.genreLabel} numberOfLines={2} allowFontScaling={false}>
+        <Text style={styles.genreLabel} numberOfLines={2}>
           {tile.label}
         </Text>
       </View>
@@ -219,35 +221,40 @@ const RecentRow = ({
   readonly entry: string
   readonly onOpen: (term: string) => void
   readonly onRemove?: (term: string) => void
-}) => (
-  <View style={styles.recentRow}>
-    <PressableScale
-      accessibilityRole="button"
-      accessibilityLabel={entry}
-      onPress={() => onOpen(entry)}
-      style={styles.recentHit}
-      scaleTo={motion.scale.button}
-    >
-      <Icon name="clock" tintColor={colors.textSecondary} size={18} />
-      <Text style={styles.recentTitle} numberOfLines={1}>
-        {entry}
-      </Text>
-    </PressableScale>
-    {onRemove ? (
+}) => {
+  const { t } = useTranslation()
+  return (
+    <View style={styles.recentRow}>
       <PressableScale
         accessibilityRole="button"
-        accessibilityLabel={`Remove ${entry}`}
-        hitSlop={8}
-        onPress={() => onRemove(entry)}
-        style={styles.recentRemove}
+        accessibilityLabel={entry}
+        onPress={() => onOpen(entry)}
+        style={styles.recentHit}
+        scaleTo={motion.scale.button}
       >
-        <Icon name="xmark" tintColor={colors.textSecondary} size={16} />
+        <Icon name="clock" tintColor={colors.textSecondary} size={18} />
+        <Text style={styles.recentTitle} numberOfLines={1}>
+          {entry}
+        </Text>
       </PressableScale>
-    ) : null}
-  </View>
-)
+      {onRemove ? (
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={t('search.removeRecent', { entry })}
+          hitSlop={8}
+          onPress={() => onRemove(entry)}
+          style={styles.recentRemove}
+        >
+          <Icon name="xmark" tintColor={colors.textSecondary} size={16} />
+        </PressableScale>
+      ) : null}
+    </View>
+  )
+}
 
 export default function SearchScreen() {
+  const { t } = useTranslation()
+  const mixCopy = useMemo(() => homeMixCopyFromT(t), [t])
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
@@ -429,7 +436,29 @@ export default function SearchScreen() {
   }, [])
 
   const grouped = useMemo(() => groupSearchResults(results), [results])
-  const sections = useMemo(() => searchSections(grouped, filter), [grouped, filter])
+  const sectionTitles = useMemo(
+    () => ({
+      songs: t('search.sectionSongs'),
+      albums: t('search.sectionAlbums'),
+      artists: t('search.sectionArtists'),
+      playlists: t('search.sectionPlaylists'),
+    }),
+    [t],
+  )
+  const filterLabel = useCallback(
+    (value: SearchFilter) => {
+      if (value === 'all') return t('library.filterAll')
+      if (value === 'songs') return t('search.sectionSongs')
+      if (value === 'albums') return t('search.sectionAlbums')
+      if (value === 'artists') return t('search.sectionArtists')
+      return t('search.sectionPlaylists')
+    },
+    [t],
+  )
+  const sections = useMemo(
+    () => searchSections(grouped, filter, sectionTitles),
+    [filter, grouped, sectionTitles],
+  )
   const searchRows = useMemo(
     () => flattenSearchSections(sections, filter === 'all'),
     [filter, sections],
@@ -486,24 +515,25 @@ export default function SearchScreen() {
     const rows: BrowseRow[] = []
     const pairs = pairItems(genreTiles)
     if (pairs.length > 0) {
-      rows.push({ kind: 'heading', id: 'browse', title: 'Browse' })
+      rows.push({ kind: 'heading', id: 'browse', title: t('search.browse') })
       for (const [left, right] of pairs) {
         rows.push({ kind: 'genrePair', id: left.id, left, right })
       }
     }
     if (exploreRows.length === 0) return rows
-    rows.push({ kind: 'heading', id: 'playlists', title: 'Playlists for you' })
+    rows.push({ kind: 'heading', id: 'playlists', title: t('search.playlistsForYou') })
     const mixArtOccupied = new Set<string>()
     for (const row of exploreRows) {
       if (row.kind === 'mix') {
+        const mix = { ...row.mix, ...displayHomeMixCard(row.mix, mixCopy) }
         const covers = uniqueCollageItems(
-          [...uniqueAlbumsFromTracks(row.mix.tracks), ...row.mix.tracks],
+          [...uniqueAlbumsFromTracks(mix.tracks), ...mix.tracks],
           4,
           mixArtOccupied,
         )
         rows.push({
           kind: 'mix',
-          mix: row.mix,
+          mix,
           arts: covers.map(artFor),
         })
       } else {
@@ -515,13 +545,13 @@ export default function SearchScreen() {
       }
     }
     return rows
-  }, [artFor, exploreRows, genreTiles])
+  }, [artFor, exploreRows, genreTiles, mixCopy, t])
 
   const requireSession = useCallback((): boolean => {
     if (context && session) return true
-    Alert.alert('Sign in required', 'Sign in to manage playlists.')
+    Alert.alert(t('search.signInRequired'), t('search.signInManagePlaylists'))
     return false
-  }, [context, session])
+  }, [context, session, t])
 
   const addPending = async (playlistId: string) => {
     if (!context || !session || !pendingTrackId || busy) return
@@ -534,7 +564,7 @@ export default function SearchScreen() {
         [pendingTrackId],
       )
       if (!result.ok) {
-        Alert.alert("Couldn't add to playlist", result.error.message)
+        Alert.alert(t('search.couldNotAddToPlaylist'), result.error.message)
         return
       }
       setPickerOpen(false)
@@ -576,7 +606,7 @@ export default function SearchScreen() {
 
   const createWithPending = async (name: string) => {
     if (!pendingTrackId) return
-    await createAndOpenPlaylist(name, [pendingTrackId], "Couldn't create playlist", () => {
+    await createAndOpenPlaylist(name, [pendingTrackId], t('search.couldNotCreatePlaylist'), () => {
       setCreateOpen(false)
       setCreateFromPicker(false)
       setPendingTrackId(null)
@@ -587,10 +617,10 @@ export default function SearchScreen() {
     if (!saveMix) return
     const ids = saveMix.tracks.map((track) => track.id).filter((id) => id.length > 0)
     if (ids.length === 0) {
-      Alert.alert("Couldn't save mix", 'This mix has no tracks.')
+      Alert.alert(t('search.couldNotSaveMix'), t('search.mixHasNoTracks'))
       return
     }
-    await createAndOpenPlaylist(name, ids, "Couldn't save mix", () => setSaveMix(null))
+    await createAndOpenPlaylist(name, ids, t('search.couldNotSaveMix'), () => setSaveMix(null))
   }
 
   const cancelCreate = () => {
@@ -651,7 +681,7 @@ export default function SearchScreen() {
           isFavorite: Boolean(item.isFavorite),
           onToggleFavorite: () => {
             if (!context || !session) {
-              Alert.alert('Sign in required', 'Sign in to manage favorites.')
+              Alert.alert(t('search.signInRequired'), t('search.signInManagePlaylists'))
               return
             }
             void toggleFavoriteItem({
@@ -668,10 +698,10 @@ export default function SearchScreen() {
               },
             })
           },
-        }),
+        }, t),
       )
     },
-    [context, enqueueTracks, playNextTracks, requireSession, session],
+    [context, enqueueTracks, playNextTracks, requireSession, session, t],
   )
 
   const openMix = useCallback(
@@ -696,15 +726,15 @@ export default function SearchScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle} accessibilityRole="header">
-            Recent searches
+            {t('search.recentSearches')}
           </Text>
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel="Clear recents"
+            accessibilityLabel={t('search.clearRecents')}
             onPress={() => persistRecents([])}
             hitSlop={8}
           >
-            <Text style={styles.clear}>Clear</Text>
+            <Text style={styles.clear}>{t('search.clearRecents')}</Text>
           </PressableScale>
         </View>
         {recents.map((entry) => (
@@ -735,24 +765,24 @@ export default function SearchScreen() {
           <Text style={styles.searchStatusText}>{error}</Text>
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel="Retry search"
+            accessibilityLabel={t('search.retrySearch')}
             onPress={() => setRetryNonce((n) => n + 1)}
             hitSlop={8}
           >
-            <Text style={styles.retry}>Retry</Text>
+            <Text style={styles.retry}>{t('search.retrySearch')}</Text>
           </PressableScale>
         </View>
       ) : null}
       {isFetching && resultCount === 0 && !error ? (
         <View style={styles.searchStatus}>
           <ActivityIndicator color={colors.accent} />
-          <Text style={styles.searchStatusText}>Searching</Text>
+          <Text style={styles.searchStatusText}>{t('search.searching')}</Text>
         </View>
       ) : null}
       {showEmptyResults ? (
         <View style={styles.emptyCopy} accessibilityRole="summary">
-          <Text style={styles.emptyTitle}>No Results</Text>
-          <Text style={styles.emptyMessage}>{`Nothing matched "${settledTerm}".`}</Text>
+          <Text style={styles.emptyTitle}>{t('search.noResults')}</Text>
+          <Text style={styles.emptyMessage}>{t('search.nothingMatched', { term: settledTerm })}</Text>
         </View>
       ) : null}
     </>
@@ -785,7 +815,7 @@ export default function SearchScreen() {
           <PressableScale
             accessibilityRole="button"
             accessibilityLabel={`${mix.title}. ${mix.subtitle}`}
-            accessibilityHint="Long press to save to library"
+            accessibilityHint={t('search.longPressHint')}
             scaleTo={motion.scale.button}
             onPress={() => openMix(mix)}
             onLongPress={() => setSaveMix(mix)}
@@ -820,14 +850,14 @@ export default function SearchScreen() {
             </Text>
             <Text style={styles.flatSubtitle} numberOfLines={1}>
               {count !== undefined
-                ? `${count} track${count === 1 ? '' : 's'}`
-                : 'Playlist'}
+                ? t('playlistModal.playlistCount', { count })
+                : t('track.playlist')}
             </Text>
           </View>
         </PressableScale>
       )
     },
-    [genreH, genreW, openGenre, openMix, router],
+    [genreH, genreW, openGenre, openMix, router, t],
   )
 
   const renderSearchItem = useCallback(
@@ -843,16 +873,16 @@ export default function SearchScreen() {
         <TrackRow
           item={item.item}
           artworkUrl={artFor(item.item)}
-          accessoryLabel={typeLabel(item.item.type)}
+          accessoryLabel={typeLabel(item.item.type, t)}
           onPress={() => openItem(item.item)}
           onLongPress={item.item.type === 'Audio' ? () => onAudioLongPress(item.item) : undefined}
           accessibilityHint={
-            item.item.type === 'Audio' ? 'Long press for playlist actions' : undefined
+            item.item.type === 'Audio' ? t('search.longPressHint') : undefined
           }
         />
       )
     },
-    [artFor, onAudioLongPress, openItem],
+    [artFor, onAudioLongPress, openItem, t],
   )
 
   const browseKey = useCallback((item: BrowseRow) => {
@@ -922,7 +952,7 @@ export default function SearchScreen() {
   return (
     <Screen padBottom={false} padHorizontal={false}>
       <View style={styles.chrome}>
-        <Title>Search</Title>
+        <Title>{t('search.title')}</Title>
         <View style={styles.searchRow}>
           <Field
             ref={fieldRef}
@@ -933,7 +963,7 @@ export default function SearchScreen() {
               trimmed.length > 0 ? (
                 <PressableScale
                   accessibilityRole="button"
-                  accessibilityLabel="Clear search"
+                  accessibilityLabel={t('search.clearSearch')}
                   hitSlop={8}
                   onPress={() => setTerm('')}
                   style={styles.searchClear}
@@ -942,7 +972,7 @@ export default function SearchScreen() {
                 </PressableScale>
               ) : null
             }
-            accessibilityLabel="Search"
+            accessibilityLabel={t('search.title')}
             value={term}
             onChangeText={setTerm}
             onFocus={() => setFocused(true)}
@@ -950,7 +980,7 @@ export default function SearchScreen() {
             onSubmitEditing={() => {
               if (trimmed) rememberTerm(trimmed)
             }}
-            placeholder="Artists, songs, or playlists"
+            placeholder={t('search.placeholder')}
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
@@ -961,12 +991,12 @@ export default function SearchScreen() {
           {focused || trimmed.length > 0 ? (
             <PressableScale
               accessibilityRole="button"
-              accessibilityLabel="Cancel"
+              accessibilityLabel={t('search.cancel')}
               onPress={cancelSearch}
               hitSlop={8}
               style={styles.cancelPress}
             >
-              <Text style={styles.cancel}>Cancel</Text>
+              <Text style={styles.cancel}>{t('search.cancel')}</Text>
             </PressableScale>
           ) : null}
         </View>
@@ -976,7 +1006,12 @@ export default function SearchScreen() {
           </View>
         ) : null}
         {showSegments ? (
-          <SegmentControl values={SEARCH_FILTERS} value={filter} onChange={setFilter} />
+          <SegmentControl
+            values={SEARCH_FILTERS}
+            value={filter}
+            onChange={setFilter}
+            labelFor={filterLabel}
+          />
         ) : null}
       </View>
       <View style={styles.body}>
@@ -1003,7 +1038,7 @@ export default function SearchScreen() {
       />
       <PlaylistNameModal
         visible={createOpen}
-        title="New playlist"
+        title={t('playlistModal.newPlaylist')}
         busy={busy}
         onCancel={cancelCreate}
         onSubmit={(name) => {
@@ -1012,8 +1047,10 @@ export default function SearchScreen() {
       />
       <PlaylistNameModal
         visible={saveMix !== null}
-        title="Save to Library"
-        initialName={saveMix?.title ?? ''}
+        title={t('search.saveToLibrary')}
+        initialName={
+          saveMix ? displayHomeMixCard(saveMix, mixCopy).title : ''
+        }
         busy={busy}
         onCancel={() => {
           if (busy) return

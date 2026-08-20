@@ -1,8 +1,17 @@
+export type HomeGreetingPeriod = 'morning' | 'afternoon' | 'evening'
+
 /** Morning 5-11, afternoon 12-16, else evening. */
-export const homeGreeting = (now: Date): string => {
+export const homeGreetingPeriod = (now: Date): HomeGreetingPeriod => {
   const hour = now.getHours()
-  if (hour >= 5 && hour < 12) return 'Good morning'
-  if (hour >= 12 && hour < 17) return 'Good afternoon'
+  if (hour >= 5 && hour < 12) return 'morning'
+  if (hour >= 12 && hour < 17) return 'afternoon'
+  return 'evening'
+}
+
+export const homeGreeting = (now: Date): string => {
+  const period = homeGreetingPeriod(now)
+  if (period === 'morning') return 'Good morning'
+  if (period === 'afternoon') return 'Good afternoon'
   return 'Good evening'
 }
 

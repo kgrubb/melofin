@@ -10,6 +10,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated'
+import { useTranslation } from 'react-i18next'
 import { scrubPositionFromX, scrubRatio, isPlaybackJump } from '@/src/theme/motionMath'
 import { useMotionEnabled } from '@/src/theme/motion'
 import { colors, motion, radii, spacing } from '@/src/theme/tokens'
@@ -156,6 +157,7 @@ export const ScrubBar = ({
   readonly isPlaying: boolean
   readonly onSeek: (positionMs: number) => void
 }) => {
+  const { t } = useTranslation()
   const enabled = useMotionEnabled()
   const [scrubbing, setScrubbing] = useState(false)
   const [labelMs, setLabelMs] = useState(positionMs)
@@ -290,8 +292,8 @@ export const ScrubBar = ({
         <Animated.View
           accessible
           accessibilityRole="adjustable"
-          accessibilityLabel="Seek"
-          accessibilityHint="Adjusts playback position"
+          accessibilityLabel={t('player.seek')}
+          accessibilityHint={t('player.seekHint')}
           accessibilityValue={{
             min: 0,
             max: Math.max(durationMs, 1),
@@ -299,8 +301,8 @@ export const ScrubBar = ({
             text: formatMs(shownMs),
           }}
           accessibilityActions={[
-            { name: 'increment', label: 'Skip forward' },
-            { name: 'decrement', label: 'Skip back' },
+            { name: 'increment', label: t('player.skipForward') },
+            { name: 'decrement', label: t('player.skipBack') },
           ]}
           onAccessibilityAction={(event) => {
             if (durationMs <= 0) return
