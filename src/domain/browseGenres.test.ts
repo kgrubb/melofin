@@ -112,6 +112,25 @@ describe('collectBrowseGenres', () => {
     )
     expect(rows.map((row) => row.genre.id)).toEqual(['keep', 'also'])
   })
+
+  it('reports progress as genres qualify', async () => {
+    const snapshots: string[][] = []
+    await collectBrowseGenres(
+      [genre('a'), genre('b'), genre('c')],
+      async (item) => {
+        await new Promise((resolve) => setTimeout(resolve, 1))
+        return browseEntry(item.id)
+      },
+      {
+        target: 2,
+        concurrency: 1,
+        onProgress: (entries) => {
+          snapshots.push(entries.map((row) => row.genre.id))
+        },
+      },
+    )
+    expect(snapshots).toEqual([['a'], ['a', 'b']])
+  })
 })
 
 describe('browseGenreAlbumCount', () => {

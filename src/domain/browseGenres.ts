@@ -4,7 +4,9 @@ import type { LibraryItem } from '@/src/domain/libraryItem'
 import { uniqueCollageItems } from '@/src/domain/collageArt'
 
 export const BROWSE_GENRES_DISPLAY_LIMIT = 10
-export const BROWSE_GENRES_PROBE_LIMIT = 24
+/** Qualifying genres persisted for stable re-sampling across sessions. */
+export const BROWSE_GENRES_CACHE_POOL_SIZE = 30
+export const BROWSE_GENRES_PROBE_LIMIT = 48
 export const BROWSE_GENRE_MIN_ALBUMS = 3
 export const BROWSE_GENRE_ART_SAMPLES = 4
 export const BROWSE_GENRE_PROBE_ALBUMS = 8
@@ -74,9 +76,10 @@ export const collectBrowseGenres = async (
     readonly target?: number
     readonly concurrency?: number
     readonly shouldContinue?: () => boolean
+    readonly onProgress?: (entries: readonly BrowseGenre[]) => void
   },
 ): Promise<readonly BrowseGenre[]> => {
-  const target = options?.target ?? BROWSE_GENRES_DISPLAY_LIMIT
+  const target = options?.target ?? BROWSE_GENRES_CACHE_POOL_SIZE
   if (target <= 0 || candidates.length === 0) return []
   const found: BrowseGenre[] = []
   await mapPool(
@@ -84,7 +87,10 @@ export const collectBrowseGenres = async (
     options?.concurrency ?? 6,
     async (genre) => {
       const entry = await probe(genre)
-      if (entry) found.push(entry)
+      if (entry) {
+        found.push(entry)
+        options?.onProgress?.([...found])
+      }
       return entry
     },
     {

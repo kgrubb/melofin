@@ -360,6 +360,10 @@ export default function SearchScreen() {
         session.userId,
         BROWSE_GENRES_PROBE_LIMIT,
         controller.signal,
+        (entries) => {
+          if (controller.signal.aborted || browseAccountRef.current !== account) return
+          setBrowseGenres(entries)
+        },
       )
       if (
         controller.signal.aborted ||

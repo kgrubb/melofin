@@ -14,7 +14,8 @@ import {
   BROWSE_GENRE_ART_SAMPLES,
   BROWSE_GENRE_MIN_ALBUMS,
   BROWSE_GENRE_PROBE_ALBUMS,
-  BROWSE_GENRES_DISPLAY_LIMIT,
+  BROWSE_GENRES_CACHE_POOL_SIZE,
+  BROWSE_GENRES_PROBE_LIMIT,
   browseGenreAlbumCount,
   collectBrowseGenres,
   type BrowseGenre,
@@ -703,8 +704,9 @@ export const probeBrowseGenre = async (
 export const fetchBrowseGenres = async (
   context: JellyfinContext,
   userId: string,
-  limit = 28,
+  limit = BROWSE_GENRES_PROBE_LIMIT,
   signal?: AbortSignal,
+  onProgress?: (entries: readonly BrowseGenre[]) => void,
 ): Promise<Result<readonly BrowseGenre[]>> => {
   const preview = await fetchMusicGenresPreview(context, userId, limit, {
     sortBy: ['Random'],
@@ -717,8 +719,9 @@ export const fetchBrowseGenres = async (
         ? Promise.resolve(null)
         : probeBrowseGenre(context, userId, genre, signal),
     {
-      target: BROWSE_GENRES_DISPLAY_LIMIT,
+      target: BROWSE_GENRES_CACHE_POOL_SIZE,
       shouldContinue: () => !signal?.aborted,
+      onProgress,
     },
   )
   if (signal?.aborted) return err(appError('cancelled', 'Request cancelled'))
