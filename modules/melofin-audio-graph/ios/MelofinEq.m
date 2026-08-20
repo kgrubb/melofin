@@ -268,15 +268,15 @@ static AVAssetTrack *MelofinEqAudioTrack(AVPlayerItem *item) {
   AVMutableAudioMix *mix = [AVMutableAudioMix audioMix];
   if (!params || !mix) return;
 
-  MTAudioProcessingTapCallbacks callbacks = {
-    .version = kMTAudioProcessingTapCallbacksVersion_0,
-    .clientInfo = NULL,
-    .init = MelofinEqTapInit,
-    .finalize = MelofinEqTapFinalize,
-    .prepare = MelofinEqTapPrepare,
-    .unprepare = MelofinEqTapUnprepare,
-    .process = MelofinEqTapProcess,
-  };
+  MTAudioProcessingTapCallbacks callbacks;
+  memset(&callbacks, 0, sizeof(callbacks));
+  callbacks.version = kMTAudioProcessingTapCallbacksVersion_0;
+  callbacks.clientInfo = NULL;
+  callbacks.init = MelofinEqTapInit;
+  callbacks.finalize = MelofinEqTapFinalize;
+  callbacks.prepare = MelofinEqTapPrepare;
+  callbacks.unprepare = MelofinEqTapUnprepare;
+  callbacks.process = MelofinEqTapProcess;
   MTAudioProcessingTapRef tap = NULL;
   if (MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, &tap) != noErr || !tap) {
     return;
