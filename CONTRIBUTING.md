@@ -97,7 +97,7 @@ Squash-merges to `main` run [release-please](https://github.com/googleapis/relea
 
 The release PR is opened with `GITHUB_TOKEN`, so GitHub will not run CI on it. Quality still runs on the merge to `main` before the tag is created. Do not edit the changelog or version files on that PR.
 
-Paste [store/review-notes.txt](./store/review-notes.txt) into App Store Connect → App Review Information (plus a demo Jellyfin the reviewer can reach). Leave CarPlay off until Apple grants the Audio entitlement.
+Paste [store/review-notes.txt](./store/review-notes.txt) into App Store Connect → App Review Information (plus a demo Jellyfin the reviewer can reach).
 
 ## Code of conduct
 

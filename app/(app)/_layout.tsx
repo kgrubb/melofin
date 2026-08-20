@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { Stack, usePathname } from 'expo-router'
 import { View, StyleSheet } from 'react-native'
-import { CARPLAY_ENABLED } from '@/src/features'
 import { totalSizeBytes } from '@/src/domain/offline'
 import { startPlaybackEngine } from '@/src/player/playlistEngine'
 import { startCastRouter, stopCastRouter } from '@/src/cast/router'
@@ -17,9 +16,6 @@ import { useLibraryStore } from '@/src/store/library'
 import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
-import type { LibraryItem } from '@/src/services/jellyfin/mappers'
-
-const EMPTY_LIBRARY_ITEMS: readonly LibraryItem[] = []
 
 export default function AppLayout() {
   const pathname = usePathname()
@@ -29,15 +25,9 @@ export default function AppLayout() {
     (s) =>
       `${Object.keys(s.offlineIndex.entries).length}:${totalSizeBytes(s.offlineIndex)}`,
   )
-  const artists = useLibraryStore((s) =>
-    CARPLAY_ENABLED ? s.artists : EMPTY_LIBRARY_ITEMS,
-  )
-  const albums = useLibraryStore((s) =>
-    CARPLAY_ENABLED ? s.albums : EMPTY_LIBRARY_ITEMS,
-  )
-  const playlists = useLibraryStore((s) =>
-    CARPLAY_ENABLED ? s.playlists : EMPTY_LIBRARY_ITEMS,
-  )
+  const artists = useLibraryStore((s) => s.artists)
+  const albums = useLibraryStore((s) => s.albums)
+  const playlists = useLibraryStore((s) => s.playlists)
   const maybeSyncOnOpen = useLibraryStore((s) => s.maybeSyncOnOpen)
   const nowPlayingOpen = usePlayerStore((s) => s.nowPlayingOpen)
   const sheetOpen =
@@ -63,7 +53,7 @@ export default function AppLayout() {
   }, [context, session, maybeSyncOnOpen])
 
   useEffect(() => {
-    if (!CARPLAY_ENABLED || !context || !session) return
+    if (!context || !session) return
     const offlineIndex = useSettingsStore.getState().offlineIndex
     registerCarPlay(
       playlists,
