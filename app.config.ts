@@ -1,9 +1,5 @@
 import type { ExpoConfig, ConfigContext } from 'expo/config'
 
-// CommonJS. Expo evaluates app.config without TS path resolution.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { CARPLAY_ENABLED } = require('./features') as typeof import('./features')
-
 const isProductionBuild = process.env.EAS_BUILD_PROFILE === 'production'
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
@@ -65,11 +61,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         },
       ],
     },
-    entitlements: CARPLAY_ENABLED
-      ? {
-          'com.apple.developer.carplay-audio': true,
-        }
-      : {},
+    entitlements: {
+      'com.apple.developer.carplay-audio': true,
+    },
   },
   android: {
     package: 'app.melofin.player',
@@ -117,13 +111,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         },
       },
     ],
-    ...(CARPLAY_ENABLED ? ['./plugins/withCarPlayAudio.js'] : []),
+    './plugins/withCarPlayAudio.js',
   ],
   experiments: {
     typedRoutes: true,
   },
   extra: {
-    carPlayEnabled: CARPLAY_ENABLED,
     privacyPolicyUrl: 'https://github.com/kgrubb/melofin/blob/main/PRIVACY.md',
     sourceUrl: 'https://github.com/kgrubb/melofin',
     eas: {

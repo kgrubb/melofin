@@ -97,11 +97,7 @@ Merges to `main` open a `[release vX.Y.Z]` PR from conventional commit titles (`
 
 ## CarPlay
 
-Ready behind a feature flag. Leave it off until Apple grants the entitlement or signing fails.
-
-1. Enable **CarPlay Audio** (`com.apple.developer.carplay-audio`) on App ID `app.melofin.player`
-2. Set `"CARPLAY_ENABLED": true` in `features.json`
-3. `npx expo prebuild --platform ios` then rebuild
+CarPlay Audio (`com.apple.developer.carplay-audio`) is always on for iOS builds. The entitlement must stay enabled on App ID `app.melofin.player`. After native config changes, run `npx expo prebuild --platform ios` and rebuild.
 
 ## Development
 
