@@ -57,6 +57,7 @@
     "i18next": "^26.4.0",
     "i18next-icu": "^2.4.4",
     "intl-messageformat": "^11.2.14",
+    "intl-pluralrules": "^2.0.1",
     "melofin-audio-graph": "file:modules/melofin-audio-graph",
     "react": "19.1.0",
     "react-dom": "19.1.0",

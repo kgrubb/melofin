@@ -1,3 +1,4 @@
+import 'intl-pluralrules'
 import { describe, expect, it } from 'vitest'
 import i18n from 'i18next'
 import ICU from 'i18next-icu'
@@ -25,6 +26,8 @@ describe('i18n ICU interpolation', () => {
   it('interpolates ICU plurals', () => {
     expect(t('player.minutes', { count: 1 })).toBe('1 minute')
     expect(t('player.minutes', { count: 5 })).toBe('5 minutes')
+    expect(t('library.playlistCount', { count: 1 })).toBe('1 track')
+    expect(t('library.playlistCount', { count: 12 })).toBe('12 tracks')
     expect(t('queue.clearUpcomingMessage', { count: 1 })).toBe(
       'Remove 1 track after the current song.',
     )
