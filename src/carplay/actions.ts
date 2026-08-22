@@ -16,12 +16,14 @@ import {
   fetchAlbumsByArtist,
   fetchChildren,
   fetchPlaylistTracks,
+  fetchRandomSongs,
   fetchSongsForArtist,
   toQueueTrack,
   type LibraryItem,
 } from '@/src/services/jellyfin/library'
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
 import { CarPlay } from 'react-native-carplay'
+import { pushSearch } from '@/src/carplay/search'
 import { useLibraryStore } from '@/src/store/library'
 import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
@@ -71,6 +73,34 @@ const pushArtistDetail = async (
   )
 }
 
+const playSearchItem = async (item: LibraryItem) => {
+  const session = useSessionStore.getState()
+  if (!session.context || !session.session) return
+  const { context } = session
+  const userId = session.session.userId
+  const playQueue = usePlayerStore.getState().playQueue
+
+  if (item.type === 'MusicArtist') {
+    await pushArtistDetail(context, userId, item.id)
+    return
+  }
+
+  if (item.type === 'Audio') {
+    playQueue([toQueueTrack(item, artworkUrl(context, item.imageItemId ?? item.id, item.imageTag, 'hero'))], 0)
+    return
+  }
+
+  const result =
+    item.type === 'Playlist'
+      ? await fetchPlaylistTracks(context, userId, item.id)
+      : await fetchChildren(context, userId, item.id)
+  if (!result.ok || result.value.length === 0) {
+    logger.warn('CarPlay search play empty', { id: item.id, type: item.type })
+    return
+  }
+  playQueue(toQueue(context, result.value), 0)
+}
+
 export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
   const action = parseCarPlayItemId(itemId)
   if (!action) return
@@ -84,6 +114,11 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
         : tracks.findIndex((track) => track.id === action.id)
     if (start < 0) return
     usePlayerStore.getState().playQueue(tracks, start)
+    return
+  }
+
+  if (action.kind === 'search') {
+    pushSearch(playSearchItem)
     return
   }
 
@@ -134,6 +169,16 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
   const { context } = session
   const userId = session.session.userId
   const playQueue = usePlayerStore.getState().playQueue
+
+  if (action.kind === 'shuffleAll') {
+    const songs = await fetchRandomSongs(context, userId, 100)
+    if (!songs.ok || songs.value.length === 0) {
+      logger.warn('CarPlay shuffle empty')
+      return
+    }
+    playQueue(toQueue(context, songs.value), 0, null, true)
+    return
+  }
 
   if (action.kind === 'artist') {
     await pushArtistDetail(context, userId, action.id)

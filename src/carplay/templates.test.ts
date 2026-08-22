@@ -32,6 +32,8 @@ describe('carplay templates', () => {
       offlineEntry('incomplete', false),
     ])
     expect(root.map((item) => item.id)).toEqual([
+      'action:shuffleAll',
+      'action:search',
       'browse:playlists',
       'browse:albums',
       'browse:artists',
@@ -45,6 +47,8 @@ describe('carplay templates', () => {
       offlineEntry('incomplete', false),
     ])
     expect(root.map((item) => item.id)).toEqual([
+      'action:shuffleAll',
+      'action:search',
       'browse:playlists',
       'browse:albums',
       'browse:artists',
@@ -113,6 +117,8 @@ describe('carplay templates', () => {
       offset: 40,
     })
     expect(parseCarPlayItemId('offline:all')).toEqual({ kind: 'offlineAll' })
+    expect(parseCarPlayItemId('action:shuffleAll')).toEqual({ kind: 'shuffleAll' })
+    expect(parseCarPlayItemId('action:search')).toEqual({ kind: 'search' })
     expect(parseCarPlayItemId('nope')).toBeNull()
     expect(parseCarPlayItemId('artist:')).toBeNull()
     expect(parseCarPlayItemId('playlist:')).toBeNull()

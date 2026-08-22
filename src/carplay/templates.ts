@@ -14,6 +14,8 @@ export type CarPlayListItem = {
 export type CarPlayBrowseSection = 'playlists' | 'albums' | 'artists' | 'offline'
 
 export type CarPlayItemAction =
+  | { readonly kind: 'shuffleAll' }
+  | { readonly kind: 'search' }
   | { readonly kind: 'browse'; section: CarPlayBrowseSection }
   | { readonly kind: 'playlist'; readonly id: string }
   | { readonly kind: 'artist'; readonly id: string }
@@ -41,6 +43,8 @@ const moreOffset = (raw: string, prefix: string) => {
 }
 
 export const parseCarPlayItemId = (raw: string): CarPlayItemAction | null => {
+  if (raw === 'action:shuffleAll') return { kind: 'shuffleAll' }
+  if (raw === 'action:search') return { kind: 'search' }
   if (raw === 'offline:all') return { kind: 'offlineAll' }
   if (raw.startsWith('browse:')) {
     const section = raw.slice('browse:'.length) as CarPlayBrowseSection
@@ -119,6 +123,12 @@ export const buildLibraryRootItems = (
 ): readonly CarPlayListItem[] => {
   const downloads = offline.filter((entry) => entry.complete).length
   return [
+    { id: 'action:shuffleAll', text: 'Shuffle All' },
+    {
+      id: 'action:search',
+      text: 'Search',
+      showsDisclosureIndicator: true,
+    },
     browseRow('playlists', 'Playlists'),
     browseRow('albums', 'Albums'),
     browseRow('artists', 'Artists'),
