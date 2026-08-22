@@ -1,3 +1,4 @@
+import 'intl-pluralrules'
 import { describe, expect, it } from 'vitest'
 import i18n from 'i18next'
 import ICU from 'i18next-icu'

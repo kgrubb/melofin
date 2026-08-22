@@ -187,10 +187,11 @@ export const toQueueTrack = (
   normalizationGain: item.normalizationGain,
 })
 
-type ArtworkSize = 'thumb' | 'card' | 'hero'
+type ArtworkSize = 'tile' | 'thumb' | 'card' | 'hero'
 
-/** Pixel caps. Thumb must cover @3x browse tiles (~170pt). Hero exceeds Now Playing. */
+/** Pixel caps. Tile fits Home rails (~168pt @3x). Thumb covers browse tiles. Hero exceeds Now Playing. */
 export const ARTWORK_MAX_PX: Record<ArtworkSize, number> = {
+  tile: 384,
   thumb: 720,
   card: 960,
   hero: 2048,

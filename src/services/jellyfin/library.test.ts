@@ -315,6 +315,7 @@ describe('library mappers', () => {
     expect(artworkUrl(context, '1', 'tag')).toContain('quality=96')
     expect(artworkUrl(context, '1', 'tag')).toContain('tag=tag')
     expect(artworkUrl(context, '1', 'tag', 'thumb')).toContain('maxHeight=720')
+    expect(artworkUrl(context, '1', 'tag', 'tile')).toContain('maxHeight=384')
     expect(artworkUrl(context, '1', 'tag', 'card')).toContain('maxHeight=960')
     expect(artworkUrl(context, '1')).toContain('Images/Primary')
     expect(artworkUrl(context, '1')).not.toContain('tag=')

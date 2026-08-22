@@ -1,3 +1,5 @@
+// Hermes does not implement Intl.PluralRules; ICU plurals need this polyfill.
+import 'intl-pluralrules'
 import i18n from 'i18next'
 import ICU from 'i18next-icu'
 import { initReactI18next } from 'react-i18next'

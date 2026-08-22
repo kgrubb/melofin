@@ -12,10 +12,21 @@ const carSceneDelegate = fs.readFileSync(
   path.join(__dirname, 'carplay/CarSceneDelegate.swift'),
   'utf8',
 )
+const phoneSceneDelegate = fs.readFileSync(
+  path.join(__dirname, 'carplay/PhoneSceneDelegate.swift'),
+  'utf8',
+)
 
 const sceneManifest = {
-  UIApplicationSupportsMultipleScenes: true,
+  UIApplicationSupportsMultipleScenes: false,
   UISceneConfigurations: {
+    UIWindowSceneSessionRoleApplication: [
+      {
+        UISceneClassName: 'UIWindowScene',
+        UISceneConfigurationName: 'Default',
+        UISceneDelegateClassName: '$(PRODUCT_MODULE_NAME).PhoneSceneDelegate',
+      },
+    ],
     CPTemplateApplicationSceneSessionRoleApplication: [
       {
         UISceneClassName: 'CPTemplateApplicationScene',
@@ -27,7 +38,7 @@ const sceneManifest = {
 }
 
 const sceneConfigMethod = `
-  public func application(
+  @objc public func application(
     _ application: UIApplication,
     configurationForConnecting connectingSceneSession: UISceneSession,
     options: UIScene.ConnectionOptions
@@ -38,6 +49,8 @@ const sceneConfigMethod = `
     )
     if connectingSceneSession.role == .carTemplateApplication {
       configuration.delegateClass = CarSceneDelegate.self
+    } else {
+      configuration.delegateClass = PhoneSceneDelegate.self
     }
     return configuration
   }
@@ -61,6 +74,12 @@ const withCarPlayAudio = (config) => {
   next = withBuildSourceFile(next, {
     filePath: 'CarSceneDelegate.swift',
     contents: carSceneDelegate,
+    overwrite: true,
+  })
+
+  next = withBuildSourceFile(next, {
+    filePath: 'PhoneSceneDelegate.swift',
+    contents: phoneSceneDelegate,
     overwrite: true,
   })
 

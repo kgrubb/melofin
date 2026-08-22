@@ -1,6 +1,7 @@
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppState,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +10,7 @@ import {
 } from 'react-native'
 import { Image } from 'expo-image'
 import { LinearGradient } from 'expo-linear-gradient'
+import { FlashList } from '@shopify/flash-list'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated from 'react-native-reanimated'
@@ -139,7 +141,77 @@ const HomeRail = memo(function HomeRail({
     circle ? 104 : 132,
     Math.floor((layoutWidth - pad * 2 - gap * Math.floor(visible)) / visible),
   )
-  const uniqueItems = dedupeById(items)
+  const uniqueItems = useMemo(() => dedupeById(items), [items])
+  const captionH = variant === 'genre' ? 0 : circle ? 44 : 40
+  const railHeight = card + captionH
+
+  const renderItem = useCallback(
+    ({ item: entry }: { item: LibraryItem }) => {
+      const art = artFor(entry)
+      const subtitleText = albumCardSubtitle(entry, albumCopy)
+      const showSubtitle = variant === 'album' && Boolean(subtitleText)
+
+      if (variant === 'genre') {
+        const genreName = titleCaseGenreLabel(entry.name) || entry.name
+        const arts = (artsFor?.(entry) ?? [art]).slice(0, 1)
+        return (
+          <Pressable
+            onPress={() => onPressItem(entry)}
+            accessibilityRole="button"
+            accessibilityLabel={genreName}
+            style={[styles.card, { width: card, marginRight: gap }]}
+          >
+            <View style={[styles.genreArt, { width: card, height: card }]}>
+              <MixCollage arts={arts} size={card} radius={0} recyclingKey={entry.id} />
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.72)']}
+                locations={[0.42, 1]}
+                style={styles.genreScrim}
+              />
+              <View pointerEvents="none" style={styles.genreLabelWrap}>
+                <Text style={styles.genreLabel} numberOfLines={2}>
+                  {genreName}
+                </Text>
+              </View>
+            </View>
+          </Pressable>
+        )
+      }
+
+      return (
+        <Pressable
+          onPress={() => onPressItem(entry)}
+          accessibilityRole="button"
+          accessibilityLabel={entry.name}
+          style={[styles.card, { width: card, marginRight: gap }]}
+        >
+          <Artwork
+            uri={art}
+            recyclingKey={entry.id}
+            style={[
+              styles.art,
+              { width: card, height: card },
+              circle ? styles.artCircle : null,
+            ]}
+          />
+          <Text
+            style={[styles.cardTitle, circle ? styles.cardTitleCenter : null]}
+            numberOfLines={circle ? 2 : 1}
+          >
+            {entry.name}
+          </Text>
+          {showSubtitle ? (
+            <Text style={styles.cardSubtitle} numberOfLines={1}>
+              {subtitleText}
+            </Text>
+          ) : null}
+        </Pressable>
+      )
+    },
+    [albumCopy, artFor, artsFor, card, circle, gap, onPressItem, variant],
+  )
+
   if (uniqueItems.length === 0) return null
 
   return (
@@ -147,79 +219,16 @@ const HomeRail = memo(function HomeRail({
       <Text style={styles.sectionTitle} accessibilityRole="header">
         {title}
       </Text>
-      <ScrollView
+      <FlashList
         horizontal
+        data={uniqueItems}
+        keyExtractor={(entry) => entry.id}
+        renderItem={renderItem}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.rail}
-      >
-        {uniqueItems.map((entry) => {
-          const art = artFor(entry)
-          const subtitleText = albumCardSubtitle(entry, albumCopy)
-          const showSubtitle = variant === 'album' && Boolean(subtitleText)
-
-          if (variant === 'genre') {
-            const genreName = titleCaseGenreLabel(entry.name) || entry.name
-            const arts = artsFor?.(entry) ?? [art]
-            return (
-              <PressableScale
-                key={entry.id}
-                onPress={() => onPressItem(entry)}
-                accessibilityRole="button"
-                accessibilityLabel={genreName}
-                scaleTo={motion.scale.card}
-                style={[styles.card, { width: card }]}
-              >
-                <View style={[styles.genreArt, { width: card, height: card }]}>
-                  <MixCollage arts={arts} size={card} radius={0} recyclingKey={entry.id} />
-                  <LinearGradient
-                    pointerEvents="none"
-                    colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.72)']}
-                    locations={[0.42, 1]}
-                    style={styles.genreScrim}
-                  />
-                  <View pointerEvents="none" style={styles.genreLabelWrap}>
-                    <Text style={styles.genreLabel} numberOfLines={2}>
-                      {genreName}
-                    </Text>
-                  </View>
-                </View>
-              </PressableScale>
-            )
-          }
-
-          return (
-            <PressableScale
-              key={entry.id}
-              onPress={() => onPressItem(entry)}
-              accessibilityRole="button"
-              accessibilityLabel={entry.name}
-              scaleTo={motion.scale.card}
-              style={[styles.card, { width: card }]}
-            >
-              <Artwork
-                uri={art}
-                recyclingKey={entry.id}
-                style={[
-                  styles.art,
-                  { width: card, height: card },
-                  circle ? styles.artCircle : null,
-                ]}
-              />
-              <Text
-                style={[styles.cardTitle, circle ? styles.cardTitleCenter : null]}
-                numberOfLines={circle ? 2 : 1}
-              >
-                {entry.name}
-              </Text>
-              {showSubtitle ? (
-                <Text style={styles.cardSubtitle} numberOfLines={1}>
-                  {subtitleText}
-                </Text>
-              ) : null}
-            </PressableScale>
-          )
-        })}
-      </ScrollView>
+        style={{ height: railHeight }}
+        drawDistance={160}
+      />
     </View>
   )
 })
@@ -856,7 +865,7 @@ export default function HomeScreen() {
             context,
             entry.imageItemId ?? entry.albumId ?? entry.id,
             entry.imageTag,
-            'thumb',
+            'tile',
           )
         : undefined
     },
@@ -1089,6 +1098,7 @@ export default function HomeScreen() {
     <Screen padBottom={false} padHorizontal={false}>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews
         contentContainerStyle={[
           styles.scroll,
           { paddingBottom: scrollUnderChromePad(insets.bottom) },
@@ -1141,7 +1151,7 @@ export default function HomeScreen() {
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.rail}
+                  contentContainerStyle={[styles.rail, styles.mixRail]}
                 >
                   {localizedHomeMixes.map((mix) => {
                     const arts = mixCollageArts[mix.id] ?? []
@@ -1189,7 +1199,7 @@ export default function HomeScreen() {
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.rail}
+                  contentContainerStyle={[styles.rail, styles.mixRail]}
                 >
                   {Array.from({ length: HOME_INSTANT_MIX_TARGET }, (_, index) => (
                     <View
@@ -1379,9 +1389,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   rail: {
-    gap: spacing.md,
     paddingHorizontal: spacing.md,
     alignItems: 'flex-start',
+  },
+  mixRail: {
+    gap: spacing.md,
   },
   card: {
     gap: 8,
