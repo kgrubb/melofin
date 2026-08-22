@@ -54,13 +54,7 @@ export default function AppLayout() {
 
   useEffect(() => {
     if (!context || !session) return
-    const offlineIndex = useSettingsStore.getState().offlineIndex
-    registerCarPlay(
-      playlists,
-      artists,
-      Object.values(offlineIndex.entries),
-      albums,
-    )
+    registerCarPlay()
   }, [context, session, offlineSignature, artists, playlists, albums])
 
   return (

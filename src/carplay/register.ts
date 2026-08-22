@@ -1,30 +1,37 @@
 import { CarPlay } from 'react-native-carplay'
 import { handleCarPlayItemPress } from '@/src/carplay/actions'
 import { logger } from '@/src/logging/logger'
-import { buildLibrarySections } from '@/src/carplay/templates'
-import { createBrowseTemplate } from '@/src/carplay/nativeTemplates'
-import type { LibraryItem } from '@/src/services/jellyfin/library'
-import type { OfflineEntry } from '@/src/domain/offline'
+import { buildLibraryRootItems } from '@/src/carplay/templates'
+import { createListTemplate, type CarPlayListHandle } from '@/src/carplay/nativeTemplates'
+import { useSettingsStore } from '@/src/store/settings'
 
-export const registerCarPlay = (
-  playlists: readonly LibraryItem[],
-  artists: readonly LibraryItem[],
-  offline: readonly OfflineEntry[],
-  albums: readonly LibraryItem[] = [],
-) => {
+let root: CarPlayListHandle | null = null
+
+const offlineEntries = () =>
+  Object.values(useSettingsStore.getState().offlineIndex.entries)
+
+const syncRoot = (reset = false) => {
+  const items = buildLibraryRootItems(offlineEntries())
+  if (root && CarPlay.connected && !reset) {
+    root.setItems(items)
+    return
+  }
+  root = createListTemplate('Library', items, handleCarPlayItemPress)
+  if (CarPlay.connected) CarPlay.setRootTemplate(root.template)
+}
+
+CarPlay.registerOnConnect(() => {
   try {
-    const template = createBrowseTemplate(
-      buildLibrarySections(playlists, artists, offline, albums),
-      (itemId) => {
-        void handleCarPlayItemPress(itemId)
-      },
-    )
-    const api = CarPlay as typeof CarPlay & {
-      enable?: () => void
-      setRootTemplate?: (template: unknown) => void
-    }
-    api.enable?.()
-    api.setRootTemplate?.(template)
+    CarPlay.enableNowPlaying(true)
+    syncRoot(true)
+  } catch (cause) {
+    logger.warn('CarPlay skipped', { cause })
+  }
+})
+
+export const registerCarPlay = () => {
+  try {
+    if (CarPlay.connected) syncRoot(false)
   } catch (cause) {
     logger.warn('CarPlay skipped', { cause })
   }

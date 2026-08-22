@@ -1,13 +1,19 @@
 import {
-  buildLibrarySections,
+  buildAlbumItems,
+  buildArtistDetailItems,
+  buildArtistItems,
+  buildOfflineItems,
+  buildPlaylistItems,
   parseCarPlayItemId,
   tracksFromOffline,
+  type CarPlayListItem,
 } from '@/src/carplay/templates'
-import { createBrowseTemplate } from '@/src/carplay/nativeTemplates'
+import { createListTemplate } from '@/src/carplay/nativeTemplates'
 import { logger } from '@/src/logging/logger'
 import type { QueueTrack } from '@/src/domain/queue'
 import {
   artworkUrl,
+  fetchAlbumsByArtist,
   fetchChildren,
   fetchPlaylistTracks,
   fetchSongsForArtist,
@@ -21,6 +27,8 @@ import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
 import { useSettingsStore } from '@/src/store/settings'
 
+const onSelect = (itemId: string) => handleCarPlayItemPress(itemId)
+
 const toQueue = (
   context: JellyfinContext,
   items: readonly LibraryItem[],
@@ -32,66 +40,108 @@ const toQueue = (
     ),
   )
 
-let artistsPageOffset = 0
-let albumsPageOffset = 0
+const pushList = (title: string, items: readonly CarPlayListItem[], empty?: string) =>
+  CarPlay.pushTemplate(createListTemplate(title, items, onSelect, empty).template, true)
 
-const pushPagedRoot = (artistsOffset: number, albumsOffset: number) => {
-  const library = useLibraryStore.getState()
-  const offline = Object.values(useSettingsStore.getState().offlineIndex.entries)
-  const template = createBrowseTemplate(
-    buildLibrarySections(
-      library.playlists,
-      library.artists,
-      offline,
-      library.albums,
-      { artistsOffset, albumsOffset },
-    ),
-    (itemId) => {
-      void handleCarPlayItemPress(itemId)
-    },
-  )
-  const api = CarPlay as typeof CarPlay & {
-    setRootTemplate?: (template: unknown) => void
+const replaceList = (title: string, items: readonly CarPlayListItem[], empty?: string) => {
+  CarPlay.popTemplate(true)
+  pushList(title, items, empty)
+}
+
+const offlineEntries = () =>
+  Object.values(useSettingsStore.getState().offlineIndex.entries)
+
+const pushArtistDetail = async (
+  context: JellyfinContext,
+  userId: string,
+  artistId: string,
+  offset = 0,
+) => {
+  const artist = useLibraryStore.getState().artists.find((a) => a.id === artistId)
+  const name = artist?.name ?? 'Artist'
+  const albums = await fetchAlbumsByArtist(context, userId, artistId)
+  if (!albums.ok) {
+    logger.warn('CarPlay artist albums failed', { artistId })
+    return
   }
-  api.setRootTemplate?.(template)
+  pushList(
+    name,
+    buildArtistDetailItems(artistId, name, albums.value, offset),
+    'No albums',
+  )
 }
 
 export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
   const action = parseCarPlayItemId(itemId)
   if (!action) return
+
+  if (action.kind === 'offlineAll' || action.kind === 'offline') {
+    const tracks = tracksFromOffline(offlineEntries())
+    if (tracks.length === 0) return
+    const start =
+      action.kind === 'offlineAll'
+        ? 0
+        : tracks.findIndex((track) => track.id === action.id)
+    if (start < 0) return
+    usePlayerStore.getState().playQueue(tracks, start)
+    return
+  }
+
+  if (action.kind === 'browse') {
+    const library = useLibraryStore.getState()
+    if (action.section === 'playlists') {
+      pushList('Playlists', buildPlaylistItems(library.playlists), 'No playlists')
+    } else if (action.section === 'albums') {
+      pushList('Albums', buildAlbumItems(library.albums), 'No albums')
+    } else if (action.section === 'artists') {
+      pushList('Artists', buildArtistItems(library.artists), 'No artists')
+    } else {
+      pushList('Downloads', buildOfflineItems(offlineEntries()), 'Nothing downloaded')
+    }
+    return
+  }
+
+  if (action.kind === 'playlistsMore') {
+    replaceList(
+      'Playlists',
+      buildPlaylistItems(useLibraryStore.getState().playlists, action.offset),
+      'No playlists',
+    )
+    return
+  }
+  if (action.kind === 'albumsMore') {
+    replaceList(
+      'Albums',
+      buildAlbumItems(useLibraryStore.getState().albums, action.offset),
+      'No albums',
+    )
+    return
+  }
+  if (action.kind === 'artistsMore') {
+    replaceList(
+      'Artists',
+      buildArtistItems(useLibraryStore.getState().artists, action.offset),
+      'No artists',
+    )
+    return
+  }
+
   const session = useSessionStore.getState()
-  const playQueue = usePlayerStore.getState().playQueue
   if (!session.context || !session.session) {
-    logger.warn('CarPlay play skipped', { reason: 'no_session' })
+    logger.warn('CarPlay action skipped', { reason: 'no_session', kind: action.kind })
     return
   }
   const { context } = session
   const userId = session.session.userId
+  const playQueue = usePlayerStore.getState().playQueue
 
-  if (action.kind === 'artistsMore') {
-    artistsPageOffset = action.offset
-    pushPagedRoot(artistsPageOffset, albumsPageOffset)
+  if (action.kind === 'artist') {
+    await pushArtistDetail(context, userId, action.id)
     return
   }
-  if (action.kind === 'albumsMore') {
-    albumsPageOffset = action.offset
-    pushPagedRoot(artistsPageOffset, albumsPageOffset)
-    return
-  }
-
-  if (action.kind === 'offlineAll' || action.kind === 'offline') {
-    const entries = Object.values(
-      useSettingsStore.getState().offlineIndex.entries,
-    )
-    const tracks = tracksFromOffline(entries)
-    if (tracks.length === 0) return
-    if (action.kind === 'offlineAll') {
-      playQueue(tracks, 0)
-      return
-    }
-    const start = tracks.findIndex((t) => t.id === action.id)
-    if (start < 0) return
-    playQueue(tracks, start)
+  if (action.kind === 'artistAlbumsMore') {
+    CarPlay.popTemplate(true)
+    await pushArtistDetail(context, userId, action.artistId, action.offset)
     return
   }
 

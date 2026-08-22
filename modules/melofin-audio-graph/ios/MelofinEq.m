@@ -291,6 +291,7 @@ static AVAssetTrack *MelofinEqAudioTrack(AVPlayerItem *item) {
 @end
 
 @interface AVPlayer (MelofinEq)
+- (void)replaceCurrentItemWithItem:(AVPlayerItem *)item;
 - (void)melofin_replaceCurrentItemWithItem:(AVPlayerItem *)item;
 @end
 
