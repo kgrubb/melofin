@@ -380,5 +380,33 @@
     "errorUnsupported": "해당 기기에서 이 곡을 재생할 수 없습니다.",
     "errorCancelled": "전송이 취소되었습니다.",
     "errorAuth": "이 기기로 캐스트하려면 다시 로그인하세요."
+  },
+  "carplay": {
+    "songs": "곡",
+    "genres": "장르",
+    "mixes": "믹스",
+    "shuffleAll": "모두 셔플",
+    "shuffleFavorites": "즐겨찾기 셔플",
+    "shuffleDownloads": "다운로드 셔플",
+    "showMore": "더 보기",
+    "remaining": "{count}개 남음",
+    "playAllDownloads": "모든 다운로드 재생",
+    "playArtist": "아티스트 재생",
+    "shuffleArtist": "아티스트 셔플",
+    "play": "재생",
+    "shuffle": "셔플",
+    "recentlyPlayed": "최근 재생",
+    "yourMixes": "내 믹스",
+    "favoriteArtists": "좋아하는 아티스트",
+    "favoriteTracks": "좋아하는 곡",
+    "latestAlbums": "최신 앨범",
+    "upNext": "다음 재생",
+    "searchHint": "라이브러리 검색",
+    "noPlaylists": "재생목록 없음",
+    "noAlbums": "앨범 없음",
+    "noArtists": "아티스트 없음",
+    "noSongs": "곡 없음",
+    "noGenres": "장르 없음",
+    "nothingDownloaded": "다운로드 없음"
   }
 }

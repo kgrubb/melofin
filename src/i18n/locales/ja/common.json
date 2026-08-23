@@ -380,5 +380,33 @@
     "errorUnsupported": "そのデバイスではこの曲を再生できません。",
     "errorCancelled": "転送がキャンセルされました。",
     "errorAuth": "このデバイスにキャストするには再度サインインしてください。"
+  },
+  "carplay": {
+    "songs": "曲",
+    "genres": "ジャンル",
+    "mixes": "ミックス",
+    "shuffleAll": "すべてをシャッフル",
+    "shuffleFavorites": "お気に入りをシャッフル",
+    "shuffleDownloads": "ダウンロードをシャッフル",
+    "showMore": "さらに表示",
+    "remaining": "残り {count}",
+    "playAllDownloads": "すべてのダウンロードを再生",
+    "playArtist": "アーティストを再生",
+    "shuffleArtist": "アーティストをシャッフル",
+    "play": "再生",
+    "shuffle": "シャッフル",
+    "recentlyPlayed": "最近再生した項目",
+    "yourMixes": "あなたのミックス",
+    "favoriteArtists": "お気に入りのアーティスト",
+    "favoriteTracks": "お気に入りの曲",
+    "latestAlbums": "最新のアルバム",
+    "upNext": "次に再生",
+    "searchHint": "ライブラリを検索",
+    "noPlaylists": "プレイリストがありません",
+    "noAlbums": "アルバムがありません",
+    "noArtists": "アーティストがありません",
+    "noSongs": "曲がありません",
+    "noGenres": "ジャンルがありません",
+    "nothingDownloaded": "ダウンロードはありません"
   }
 }

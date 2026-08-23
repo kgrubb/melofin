@@ -380,5 +380,33 @@
     "errorUnsupported": "Þetta tæki getur ekki spilað þetta lag.",
     "errorCancelled": "Flutningur hætt við.",
     "errorAuth": "Skráðu þig inn aftur til að senda á þetta tæki."
+  },
+  "carplay": {
+    "songs": "Lög",
+    "genres": "Tegundir",
+    "mixes": "Mixin þín",
+    "shuffleAll": "Stokka allt",
+    "shuffleFavorites": "Stokka uppáhalds",
+    "shuffleDownloads": "Stokka niðurhal",
+    "showMore": "Sýna meira",
+    "remaining": "{count} eftir",
+    "playAllDownloads": "Spila allt niðurhal",
+    "playArtist": "Spila flytjanda",
+    "shuffleArtist": "Stokka flytjanda",
+    "play": "Spila",
+    "shuffle": "Stokka",
+    "recentlyPlayed": "Nýlega spilað",
+    "yourMixes": "Mixin þín",
+    "favoriteArtists": "Uppáhalds flytjendur",
+    "favoriteTracks": "Uppáhalds lög",
+    "latestAlbums": "Nýjustu plötur",
+    "upNext": "Næst",
+    "searchHint": "Leita í safninu þínu",
+    "noPlaylists": "Engir spilunarlistar",
+    "noAlbums": "Engar plötur",
+    "noArtists": "Engir flytjendur",
+    "noSongs": "Engin lög",
+    "noGenres": "Engar tegundir",
+    "nothingDownloaded": "Ekkert niðurhal"
   }
 }

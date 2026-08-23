@@ -380,5 +380,33 @@
     "errorUnsupported": "Esse dispositivo não pode reproduzir esta faixa.",
     "errorCancelled": "Transferência cancelada.",
     "errorAuth": "Inicie sessão novamente para transmitir para este dispositivo."
+  },
+  "carplay": {
+    "songs": "Músicas",
+    "genres": "Géneros",
+    "mixes": "Os seus mixes",
+    "shuffleAll": "Aleatório tudo",
+    "shuffleFavorites": "Aleatório favoritos",
+    "shuffleDownloads": "Aleatório transferências",
+    "showMore": "Mostrar mais",
+    "remaining": "{count} restantes",
+    "playAllDownloads": "Reproduzir todas as transferências",
+    "playArtist": "Reproduzir artista",
+    "shuffleArtist": "Aleatório artista",
+    "play": "Reproduzir",
+    "shuffle": "Aleatório",
+    "recentlyPlayed": "Reproduzido recentemente",
+    "yourMixes": "Os seus mixes",
+    "favoriteArtists": "Artistas favoritos",
+    "favoriteTracks": "Músicas favoritas",
+    "latestAlbums": "Álbuns recentes",
+    "upNext": "A seguir",
+    "searchHint": "Pesquisar na biblioteca",
+    "noPlaylists": "Sem playlists",
+    "noAlbums": "Sem álbuns",
+    "noArtists": "Sem artistas",
+    "noSongs": "Sem músicas",
+    "noGenres": "Sem géneros",
+    "nothingDownloaded": "Nada transferido"
   }
 }

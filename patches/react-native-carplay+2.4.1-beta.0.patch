@@ -1,0 +1,12 @@
+diff --git a/node_modules/react-native-carplay/ios/RNCarPlay.m b/node_modules/react-native-carplay/ios/RNCarPlay.m
+index 1111111..2222222 100644
+--- a/node_modules/react-native-carplay/ios/RNCarPlay.m
++++ b/node_modules/react-native-carplay/ios/RNCarPlay.m
+@@ -323,6 +323,7 @@ @implementation RNCarPlay
+                 
+                 if ([buttonType isEqualToString:@"image"]) {
+                     UIImage *_image = [RCTConvert UIImage:[_button objectForKey:@"image"]];
++                    _image = [_image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+                     button = [[CPNowPlayingImageButton alloc] initWithImage:_image handler:^(__kindof CPNowPlayingImageButton * _Nonnull) {
+                         if (self->hasListeners) {
+                             [self sendEventWithName:@"buttonPressed" body:body];

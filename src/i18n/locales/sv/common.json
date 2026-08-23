@@ -380,5 +380,33 @@
     "errorUnsupported": "Den enheten kan inte spela det här spåret.",
     "errorCancelled": "Överföring avbruten.",
     "errorAuth": "Logga in igen för att casta till den här enheten."
+  },
+  "carplay": {
+    "songs": "Låtar",
+    "genres": "Genrer",
+    "mixes": "Dina mixar",
+    "shuffleAll": "Blanda allt",
+    "shuffleFavorites": "Blanda favoriter",
+    "shuffleDownloads": "Blanda nedladdningar",
+    "showMore": "Visa mer",
+    "remaining": "{count} kvar",
+    "playAllDownloads": "Spela alla nedladdningar",
+    "playArtist": "Spela artist",
+    "shuffleArtist": "Blanda artist",
+    "play": "Spela",
+    "shuffle": "Blanda",
+    "recentlyPlayed": "Nyligen spelade",
+    "yourMixes": "Dina mixar",
+    "favoriteArtists": "Favoritartister",
+    "favoriteTracks": "Favoritlåtar",
+    "latestAlbums": "Senaste album",
+    "upNext": "Nästa",
+    "searchHint": "Sök i ditt bibliotek",
+    "noPlaylists": "Inga spellistor",
+    "noAlbums": "Inga album",
+    "noArtists": "Inga artister",
+    "noSongs": "Inga låtar",
+    "noGenres": "Inga genrer",
+    "nothingDownloaded": "Inget nedladdat"
   }
 }

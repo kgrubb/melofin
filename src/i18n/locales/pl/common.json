@@ -380,5 +380,33 @@
     "errorUnsupported": "To urządzenie nie może odtworzyć tego utworu.",
     "errorCancelled": "Transfer anulowany.",
     "errorAuth": "Zaloguj się ponownie, aby przesłać na to urządzenie."
+  },
+  "carplay": {
+    "songs": "Utwory",
+    "genres": "Gatunki",
+    "mixes": "Twoje miksy",
+    "shuffleAll": "Losuj wszystko",
+    "shuffleFavorites": "Losuj ulubione",
+    "shuffleDownloads": "Losuj pobrane",
+    "showMore": "Pokaż więcej",
+    "remaining": "Pozostało: {count}",
+    "playAllDownloads": "Odtwórz wszystkie pobrane",
+    "playArtist": "Odtwórz artystę",
+    "shuffleArtist": "Losuj artystę",
+    "play": "Odtwórz",
+    "shuffle": "Losowo",
+    "recentlyPlayed": "Ostatnio odtwarzane",
+    "yourMixes": "Twoje miksy",
+    "favoriteArtists": "Ulubieni artyści",
+    "favoriteTracks": "Ulubione utwory",
+    "latestAlbums": "Najnowsze albumy",
+    "upNext": "Następne",
+    "searchHint": "Przeszukaj bibliotekę",
+    "noPlaylists": "Brak playlist",
+    "noAlbums": "Brak albumów",
+    "noArtists": "Brak artystów",
+    "noSongs": "Brak utworów",
+    "noGenres": "Brak gatunków",
+    "nothingDownloaded": "Brak pobranych"
   }
 }

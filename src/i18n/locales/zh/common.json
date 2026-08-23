@@ -380,5 +380,33 @@
     "errorUnsupported": "该设备无法播放此歌曲。",
     "errorCancelled": "传输已取消。",
     "errorAuth": "请重新登录以投射到此设备。"
+  },
+  "carplay": {
+    "songs": "歌曲",
+    "genres": "流派",
+    "mixes": "混音",
+    "shuffleAll": "全部随机播放",
+    "shuffleFavorites": "随机播放收藏",
+    "shuffleDownloads": "随机播放下载",
+    "showMore": "显示更多",
+    "remaining": "剩余 {count}",
+    "playAllDownloads": "播放全部下载",
+    "playArtist": "播放艺人",
+    "shuffleArtist": "随机播放艺人",
+    "play": "播放",
+    "shuffle": "随机播放",
+    "recentlyPlayed": "最近播放",
+    "yourMixes": "你的混音",
+    "favoriteArtists": "收藏艺人",
+    "favoriteTracks": "收藏歌曲",
+    "latestAlbums": "最新专辑",
+    "upNext": "接下来",
+    "searchHint": "搜索音乐库",
+    "noPlaylists": "暂无播放列表",
+    "noAlbums": "暂无专辑",
+    "noArtists": "暂无艺人",
+    "noSongs": "暂无歌曲",
+    "noGenres": "暂无流派",
+    "nothingDownloaded": "暂无下载"
   }
 }

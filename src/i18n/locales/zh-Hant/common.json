@@ -380,5 +380,33 @@
     "errorUnsupported": "該裝置無法播放此歌曲。",
     "errorCancelled": "傳輸已取消。",
     "errorAuth": "請重新登入以投放至此裝置。"
+  },
+  "carplay": {
+    "songs": "歌曲",
+    "genres": "類型",
+    "mixes": "混音",
+    "shuffleAll": "全部隨機播放",
+    "shuffleFavorites": "隨機播放收藏",
+    "shuffleDownloads": "隨機播放下載",
+    "showMore": "顯示更多",
+    "remaining": "剩餘 {count}",
+    "playAllDownloads": "播放全部下載",
+    "playArtist": "播放藝人",
+    "shuffleArtist": "隨機播放藝人",
+    "play": "播放",
+    "shuffle": "隨機播放",
+    "recentlyPlayed": "最近播放",
+    "yourMixes": "你的混音",
+    "favoriteArtists": "收藏藝人",
+    "favoriteTracks": "收藏歌曲",
+    "latestAlbums": "最新專輯",
+    "upNext": "接下來",
+    "searchHint": "搜尋音樂資料庫",
+    "noPlaylists": "沒有播放列表",
+    "noAlbums": "沒有專輯",
+    "noArtists": "沒有藝人",
+    "noSongs": "沒有歌曲",
+    "noGenres": "沒有類型",
+    "nothingDownloaded": "沒有下載"
   }
 }

@@ -380,5 +380,33 @@
     "errorUnsupported": "Cet appareil ne peut pas lire ce titre.",
     "errorCancelled": "Transfert annulé.",
     "errorAuth": "Reconnectez-vous pour diffuser sur cet appareil."
+  },
+  "carplay": {
+    "songs": "Titres",
+    "genres": "Genres",
+    "mixes": "Mix",
+    "shuffleAll": "Tout en aléatoire",
+    "shuffleFavorites": "Favoris en aléatoire",
+    "shuffleDownloads": "Téléchargements en aléatoire",
+    "showMore": "Afficher plus",
+    "remaining": "{count} restants",
+    "playAllDownloads": "Lire tous les téléchargements",
+    "playArtist": "Lire l'artiste",
+    "shuffleArtist": "Artiste en aléatoire",
+    "play": "Lire",
+    "shuffle": "Aléatoire",
+    "recentlyPlayed": "Écoutés récemment",
+    "yourMixes": "Vos mix",
+    "favoriteArtists": "Artistes favoris",
+    "favoriteTracks": "Titres favoris",
+    "latestAlbums": "Derniers albums",
+    "upNext": "À suivre",
+    "searchHint": "Rechercher dans la bibliothèque",
+    "noPlaylists": "Aucune playlist",
+    "noAlbums": "Aucun album",
+    "noArtists": "Aucun artiste",
+    "noSongs": "Aucun titre",
+    "noGenres": "Aucun genre",
+    "nothingDownloaded": "Rien de téléchargé"
   }
 }

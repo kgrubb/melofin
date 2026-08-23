@@ -380,5 +380,33 @@
     "errorUnsupported": "Den enheten kan ikke spille dette sporet.",
     "errorCancelled": "Overføring avbrutt.",
     "errorAuth": "Logg inn igjen for å caste til denne enheten."
+  },
+  "carplay": {
+    "songs": "Sanger",
+    "genres": "Sjangre",
+    "mixes": "Mixene dine",
+    "shuffleAll": "Spill alt tilfeldig",
+    "shuffleFavorites": "Spill favoritter tilfeldig",
+    "shuffleDownloads": "Spill nedlastinger tilfeldig",
+    "showMore": "Vis mer",
+    "remaining": "{count} igjen",
+    "playAllDownloads": "Spill alle nedlastinger",
+    "playArtist": "Spill artist",
+    "shuffleArtist": "Spill artist tilfeldig",
+    "play": "Spill",
+    "shuffle": "Tilfeldig",
+    "recentlyPlayed": "Nylig spilt",
+    "yourMixes": "Mixene dine",
+    "favoriteArtists": "Favorittartister",
+    "favoriteTracks": "Favorittlåter",
+    "latestAlbums": "Nyeste album",
+    "upNext": "Neste",
+    "searchHint": "Søk i biblioteket ditt",
+    "noPlaylists": "Ingen spillelister",
+    "noAlbums": "Ingen album",
+    "noArtists": "Ingen artister",
+    "noSongs": "Ingen sanger",
+    "noGenres": "Ingen sjangre",
+    "nothingDownloaded": "Ingenting lastet ned"
   }
 }

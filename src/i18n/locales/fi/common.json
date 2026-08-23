@@ -380,5 +380,33 @@
     "errorUnsupported": "Tämä laite ei voi toistaa tätä kappaletta.",
     "errorCancelled": "Siirto peruutettu.",
     "errorAuth": "Kirjaudu uudelleen striimataksesi tähän laitteeseen."
+  },
+  "carplay": {
+    "songs": "Kappaleet",
+    "genres": "Tyylit",
+    "mixes": "Miksisi",
+    "shuffleAll": "Sekoita kaikki",
+    "shuffleFavorites": "Sekoita suosikit",
+    "shuffleDownloads": "Sekoita lataukset",
+    "showMore": "Näytä lisää",
+    "remaining": "{count} jäljellä",
+    "playAllDownloads": "Toista kaikki lataukset",
+    "playArtist": "Toista esittäjä",
+    "shuffleArtist": "Sekoita esittäjä",
+    "play": "Toista",
+    "shuffle": "Sekoita",
+    "recentlyPlayed": "Viimeksi toistetut",
+    "yourMixes": "Miksisi",
+    "favoriteArtists": "Suosikiesittäjäsi",
+    "favoriteTracks": "Suosikkikappaleet",
+    "latestAlbums": "Uusimmat albumit",
+    "upNext": "Seuraavaksi",
+    "searchHint": "Hae kirjastostasi",
+    "noPlaylists": "Ei soittolistoja",
+    "noAlbums": "Ei albumeita",
+    "noArtists": "Ei esittäjiä",
+    "noSongs": "Ei kappaleita",
+    "noGenres": "Ei tyylejä",
+    "nothingDownloaded": "Ei latauksia"
   }
 }

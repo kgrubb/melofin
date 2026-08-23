@@ -380,5 +380,33 @@
     "errorUnsupported": "Bu cihaz bu parçayı oynatamaz.",
     "errorCancelled": "Aktarım iptal edildi.",
     "errorAuth": "Bu cihaza yayınlamak için tekrar oturum açın."
+  },
+  "carplay": {
+    "songs": "Şarkılar",
+    "genres": "Türler",
+    "mixes": "Mixleriniz",
+    "shuffleAll": "Tümünü karıştır",
+    "shuffleFavorites": "Favorileri karıştır",
+    "shuffleDownloads": "İndirmeleri karıştır",
+    "showMore": "Daha fazla göster",
+    "remaining": "{count} kaldı",
+    "playAllDownloads": "Tüm indirmeleri çal",
+    "playArtist": "Sanatçıyı çal",
+    "shuffleArtist": "Sanatçıyı karıştır",
+    "play": "Oynat",
+    "shuffle": "Karışık",
+    "recentlyPlayed": "Son çalınanlar",
+    "yourMixes": "Mixleriniz",
+    "favoriteArtists": "Favori sanatçılar",
+    "favoriteTracks": "Favori şarkılar",
+    "latestAlbums": "Son albümler",
+    "upNext": "Sıradaki",
+    "searchHint": "Kitaplığınızda arayın",
+    "noPlaylists": "Çalma listesi yok",
+    "noAlbums": "Albüm yok",
+    "noArtists": "Sanatçı yok",
+    "noSongs": "Şarkı yok",
+    "noGenres": "Tür yok",
+    "nothingDownloaded": "İndirme yok"
   }
 }
