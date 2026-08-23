@@ -380,5 +380,33 @@
     "errorUnsupported": "อุปกรณ์นั้นเล่นเพลงนี้ไม่ได้",
     "errorCancelled": "ยกเลิกการถ่ายโอนแล้ว",
     "errorAuth": "ลงชื่อเข้าใช้อีกครั้งเพื่อแคสต์ไปยังอุปกรณ์นี้"
+  },
+  "carplay": {
+    "songs": "เพลง",
+    "genres": "แนวเพลง",
+    "mixes": "มิกซ์ของคุณ",
+    "shuffleAll": "สุ่มทั้งหมด",
+    "shuffleFavorites": "สุ่มรายการโปรด",
+    "shuffleDownloads": "สุ่มดาวน์โหลด",
+    "showMore": "แสดงเพิ่มเติม",
+    "remaining": "เหลือ {count}",
+    "playAllDownloads": "เล่นการดาวน์โหลดทั้งหมด",
+    "playArtist": "เล่นศิลปิน",
+    "shuffleArtist": "สุ่มศิลปิน",
+    "play": "เล่น",
+    "shuffle": "สุ่ม",
+    "recentlyPlayed": "เล่นล่าสุด",
+    "yourMixes": "มิกซ์ของคุณ",
+    "favoriteArtists": "ศิลปินที่ชื่นชอบ",
+    "favoriteTracks": "เพลงที่ชื่นชอบ",
+    "latestAlbums": "อัลบั้มล่าสุด",
+    "upNext": "ถัดไป",
+    "searchHint": "ค้นหาในคลังของคุณ",
+    "noPlaylists": "ไม่มีเพลย์ลิสต์",
+    "noAlbums": "ไม่มีอัลบั้ม",
+    "noArtists": "ไม่มีศิลปิน",
+    "noSongs": "ไม่มีเพลง",
+    "noGenres": "ไม่มีแนวเพลง",
+    "nothingDownloaded": "ไม่มีดาวน์โหลด"
   }
 }

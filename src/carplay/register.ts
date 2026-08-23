@@ -1,37 +1,41 @@
 import { CarPlay } from 'react-native-carplay'
-import { handleCarPlayItemPress } from '@/src/carplay/actions'
+import { wireCarPlayHandlers } from '@/src/carplay/actions'
+import {
+  connectCarPlaySession,
+  disconnectCarPlaySession,
+  syncCarPlaySession,
+} from '@/src/carplay/session'
 import { logger } from '@/src/logging/logger'
-import { buildLibraryRootItems } from '@/src/carplay/templates'
-import { createListTemplate, type CarPlayListHandle } from '@/src/carplay/nativeTemplates'
-import { useSettingsStore } from '@/src/store/settings'
 
-let root: CarPlayListHandle | null = null
+let wired = false
 
-const offlineEntries = () =>
-  Object.values(useSettingsStore.getState().offlineIndex.entries)
-
-const syncRoot = (reset = false) => {
-  const items = buildLibraryRootItems(offlineEntries())
-  if (root && CarPlay.connected && !reset) {
-    root.setItems(items)
-    return
-  }
-  root = createListTemplate('Library', items, handleCarPlayItemPress)
-  if (CarPlay.connected) CarPlay.setRootTemplate(root.template)
+const ensureWired = () => {
+  if (wired) return
+  wireCarPlayHandlers()
+  wired = true
 }
 
 CarPlay.registerOnConnect(() => {
   try {
-    CarPlay.enableNowPlaying(true)
-    syncRoot(true)
+    ensureWired()
+    connectCarPlaySession()
   } catch (cause) {
     logger.warn('CarPlay skipped', { cause })
   }
 })
 
+CarPlay.registerOnDisconnect(() => {
+  try {
+    disconnectCarPlaySession()
+  } catch (cause) {
+    logger.warn('CarPlay disconnect failed', { cause })
+  }
+})
+
 export const registerCarPlay = () => {
   try {
-    if (CarPlay.connected) syncRoot(false)
+    ensureWired()
+    if (CarPlay.connected) syncCarPlaySession()
   } catch (cause) {
     logger.warn('CarPlay skipped', { cause })
   }

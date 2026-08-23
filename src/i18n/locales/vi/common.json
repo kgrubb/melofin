@@ -380,5 +380,33 @@
     "errorUnsupported": "Thiết bị đó không thể phát bài hát này.",
     "errorCancelled": "Đã hủy chuyển.",
     "errorAuth": "Đăng nhập lại để truyền tới thiết bị này."
+  },
+  "carplay": {
+    "songs": "Bài hát",
+    "genres": "Thể loại",
+    "mixes": "Mix của bạn",
+    "shuffleAll": "Phát ngẫu nhiên tất cả",
+    "shuffleFavorites": "Phát ngẫu nhiên yêu thích",
+    "shuffleDownloads": "Phát ngẫu nhiên đã tải",
+    "showMore": "Hiển thị thêm",
+    "remaining": "Còn {count}",
+    "playAllDownloads": "Phát tất cả đã tải xuống",
+    "playArtist": "Phát nghệ sĩ",
+    "shuffleArtist": "Phát ngẫu nhiên nghệ sĩ",
+    "play": "Phát",
+    "shuffle": "Ngẫu nhiên",
+    "recentlyPlayed": "Phát gần đây",
+    "yourMixes": "Mix của bạn",
+    "favoriteArtists": "Nghệ sĩ yêu thích",
+    "favoriteTracks": "Bài hát yêu thích",
+    "latestAlbums": "Album mới nhất",
+    "upNext": "Tiếp theo",
+    "searchHint": "Tìm trong thư viện",
+    "noPlaylists": "Không có danh sách phát",
+    "noAlbums": "Không có album",
+    "noArtists": "Không có nghệ sĩ",
+    "noSongs": "Không có bài hát",
+    "noGenres": "Không có thể loại",
+    "nothingDownloaded": "Chưa tải xuống gì"
   }
 }

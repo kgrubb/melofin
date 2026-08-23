@@ -380,5 +380,33 @@
     "errorUnsupported": "Den enhed kan ikke afspille dette nummer.",
     "errorCancelled": "Overførsel annulleret.",
     "errorAuth": "Log ind igen for at caste til denne enhed."
+  },
+  "carplay": {
+    "songs": "Sange",
+    "genres": "Genrer",
+    "mixes": "Mix",
+    "shuffleAll": "Bland alt",
+    "shuffleFavorites": "Bland favoritter",
+    "shuffleDownloads": "Bland downloads",
+    "showMore": "Vis mere",
+    "remaining": "{count} tilbage",
+    "playAllDownloads": "Afspil alle downloads",
+    "playArtist": "Afspil kunstner",
+    "shuffleArtist": "Bland kunstner",
+    "play": "Afspil",
+    "shuffle": "Bland",
+    "recentlyPlayed": "Senest afspillet",
+    "yourMixes": "Dine mixes",
+    "favoriteArtists": "Favoritkunstnere",
+    "favoriteTracks": "Favoritnumre",
+    "latestAlbums": "Seneste album",
+    "upNext": "Næste",
+    "searchHint": "Søg i dit bibliotek",
+    "noPlaylists": "Ingen playlister",
+    "noAlbums": "Ingen album",
+    "noArtists": "Ingen kunstnere",
+    "noSongs": "Ingen sange",
+    "noGenres": "Ingen genrer",
+    "nothingDownloaded": "Intet downloadet"
   }
 }

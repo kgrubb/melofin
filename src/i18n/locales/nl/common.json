@@ -380,5 +380,33 @@
     "errorUnsupported": "Dat apparaat kan dit nummer niet afspelen.",
     "errorCancelled": "Overdracht geannuleerd.",
     "errorAuth": "Meld opnieuw aan om naar dit apparaat te casten."
+  },
+  "carplay": {
+    "songs": "Nummers",
+    "genres": "Genres",
+    "mixes": "Jouw mixes",
+    "shuffleAll": "Alles shuffle",
+    "shuffleFavorites": "Favorieten shuffle",
+    "shuffleDownloads": "Downloads shuffle",
+    "showMore": "Meer tonen",
+    "remaining": "{count} resterend",
+    "playAllDownloads": "Alle downloads afspelen",
+    "playArtist": "Artiest afspelen",
+    "shuffleArtist": "Artiest shuffle",
+    "play": "Afspelen",
+    "shuffle": "Shuffle",
+    "recentlyPlayed": "Recent afgespeeld",
+    "yourMixes": "Jouw mixes",
+    "favoriteArtists": "Favoriete artiesten",
+    "favoriteTracks": "Favoriete nummers",
+    "latestAlbums": "Nieuwste albums",
+    "upNext": "Volgende",
+    "searchHint": "Zoek in je bibliotheek",
+    "noPlaylists": "Geen afspeellijsten",
+    "noAlbums": "Geen albums",
+    "noArtists": "Geen artiesten",
+    "noSongs": "Geen nummers",
+    "noGenres": "Geen genres",
+    "nothingDownloaded": "Niets gedownload"
   }
 }

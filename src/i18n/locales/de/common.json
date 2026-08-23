@@ -380,5 +380,33 @@
     "errorUnsupported": "Dieses Gerät kann diesen Titel nicht abspielen.",
     "errorCancelled": "Übertragung abgebrochen.",
     "errorAuth": "Erneut anmelden, um auf dieses Gerät zu casten."
+  },
+  "carplay": {
+    "songs": "Songs",
+    "genres": "Genres",
+    "mixes": "Mixe",
+    "shuffleAll": "Alles mischen",
+    "shuffleFavorites": "Favoriten mischen",
+    "shuffleDownloads": "Downloads mischen",
+    "showMore": "Mehr anzeigen",
+    "remaining": "{count} übrig",
+    "playAllDownloads": "Alle Downloads abspielen",
+    "playArtist": "Interpret abspielen",
+    "shuffleArtist": "Interpret mischen",
+    "play": "Abspielen",
+    "shuffle": "Mischen",
+    "recentlyPlayed": "Zuletzt gehört",
+    "yourMixes": "Deine Mixe",
+    "favoriteArtists": "Lieblingskünstler",
+    "favoriteTracks": "Lieblingstitel",
+    "latestAlbums": "Neueste Alben",
+    "upNext": "Als Nächstes",
+    "searchHint": "Mediathek durchsuchen",
+    "noPlaylists": "Keine Playlists",
+    "noAlbums": "Keine Alben",
+    "noArtists": "Keine Interpreten",
+    "noSongs": "Keine Titel",
+    "noGenres": "Keine Genres",
+    "nothingDownloaded": "Nichts heruntergeladen"
   }
 }

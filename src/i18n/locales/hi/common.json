@@ -380,5 +380,33 @@
     "errorUnsupported": "वह डिवाइस यह गाना नहीं चला सकता।",
     "errorCancelled": "स्थानांतरण रद्द किया गया।",
     "errorAuth": "इस डिवाइस पर कास्ट करने के लिए फिर साइन इन करें।"
+  },
+  "carplay": {
+    "songs": "गाने",
+    "genres": "शैलियाँ",
+    "mixes": "आपके मिक्स",
+    "shuffleAll": "सभी शफ़ल करें",
+    "shuffleFavorites": "पसंदीदा शफ़ल करें",
+    "shuffleDownloads": "डाउनलोड शफ़ल करें",
+    "showMore": "और दिखाएँ",
+    "remaining": "{count} शेष",
+    "playAllDownloads": "सभी डाउनलोड चलाएँ",
+    "playArtist": "कलाकार चलाएँ",
+    "shuffleArtist": "कलाकार शफ़ल करें",
+    "play": "चलाएँ",
+    "shuffle": "शफ़ल",
+    "recentlyPlayed": "हाल में बजाया गया",
+    "yourMixes": "आपके मिक्स",
+    "favoriteArtists": "पसंदीदा कलाकार",
+    "favoriteTracks": "पसंदीदा गाने",
+    "latestAlbums": "नवीनतम एल्बम",
+    "upNext": "अगला",
+    "searchHint": "अपनी लाइब्रेरी खोजें",
+    "noPlaylists": "कोई प्लेलिस्ट नहीं",
+    "noAlbums": "कोई एल्बम नहीं",
+    "noArtists": "कोई कलाकार नहीं",
+    "noSongs": "कोई गाने नहीं",
+    "noGenres": "कोई शैली नहीं",
+    "nothingDownloaded": "कुछ भी डाउनलोड नहीं"
   }
 }

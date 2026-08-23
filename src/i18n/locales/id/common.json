@@ -380,5 +380,33 @@
     "errorUnsupported": "Perangkat itu tidak dapat memutar lagu ini.",
     "errorCancelled": "Transfer dibatalkan.",
     "errorAuth": "Masuk lagi untuk cast ke perangkat ini."
+  },
+  "carplay": {
+    "songs": "Lagu",
+    "genres": "Genre",
+    "mixes": "Mix Anda",
+    "shuffleAll": "Acak semua",
+    "shuffleFavorites": "Acak favorit",
+    "shuffleDownloads": "Acak unduhan",
+    "showMore": "Tampilkan lebih",
+    "remaining": "{count} tersisa",
+    "playAllDownloads": "Putar semua unduhan",
+    "playArtist": "Putar artis",
+    "shuffleArtist": "Acak artis",
+    "play": "Putar",
+    "shuffle": "Acak",
+    "recentlyPlayed": "Baru diputar",
+    "yourMixes": "Mix Anda",
+    "favoriteArtists": "Artis favorit",
+    "favoriteTracks": "Lagu favorit",
+    "latestAlbums": "Album terbaru",
+    "upNext": "Berikutnya",
+    "searchHint": "Cari di perpustakaan Anda",
+    "noPlaylists": "Tidak ada playlist",
+    "noAlbums": "Tidak ada album",
+    "noArtists": "Tidak ada artis",
+    "noSongs": "Tidak ada lagu",
+    "noGenres": "Tidak ada genre",
+    "nothingDownloaded": "Tidak ada unduhan"
   }
 }

@@ -380,5 +380,33 @@
     "errorUnsupported": "Цей пристрій не може відтворити цей трек.",
     "errorCancelled": "Передачу скасовано.",
     "errorAuth": "Увійдіть знову, щоб передавати на цей пристрій."
+  },
+  "carplay": {
+    "songs": "Пісні",
+    "genres": "Жанри",
+    "mixes": "Ваші мікси",
+    "shuffleAll": "Перемішати все",
+    "shuffleFavorites": "Перемішати обране",
+    "shuffleDownloads": "Перемішати завантаження",
+    "showMore": "Показати більше",
+    "remaining": "Залишилось {count}",
+    "playAllDownloads": "Відтворити всі завантаження",
+    "playArtist": "Відтворити виконавця",
+    "shuffleArtist": "Перемішати виконавця",
+    "play": "Відтворити",
+    "shuffle": "Перемішати",
+    "recentlyPlayed": "Нещодавно відтворено",
+    "yourMixes": "Ваші мікси",
+    "favoriteArtists": "Улюблені виконавці",
+    "favoriteTracks": "Улюблені пісні",
+    "latestAlbums": "Останні альбоми",
+    "upNext": "Далі",
+    "searchHint": "Шукати в бібліотеці",
+    "noPlaylists": "Немає плейлістів",
+    "noAlbums": "Немає альбомів",
+    "noArtists": "Немає виконавців",
+    "noSongs": "Немає пісень",
+    "noGenres": "Немає жанрів",
+    "nothingDownloaded": "Нічого не завантажено"
   }
 }

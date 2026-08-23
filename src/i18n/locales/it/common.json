@@ -380,5 +380,33 @@
     "errorUnsupported": "Quel dispositivo non può riprodurre questo brano.",
     "errorCancelled": "Trasferimento annullato.",
     "errorAuth": "Accedi di nuovo per trasmettere su questo dispositivo."
+  },
+  "carplay": {
+    "songs": "Brani",
+    "genres": "Generi",
+    "mixes": "Mix",
+    "shuffleAll": "Casuale tutto",
+    "shuffleFavorites": "Casuale preferiti",
+    "shuffleDownloads": "Casuale download",
+    "showMore": "Mostra altro",
+    "remaining": "{count} rimanenti",
+    "playAllDownloads": "Riproduci tutti i download",
+    "playArtist": "Riproduci artista",
+    "shuffleArtist": "Casuale artista",
+    "play": "Riproduci",
+    "shuffle": "Casuale",
+    "recentlyPlayed": "Ascoltati di recente",
+    "yourMixes": "I tuoi mix",
+    "favoriteArtists": "Artisti preferiti",
+    "favoriteTracks": "Brani preferiti",
+    "latestAlbums": "Ultimi album",
+    "upNext": "Prossimi",
+    "searchHint": "Cerca nella libreria",
+    "noPlaylists": "Nessuna playlist",
+    "noAlbums": "Nessun album",
+    "noArtists": "Nessun artista",
+    "noSongs": "Nessun brano",
+    "noGenres": "Nessun genere",
+    "nothingDownloaded": "Niente scaricato"
   }
 }

@@ -380,5 +380,33 @@
     "ssoHintNative": "Opens in the browser so passkeys work.",
     "ssoFailed": "SSO failed",
     "ssoOpenFailed": "SSO failed to open the identity provider"
+  },
+  "carplay": {
+    "songs": "Songs",
+    "genres": "Genres",
+    "mixes": "Mixes",
+    "shuffleAll": "Shuffle All",
+    "shuffleFavorites": "Shuffle Favorites",
+    "shuffleDownloads": "Shuffle Downloads",
+    "showMore": "Show more",
+    "remaining": "{count} remaining",
+    "playAllDownloads": "Play all downloads",
+    "playArtist": "Play artist",
+    "shuffleArtist": "Shuffle artist",
+    "play": "Play",
+    "shuffle": "Shuffle",
+    "recentlyPlayed": "Recently Played",
+    "yourMixes": "Your Mixes",
+    "favoriteArtists": "Favorite Artists",
+    "favoriteTracks": "Favorite Tracks",
+    "latestAlbums": "Latest Albums",
+    "upNext": "Up Next",
+    "searchHint": "Search your library",
+    "noPlaylists": "No playlists",
+    "noAlbums": "No albums",
+    "noArtists": "No artists",
+    "noSongs": "No songs",
+    "noGenres": "No genres",
+    "nothingDownloaded": "Nothing downloaded"
   }
 }
