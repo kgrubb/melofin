@@ -3,6 +3,7 @@ import { wireCarPlayHandlers } from '@/src/carplay/actions'
 import {
   connectCarPlaySession,
   disconnectCarPlaySession,
+  isCarPlaySessionConnected,
   syncCarPlaySession,
 } from '@/src/carplay/session'
 import { logger } from '@/src/logging/logger'
@@ -35,7 +36,9 @@ CarPlay.registerOnDisconnect(() => {
 export const registerCarPlay = () => {
   try {
     ensureWired()
-    if (CarPlay.connected) syncCarPlaySession()
+    if (!CarPlay.connected) return
+    if (isCarPlaySessionConnected()) syncCarPlaySession()
+    else connectCarPlaySession()
   } catch (cause) {
     logger.warn('CarPlay skipped', { cause })
   }

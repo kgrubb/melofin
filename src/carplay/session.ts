@@ -312,6 +312,8 @@ export const setCarPlayTrackBuffer = (tracks: readonly QueueTrack[]): void => {
 export const getCarPlayTrackBuffer = (): readonly QueueTrack[] =>
   session.trackBuffer
 
+export const isCarPlaySessionConnected = (): boolean => session.connected
+
 export const connectCarPlaySession = (): void => {
   try {
     session.connected = true

@@ -11,6 +11,7 @@ import { useSettingsStore } from '@/src/store/settings'
 import { colors } from '@/src/theme/tokens'
 import { LoadingState, Screen } from '@/src/ui/primitives'
 import '@/src/i18n'
+import '@/src/carplay/register'
 import { useTranslation } from 'react-i18next'
 
 const AuthGate = ({ children }: { readonly children: React.ReactNode }) => {
