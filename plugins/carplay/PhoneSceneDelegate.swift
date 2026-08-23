@@ -1,6 +1,9 @@
 import UIKit
 
+@objc(PhoneSceneDelegate)
 class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+
   func scene(
     _ scene: UIScene,
     willConnectTo session: UISceneSession,
@@ -8,16 +11,10 @@ class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {
   ) {
     guard let windowScene = scene as? UIWindowScene,
           let appDelegate = UIApplication.shared.delegate as? AppDelegate,
-          let existing = appDelegate.window else { return }
-
-    if existing.windowScene === windowScene {
-      existing.makeKeyAndVisible()
-      return
-    }
-
-    let window = UIWindow(windowScene: windowScene)
-    window.rootViewController = existing.rootViewController
+          let window = appDelegate.window
+    else { return }
+    window.windowScene = windowScene
     window.makeKeyAndVisible()
-    appDelegate.window = window
+    self.window = window
   }
 }
