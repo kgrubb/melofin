@@ -2,7 +2,18 @@ diff --git a/node_modules/react-native-carplay/ios/RNCarPlay.m b/node_modules/re
 index 1111111..2222222 100644
 --- a/node_modules/react-native-carplay/ios/RNCarPlay.m
 +++ b/node_modules/react-native-carplay/ios/RNCarPlay.m
-@@ -323,6 +323,7 @@ @implementation RNCarPlay
+@@ -211,7 +211,9 @@ @implementation RNCarPlay
+ 
+ RCT_EXPORT_METHOD(checkForConnection) {
+     RNCPStore *store = [RNCPStore sharedManager];
+-    if ([store isConnected] && hasListeners) {
++    // Do not gate on hasListeners — JS calls this after wiring listeners to recover
++    // from CarPlay connecting before the bridge was ready (blank root template).
++    if ([store isConnected]) {
+         [self sendEventWithName:@"didConnect" body:[RNCarPlay getConnectedWindowInformation: store.window]];
+     }
+ }
+@@ -323,6 +325,7 @@ @implementation RNCarPlay
                  
                  if ([buttonType isEqualToString:@"image"]) {
                      UIImage *_image = [RCTConvert UIImage:[_button objectForKey:@"image"]];

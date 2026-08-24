@@ -312,46 +312,55 @@ export const setCarPlayTrackBuffer = (tracks: readonly QueueTrack[]): void => {
 export const getCarPlayTrackBuffer = (): readonly QueueTrack[] =>
   session.trackBuffer
 
+export const isCarPlaySessionConnected = (): boolean => session.connected
+
+const configureNowPlaying = (): void => {
+  try {
+    CarPlay.enableNowPlaying(true)
+    if (session.nowPlaying) return
+    session.nowPlaying = new NowPlayingTemplate({
+      albumArtistButtonEnabled: true,
+      upNextButtonEnabled: true,
+      upNextButtonTitle: carplay.upNext(),
+      buttons: [
+        { id: 'shuffle', type: 'shuffle' },
+        { id: 'repeat', type: 'repeat' },
+        {
+          id: 'favorite',
+          type: 'image',
+          image: require('../../assets/carplay/heart.png'),
+        },
+        {
+          id: 'radio',
+          type: 'image',
+          image: require('../../assets/carplay/radio.png'),
+        },
+      ],
+      onUpNextButtonPressed: () => {
+        void pressHandler('action:upNext')
+      },
+      onAlbumArtistButtonPressed: () => {
+        void pressHandler('action:albumArtist')
+      },
+      onButtonPressed: ({ id }) => {
+        void nowPlayingHandler(id)
+      },
+    })
+  } catch (cause) {
+    logger.warn('CarPlay Now Playing config failed', { cause })
+  }
+}
+
 export const connectCarPlaySession = (): void => {
   try {
     session.connected = true
     bumpArtworkGeneration()
-    CarPlay.enableNowPlaying(true)
 
-    if (!session.nowPlaying) {
-      session.nowPlaying = new NowPlayingTemplate({
-        albumArtistButtonEnabled: true,
-        upNextButtonEnabled: true,
-        upNextButtonTitle: carplay.upNext(),
-        buttons: [
-          { id: 'shuffle', type: 'shuffle' },
-          { id: 'repeat', type: 'repeat' },
-          {
-            id: 'favorite',
-            type: 'image',
-            image: require('../../assets/carplay/heart.png'),
-          },
-          {
-            id: 'radio',
-            type: 'image',
-            image: require('../../assets/carplay/radio.png'),
-          },
-        ],
-        onUpNextButtonPressed: () => {
-          void pressHandler('action:upNext')
-        },
-        onAlbumArtistButtonPressed: () => {
-          void pressHandler('action:albumArtist')
-        },
-        onButtonPressed: ({ id }) => {
-          void nowPlayingHandler(id)
-        },
-      })
-    }
-
+    // Root template first so CarPlay is never left on a blank scene if NP setup throws.
     session.home = createListTemplate(carplay.home(), [], handlePress, {
       tabTitle: carplay.home(),
       tabSystemImageName: 'house.fill',
+      emptyTitle: carplay.home(),
     })
     session.library = createListTemplate(carplay.library(), [], handlePress, {
       tabTitle: carplay.library(),
@@ -361,6 +370,7 @@ export const connectCarPlaySession = (): void => {
     session.search = createListTemplate(carplay.search(), [], handlePress, {
       tabTitle: carplay.search(),
       tabSystemImageName: 'magnifyingglass',
+      emptyTitle: carplay.searchHint(),
       trailingNavigationBarButtons: [
         { id: 'action:search', type: 'text', title: carplay.search() },
       ],
@@ -390,6 +400,7 @@ export const connectCarPlaySession = (): void => {
       onTemplateSelect: () => undefined,
     })
     CarPlay.setRootTemplate(session.tabBar)
+    configureNowPlaying()
 
     session.homeGen += 1
     void refreshHome(session.homeGen)

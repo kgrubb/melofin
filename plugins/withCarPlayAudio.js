@@ -87,8 +87,9 @@ const withCarPlayAudio = (config) => {
     'ios',
     async (mod) => {
       const root = mod.modRequest.platformProjectRoot
-      const appDelegate = path.join(root, 'Melio', 'AppDelegate.swift')
-      const bridging = path.join(root, 'Melio', 'Melio-Bridging-Header.h')
+      const appName = mod.modRequest.projectName ?? 'Melofin'
+      const appDelegate = path.join(root, appName, 'AppDelegate.swift')
+      const bridging = path.join(root, appName, `${appName}-Bridging-Header.h`)
       if (fs.existsSync(appDelegate)) {
         let contents = fs.readFileSync(appDelegate, 'utf8')
         if (!contents.includes('configurationForConnecting')) {
@@ -112,4 +113,4 @@ const withCarPlayAudio = (config) => {
   return next
 }
 
-module.exports = createRunOncePlugin(withCarPlayAudio, 'with-carplay-audio', '2.0.0')
+module.exports = createRunOncePlugin(withCarPlayAudio, 'with-carplay-audio', '2.1.0')
