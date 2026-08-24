@@ -11,6 +11,7 @@ import { useSettingsStore } from '@/src/store/settings'
 import { colors } from '@/src/theme/tokens'
 import { LoadingState, Screen } from '@/src/ui/primitives'
 import '@/src/i18n'
+import { registerCarPlay } from '@/src/carplay/register'
 import { useTranslation } from 'react-i18next'
 
 const AuthGate = ({ children }: { readonly children: React.ReactNode }) => {
@@ -27,6 +28,13 @@ const AuthGate = ({ children }: { readonly children: React.ReactNode }) => {
     void hydrateSession()
     void hydrateSettings()
   }, [hydrateSession, hydrateSettings])
+
+  // Wire CarPlay as soon as JS is up — do not wait for (app) login.
+  // Native often connects before the bridge; registerCarPlay re-checks.
+  useEffect(() => {
+    if (!hydrated) return
+    registerCarPlay()
+  }, [hydrated])
 
   useEffect(() => {
     if (!hydrated) return

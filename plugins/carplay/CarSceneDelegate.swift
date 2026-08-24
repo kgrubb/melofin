@@ -1,6 +1,7 @@
 import UIKit
 import CarPlay
 
+@objc(CarSceneDelegate)
 class CarSceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
   func templateApplicationScene(
     _ scene: CPTemplateApplicationScene,
