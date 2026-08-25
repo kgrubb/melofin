@@ -92,14 +92,31 @@ describe('homeMixes', () => {
     expect(
       tryBuildHomeMixCard(
         {
+          id: 'instant:elder',
+          seedLabel: 'Elder Brother',
+          tracks: radioTracks('Kendrick Lamar', [
+            item('extra', {
+              artists: ['Frank'],
+              artistId: 'frank',
+              genres: ['Hip Hop'],
+            }),
+          ]),
+        },
+        new Set(),
+        new Set(),
+      )?.title,
+    ).toBe('Kendrick Lamar Mix')
+    expect(
+      tryBuildHomeMixCard(
+        {
           id: 'genre:rock',
           seedLabel: 'rock',
           tracks: radioTracks('Foo Fighters', [
-            item('r2', { artists: ['Queens'], artistId: 'q', genres: ['rock'] }),
-            item('r3', { artists: ['Nirvana'], artistId: 'n', genres: ['rock'] }),
-            item('r4', { artists: ['Pearl'], artistId: 'p', genres: ['rock'] }),
-            item('r5', { artists: ['Soundgarden'], artistId: 's', genres: ['rock'] }),
-          ]).map((track) => ({ ...track, genres: ['rock'] })),
+            item('r2', { artists: ['Queens'], artistId: 'q' }),
+            item('r3', { artists: ['Nirvana'], artistId: 'n' }),
+            item('r4', { artists: ['Pearl'], artistId: 'p' }),
+            item('r5', { artists: ['Soundgarden'], artistId: 's' }),
+          ]),
         },
         new Set(),
         new Set(),
@@ -241,6 +258,13 @@ describe('homeMixes', () => {
       tracks: radioTracks('Tyler, The Creator'),
     }
     expect(retitleHomeMixCard(kept)).toBe(kept)
+    expect(
+      retitleHomeMixCard({
+        title: 'Elder Brother Mix',
+        subtitle: 'old',
+        tracks: radioTracks('Kendrick Lamar'),
+      }).title,
+    ).toBe('Kendrick Lamar Mix')
     expect(dedupeById([item('1'), item('1'), item('2')]).map((e) => e.id)).toEqual([
       '1',
       '2',

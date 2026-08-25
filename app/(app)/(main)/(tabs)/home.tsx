@@ -87,7 +87,15 @@ import {
   persistHomeMixes,
   useHomeMixesStore,
 } from '@/src/store/homeMixes'
+import {
+  homeRailsHasContent,
+  loadPersistedHomeRails,
+  persistHomeRails,
+  emptyHomeRails,
+  type HomeRailsSnapshot,
+} from '@/src/store/homeRails'
 import { useLibraryStore } from '@/src/store/library'
+import { libraryCacheBelongsToSession } from '@/src/domain/librarySync'
 import { usePlayerStore } from '@/src/store/player'
 import { useSettingsStore } from '@/src/store/settings'
 import { AccentGradient } from '@/src/theme/Atmosphere'
@@ -363,10 +371,44 @@ export default function HomeScreen() {
   const mixesAttemptedAtRef = useRef<number | undefined>(undefined)
   const loadInFlightRef = useRef(false)
   const genreArtStartedRef = useRef(new Set<string>())
+  const railsRef = useRef<HomeRailsSnapshot>(emptyHomeRails())
+  const persistRailsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setProfileFailed(false)
   }, [session?.serverUrl, session?.userId])
+
+  useEffect(() => {
+    railsRef.current = {
+      albums,
+      resume,
+      playlists,
+      favorites,
+      favoriteArtists,
+      genres,
+    }
+  }, [albums, resume, playlists, favorites, favoriteArtists, genres])
+
+  useEffect(
+    () => () => {
+      if (persistRailsTimerRef.current) clearTimeout(persistRailsTimerRef.current)
+    },
+    [],
+  )
+
+  const schedulePersistRails = useCallback(() => {
+    if (!session) return
+    if (persistRailsTimerRef.current) clearTimeout(persistRailsTimerRef.current)
+    persistRailsTimerRef.current = setTimeout(() => {
+      persistRailsTimerRef.current = null
+      const snap = railsRef.current
+      if (!homeRailsHasContent(snap)) return
+      void persistHomeRails(session.serverUrl, session.userId, {
+        ...snap,
+        savedAt: Date.now(),
+      })
+    }, 400)
+  }, [session])
 
   const downloads = useMemo(
     () => downloadsFromOffline(offlineIndex.entries),
@@ -415,6 +457,7 @@ export default function HomeScreen() {
       mixesSavedAtRef.current = undefined
       mixesCountRef.current = 0
       mixesAttemptedAtRef.current = undefined
+      railsRef.current = emptyHomeRails()
     }
     if (!context || !session) {
       loadGenRef.current += 1
@@ -441,6 +484,19 @@ export default function HomeScreen() {
       setError(null)
       setLoading(true)
     }
+    const applyCachedRails = (cached: HomeRailsSnapshot) => {
+      if (!homeRailsHasContent(cached)) return false
+      setAlbums((prev) => (prev.length > 0 ? prev : cached.albums))
+      setResume((prev) => (prev.length > 0 ? prev : cached.resume))
+      setPlaylists((prev) => (prev.length > 0 ? prev : cached.playlists))
+      setFavorites((prev) => (prev.length > 0 ? prev : cached.favorites))
+      setFavoriteArtists((prev) =>
+        prev.length > 0 ? prev : cached.favoriteArtists,
+      )
+      setGenres((prev) => (prev.length > 0 ? prev : cached.genres))
+      return true
+    }
+
     const cachedP =
       paintedUserRef.current !== scopeKey
         ? loadPersistedHomeMixes(session.serverUrl, session.userId).then(
@@ -460,14 +516,30 @@ export default function HomeScreen() {
               if (Object.keys(useHomeMixesStore.getState().byId).length === 0) {
                 useHomeMixesStore.getState().setMixes(restored)
               }
+              paintedUserRef.current = scopeKey
+              setLoading(false)
               return cached
             },
           )
         : Promise.resolve(null)
+    if (paintedUserRef.current !== scopeKey) {
+      void loadPersistedHomeRails(session.serverUrl, session.userId).then(
+        (cached) => {
+          if (!isCurrent()) return
+          if (applyCachedRails(cached)) {
+            paintedUserRef.current = scopeKey
+            setLoading(false)
+          }
+        },
+      )
+    }
     const gate = { cancelled: false }
     try {
       const library = useLibraryStore.getState()
-      if (paintedUserRef.current !== scopeKey) {
+      if (
+        paintedUserRef.current !== scopeKey &&
+        libraryCacheBelongsToSession(library, session)
+      ) {
         const seedAlbums = latestAlbumsFromCatalog(
           library.albums,
           HOME_LATEST_ALBUMS_LIMIT,
@@ -477,9 +549,15 @@ export default function HomeScreen() {
           [],
           HOME_FAVORITE_ARTISTS_LIMIT,
         )
+        const seedPlaylists = library.playlists.slice(0, 24)
         if (seedAlbums.length > 0) setAlbums(seedAlbums)
         if (seedArtists.length > 0) setFavoriteArtists(seedArtists)
-        if (seedAlbums.length > 0 || seedArtists.length > 0) {
+        if (seedPlaylists.length > 0) setPlaylists(seedPlaylists)
+        if (
+          seedAlbums.length > 0 ||
+          seedArtists.length > 0 ||
+          seedPlaylists.length > 0
+        ) {
           paintedUserRef.current = scopeKey
           setLoading(false)
         }
@@ -508,8 +586,8 @@ export default function HomeScreen() {
           rankArtistsFromTracks(listenTracksBox.current, 16),
           HOME_FAVORITE_ARTISTS_LIMIT,
         )
-        setFavoriteArtists(next)
         if (next.length === 0) return
+        setFavoriteArtists(next)
         paintedUserRef.current = scopeKey
         setLoading(false)
       }
@@ -523,6 +601,12 @@ export default function HomeScreen() {
         if (!isCurrent() || gate.cancelled || !result.ok) return
         likedArtistsBox.current = result.value
         paintFavoriteArtists()
+      })
+      void resumeP.then((result) => {
+        if (!isCurrent() || gate.cancelled || !result.ok) return
+        setResume(result.value)
+        paintedUserRef.current = scopeKey
+        setLoading(false)
       })
 
       const [recent, f, likedArtists, resumeEarly] = await Promise.all([
@@ -553,8 +637,9 @@ export default function HomeScreen() {
       const listenFailed =
         !recent.ok && !f.ok && !likedArtists.ok && !resumeEarly.ok
 
-      setResume(nextResume)
-      setFavorites(nextFavorites)
+      // Keep disk-restored rails when a fetch fails.
+      if (resumeEarly.ok) setResume(nextResume)
+      if (f.ok) setFavorites(nextFavorites)
       paintFavoriteArtists()
       setAlbums((prev) =>
         prev.length > 0 ? withArtistsFromTracks(prev, listenTracks) : prev,
@@ -564,6 +649,7 @@ export default function HomeScreen() {
       setCatalogPending(true)
       setLoading(false)
       if (!listenFailed) setError(null)
+      schedulePersistRails()
 
       const live = () => isCurrent() && !gate.cancelled
       void playlistsP.then((result) => {
@@ -598,7 +684,9 @@ export default function HomeScreen() {
         })
       })
       void Promise.allSettled([albumsP, playlistsP, genresP]).then(() => {
-        if (isCurrent()) setCatalogPending(false)
+        if (!isCurrent()) return
+        setCatalogPending(false)
+        schedulePersistRails()
       })
 
       const cached = await cachedP
@@ -809,7 +897,7 @@ export default function HomeScreen() {
         setMixesPending(false)
       }
     }
-  }, [context, session])
+  }, [context, schedulePersistRails, session])
 
   useEffect(() => {
     void load()
@@ -881,15 +969,16 @@ export default function HomeScreen() {
     const occupied = new Set<string>()
     const byId: Record<string, readonly (string | undefined)[]> = {}
     for (const mix of homeMixes) {
+      // Track-derived covers only — latest-albums arrival must not reshuffle tiles.
       const items = uniqueCollageItems(
-        [...uniqueAlbumsFromTracks(mix.tracks), ...albums, ...mix.tracks],
+        [...uniqueAlbumsFromTracks(mix.tracks), ...mix.tracks],
         4,
         occupied,
       )
       byId[mix.id] = items.map(artFor)
     }
     return byId
-  }, [albums, artFor, homeMixes])
+  }, [artFor, homeMixes])
   const artsForGenre = useCallback(
     (genre: LibraryItem) => {
       const covers = genreTileCovers(

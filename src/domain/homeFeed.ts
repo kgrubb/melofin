@@ -204,11 +204,10 @@ const restoreSlashBandSeed = (
   return seed
 }
 
-export const topArtistsFromTracks = (
+const artistCountsFromTracks = (
   tracks: readonly LibraryItem[],
-  limit = 3,
   exclude: ReadonlySet<string> = new Set(),
-): readonly string[] => {
+): readonly { name: string; count: number; order: number }[] => {
   const counts = new Map<string, { name: string; count: number; order: number }>()
   for (const track of tracks) {
     const name = primaryArtistName(track.artists)
@@ -222,27 +221,53 @@ export const topArtistsFromTracks = (
       order: prev?.order ?? counts.size,
     })
   }
-  return [...counts.values()]
-    .sort((a, b) => b.count - a.count || a.order - b.order)
+  return [...counts.values()].sort(
+    (a, b) => b.count - a.count || a.order - b.order,
+  )
+}
+
+export const topArtistsFromTracks = (
+  tracks: readonly LibraryItem[],
+  limit = 3,
+  exclude: ReadonlySet<string> = new Set(),
+): readonly string[] =>
+  artistCountsFromTracks(tracks, exclude)
     .slice(0, limit)
     .map((entry) => entry.name)
+
+/**
+ * Prefer the listening seed when it is still (co-)dominant. Otherwise name from
+ * the dominant track artist so daily Instant Mix refreshes stay honest.
+ * Pass `forceSeed` for genre Instant Mixes (tracks often omit genre tags).
+ */
+export const resolveHomeMixNamingSeed = (
+  seedLabel: string,
+  tracks: readonly LibraryItem[],
+  options?: { readonly forceSeed?: boolean },
+): string => {
+  const restored = restoreSlashBandSeed(seedLabel, tracks).trim()
+  if (restored && !isNumberedMixTitle(restored)) {
+    if (options?.forceSeed) return restored
+    const seedKey = restored.toLowerCase()
+    const ranked = artistCountsFromTracks(tracks)
+    const seedCount =
+      ranked.find((entry) => entry.name.toLowerCase() === seedKey)?.count ?? 0
+    if (seedCount > 0 && seedCount === (ranked[0]?.count ?? 0)) return restored
+  }
+  const top = artistCountsFromTracks(tracks)[0]?.name
+  if (top) return top
+  const genre = tracks.map((track) => track.genres?.[0]?.trim()).find(Boolean)
+  return genre ? titleCaseGenreLabel(genre) : ''
 }
 
 export const homeMixCardTitle = (
   seedLabel: string,
   tracks: readonly LibraryItem[],
   copy: HomeMixCopy = defaultHomeMixCopy,
+  options?: { readonly forceSeed?: boolean },
 ): string => {
-  const fromSeed = seededMixTitle(restoreSlashBandSeed(seedLabel, tracks), copy)
-  if (fromSeed) return fromSeed
-  const top = topArtistsFromTracks(tracks, 1)
-  if (top[0]) return seededMixTitle(top[0], copy) || copy.mixNamed(top[0])
-  const genre = tracks.map((track) => track.genres?.[0]?.trim()).find(Boolean)
-  if (genre) {
-    const cased = titleCaseGenreLabel(genre)
-    return seededMixTitle(cased, copy) || copy.mixNamed(cased)
-  }
-  return copy.yourMix
+  const naming = resolveHomeMixNamingSeed(seedLabel, tracks, options)
+  return seededMixTitle(naming, copy) || copy.yourMix
 }
 
 export const homeMixCardSubtitle = (
@@ -290,6 +315,7 @@ export const mixSeedLabelFromCachedTitle = (
 
 export const displayHomeMixCard = <
   T extends {
+    readonly id?: string
     readonly title: string
     readonly subtitle: string
     readonly tracks: readonly LibraryItem[]
@@ -298,10 +324,13 @@ export const displayHomeMixCard = <
   mix: T,
   copy: HomeMixCopy = defaultHomeMixCopy,
 ): Pick<T, 'title' | 'subtitle'> => {
-  const seed = mixSeedLabelFromCachedTitle(mix.title, copy)
+  const cachedSeed = mixSeedLabelFromCachedTitle(mix.title, copy)
+  const namingSeed = resolveHomeMixNamingSeed(cachedSeed, mix.tracks, {
+    forceSeed: Boolean(mix.id?.startsWith('genre:')),
+  })
   return {
-    title: homeMixCardTitle(seed, mix.tracks, copy),
-    subtitle: homeMixCardSubtitle(seed, mix.tracks, copy),
+    title: seededMixTitle(namingSeed, copy) || copy.yourMix,
+    subtitle: homeMixCardSubtitle(namingSeed, mix.tracks, copy),
   }
 }
 

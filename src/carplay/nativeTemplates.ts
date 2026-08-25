@@ -5,6 +5,7 @@ import {
   type ListSection,
 } from 'react-native-carplay'
 import type { CarPlayListItem, CarPlaySection } from '@/src/carplay/templates'
+import { logger } from '@/src/logging/logger'
 
 export type CarPlayListHandle = {
   readonly template: ListTemplate
@@ -36,6 +37,18 @@ const toNativeSections = (sections: readonly CarPlaySection[]): ListSection[] =>
 const asSections = (items: readonly CarPlayListItem[]): CarPlaySection[] => [
   { items },
 ]
+
+/** RNCarPlay only dismisses the selection spinner when onItemSelect resolves. */
+const runSelect = async (
+  run: () => void | Promise<void>,
+  detail: Record<string, unknown>,
+): Promise<void> => {
+  try {
+    await run()
+  } catch (cause) {
+    logger.warn('CarPlay select failed', { cause, ...detail })
+  }
+}
 
 export type CreateListOptions = {
   readonly emptyTitle?: string
@@ -74,16 +87,18 @@ export const createListTemplate = (
       ? { trailingNavigationBarButtons: options.trailingNavigationBarButtons }
       : {}),
     sections: toNativeSections(state.sections),
-    onItemSelect: async ({ index }) => {
-      const id = flatIds()[index]
-      if (id) await onItemPress(id)
-    },
-    onImageRowItemSelect: async ({ index }) => {
-      const row = state.sections.flatMap((section) => section.items)[index]
-      if (row) await onItemPress(row.id)
-    },
+    onItemSelect: ({ index }) =>
+      runSelect(async () => {
+        const id = flatIds()[index]
+        if (id) await onItemPress(id)
+      }, { index }),
+    onImageRowItemSelect: ({ index }) =>
+      runSelect(async () => {
+        const row = state.sections.flatMap((section) => section.items)[index]
+        if (row) await onItemPress(row.id)
+      }, { index }),
     onBarButtonPressed: ({ id }) => {
-      void onItemPress(id)
+      void runSelect(() => onItemPress(id), { id })
     },
   })
 

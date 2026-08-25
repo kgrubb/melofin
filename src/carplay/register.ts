@@ -6,25 +6,15 @@ import {
   isCarPlaySessionConnected,
   syncCarPlaySession,
 } from '@/src/carplay/session'
+import { resetCarPlaySearchOpen } from '@/src/carplay/search'
 import { logger } from '@/src/logging/logger'
 
-let wired = false
-
-const ensureWired = () => {
-  if (wired) return
-  wireCarPlayHandlers()
-  wired = true
-}
-
-const attachSession = (): void => {
-  ensureWired()
-  if (isCarPlaySessionConnected()) syncCarPlaySession()
-  else connectCarPlaySession()
-}
-
+// Rebuild root on every native connect. Reconnect can leave stale list rows.
 CarPlay.registerOnConnect(() => {
   try {
-    attachSession()
+    wireCarPlayHandlers()
+    resetCarPlaySearchOpen()
+    connectCarPlaySession()
   } catch (cause) {
     logger.warn('CarPlay skipped', { cause })
   }
@@ -32,22 +22,26 @@ CarPlay.registerOnConnect(() => {
 
 CarPlay.registerOnDisconnect(() => {
   try {
+    resetCarPlaySearchOpen()
     disconnectCarPlaySession()
   } catch (cause) {
     logger.warn('CarPlay disconnect failed', { cause })
   }
 })
 
-/**
- * Re-check native connection. CarPlay often connects before the JS bridge is
- * ready; `didConnect` is dropped and `CarPlay.connected` stays false. Calling
- * `checkForConnection` after listeners are wired re-emits the event.
- */
+/** Wire handlers. Recover a missed connect or sync an existing session. */
 export const registerCarPlay = (): void => {
   try {
-    ensureWired()
+    wireCarPlayHandlers()
+    if (isCarPlaySessionConnected()) {
+      syncCarPlaySession()
+      return
+    }
     CarPlay.bridge.checkForConnection()
-    if (CarPlay.connected) attachSession()
+    // didConnect usually connects. Only connect here if the event was already applied.
+    if (CarPlay.connected && !isCarPlaySessionConnected()) {
+      connectCarPlaySession()
+    }
   } catch (cause) {
     logger.warn('CarPlay skipped', { cause })
   }

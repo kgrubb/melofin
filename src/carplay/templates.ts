@@ -72,6 +72,14 @@ export type CarPlayItemAction =
 
 const songCount = (n: number | undefined) => carplay.songCount(n ?? 0)
 
+/** Optional resolver so builders stay pure and session can supply Jellyfin URLs. */
+export type CarPlayArtFor = (item: LibraryItem) => string | undefined
+
+const withArt = (
+  item: CarPlayListItem,
+  artworkUri: string | undefined,
+): CarPlayListItem => (artworkUri ? { ...item, artworkUri } : item)
+
 const offlineArtworkUri = (
   artworkPath: string | undefined,
   melofinRootUri?: string,
@@ -258,24 +266,6 @@ const pagedRows = (
   return rows
 }
 
-/** Library hub — no shuffle/search (those live on Home / Search). */
-export const buildLibraryHubItems = (
-  offline: readonly OfflineEntry[],
-): readonly CarPlayListItem[] => {
-  const downloads = offline.filter((entry) => entry.complete).length
-  return [
-    browseRow('playlists', carplay.playlists()),
-    browseRow('albums', carplay.albums()),
-    browseRow('artists', carplay.artists()),
-    browseRow('songs', carplay.songs()),
-    browseRow('genres', carplay.genres()),
-    browseRow('mixes', carplay.mixes()),
-    ...(downloads > 0
-      ? [browseRow('offline', carplay.downloads(), songCount(downloads))]
-      : []),
-  ]
-}
-
 export type HomeMixRow = {
   readonly id: string
   readonly title: string
@@ -293,49 +283,139 @@ export type HomeSectionsInput = {
   readonly playlists?: readonly LibraryItem[]
   readonly downloadCount?: number
   readonly playingId?: string
+  readonly artFor?: CarPlayArtFor
 }
 
-const songRow = (item: LibraryItem, playingId?: string): CarPlayListItem => ({
-  id: `song:${item.id}`,
-  text: item.name,
-  detailText: item.artists[0],
-  isPlaying: playingId === item.id ? true : undefined,
-})
+const songRow = (
+  item: LibraryItem,
+  playingId?: string,
+  artworkUri?: string,
+): CarPlayListItem =>
+  withArt(
+    {
+      id: `song:${item.id}`,
+      text: item.name,
+      detailText: item.artists[0],
+      isPlaying: playingId === item.id ? true : undefined,
+    },
+    artworkUri,
+  )
 
 const mediaRow = (
   item: LibraryItem,
   playingId?: string,
+  artworkUri?: string,
 ): CarPlayListItem => {
   if (item.type === 'MusicArtist') {
-    return {
-      id: `artist:${item.id}`,
-      text: item.name,
-      showsDisclosureIndicator: true,
-    }
+    return withArt(
+      {
+        id: `artist:${item.id}`,
+        text: item.name,
+        showsDisclosureIndicator: true,
+      },
+      artworkUri,
+    )
   }
   if (item.type === 'Playlist') {
-    return {
-      id: `playlist:${item.id}`,
-      text: item.name,
-      detailText: item.childCount ? songCount(item.childCount) : undefined,
-      showsDisclosureIndicator: true,
-    }
+    return withArt(
+      {
+        id: `playlist:${item.id}`,
+        text: item.name,
+        detailText: item.childCount ? songCount(item.childCount) : undefined,
+        showsDisclosureIndicator: true,
+      },
+      artworkUri,
+    )
   }
   if (item.type === 'Audio') {
-    return songRow(item, playingId)
+    return songRow(item, playingId, artworkUri)
   }
-  return {
-    id: `album:${item.id}`,
-    text: item.name,
-    detailText: item.artists[0],
-    showsDisclosureIndicator: true,
-  }
+  return withArt(
+    {
+      id: `album:${item.id}`,
+      text: item.name,
+      detailText: item.artists[0],
+      showsDisclosureIndicator: true,
+    },
+    artworkUri,
+  )
 }
+
+export const mixRow = (mix: HomeMixRow): CarPlayListItem => {
+  const uris = (mix.artworkUris ?? []).filter(Boolean)
+  if (uris.length >= 2) {
+    return {
+      id: `mix:${mix.id}`,
+      text: mix.title,
+      detailText: mix.subtitle,
+      imageRowUris: uris.slice(0, 4),
+    }
+  }
+  return withArt(
+    {
+      id: `mix:${mix.id}`,
+      text: mix.title,
+      detailText: mix.subtitle,
+      showsDisclosureIndicator: true,
+    },
+    uris[0],
+  )
+}
+
+const libraryBrowseRows = (downloadCount: number): readonly CarPlayListItem[] => {
+  const browse: CarPlayListItem[] = [
+    browseRow('playlists', carplay.playlists()),
+    browseRow('albums', carplay.albums()),
+    browseRow('artists', carplay.artists()),
+    browseRow('songs', carplay.songs()),
+    browseRow('genres', carplay.genres()),
+    browseRow('mixes', carplay.mixes()),
+  ]
+  if (downloadCount > 0) {
+    browse.push(browseRow('offline', carplay.downloads(), songCount(downloadCount)))
+  }
+  return browse
+}
+
+/** Library hub: real latest albums (when known), then browse. Browse is never trimmed. */
+export type LibraryHubInput = {
+  readonly recentAlbums?: readonly LibraryItem[]
+  readonly downloadCount?: number
+  readonly artFor?: CarPlayArtFor
+}
+
+export const buildLibraryHubSections = (
+  input: LibraryHubInput,
+  maxItems = CARPLAY_DEFAULT_MAX_ITEMS,
+): readonly CarPlaySection[] => {
+  const browse = libraryBrowseRows(input.downloadCount ?? 0)
+  const recentSlots = Math.min(4, Math.max(0, Math.floor(maxItems) - browse.length))
+  const recent = (input.recentAlbums ?? []).slice(0, recentSlots)
+  const sections: CarPlaySection[] = []
+  if (recent.length > 0) {
+    sections.push({
+      header: carplay.latestAlbums(),
+      items: recent.map((item) =>
+        mediaRow(item, undefined, input.artFor?.(item)),
+      ),
+    })
+  }
+  sections.push({ items: browse })
+  return sections
+}
+
+export const buildLibraryHubItems = (
+  offline: readonly OfflineEntry[],
+): readonly CarPlayListItem[] =>
+  libraryBrowseRows(offline.filter((entry) => entry.complete).length)
 
 export const buildHomeSections = (
   input: HomeSectionsInput,
   maxItems = CARPLAY_DEFAULT_MAX_ITEMS,
 ): readonly CarPlaySection[] => {
+  const artFor = input.artFor
+  const row = (item: LibraryItem) =>
+    mediaRow(item, input.playingId, artFor?.(item))
   const actions: CarPlayListItem[] = [
     { id: 'action:shuffleAll', text: carplay.shuffleAll() },
     { id: 'action:shuffleFavorites', text: carplay.shuffleFavorites() },
@@ -353,76 +433,43 @@ export const buildHomeSections = (
   if (input.resume && input.resume.length > 0) {
     sections.push({
       header: carplay.continueListening(),
-      items: input.resume.slice(0, 4).map((item) => mediaRow(item, input.playingId)),
+      items: input.resume.slice(0, 4).map(row),
     })
   }
   if (input.recent && input.recent.length > 0) {
     sections.push({
       header: carplay.recentlyPlayed(),
-      items: input.recent.slice(0, 4).map((item) => mediaRow(item, input.playingId)),
+      items: input.recent.slice(0, 4).map(row),
     })
   }
   if (input.mixes && input.mixes.length > 0) {
-    const first = input.mixes[0]!
-    const imageRowUris = (first.artworkUris ?? []).slice(0, 8)
     sections.push({
       header: carplay.yourMixes(),
-      items: [
-        ...(imageRowUris.length > 0
-          ? [
-              {
-                id: `mix:${first.id}`,
-                text: first.title,
-                detailText: first.subtitle,
-                imageRowUris,
-              } satisfies CarPlayListItem,
-            ]
-          : []),
-        ...input.mixes.map((mix) => ({
-          id: `mix:${mix.id}`,
-          text: mix.title,
-          detailText: mix.subtitle,
-          showsDisclosureIndicator: true,
-        })),
-      ],
+      items: input.mixes.slice(0, 4).map(mixRow),
     })
   }
   if (input.favoriteArtists && input.favoriteArtists.length > 0) {
     sections.push({
       header: carplay.favoriteArtists(),
-      items: input.favoriteArtists.slice(0, 4).map((item) => ({
-        id: `artist:${item.id}`,
-        text: item.name,
-        showsDisclosureIndicator: true,
-      })),
+      items: input.favoriteArtists.slice(0, 4).map(row),
     })
   }
   if (input.favoriteTracks && input.favoriteTracks.length > 0) {
     sections.push({
       header: carplay.favoriteTracks(),
-      items: input.favoriteTracks.slice(0, 4).map((item) => songRow(item, input.playingId)),
+      items: input.favoriteTracks.slice(0, 4).map(row),
     })
   }
   if (input.latestAlbums && input.latestAlbums.length > 0) {
     sections.push({
       header: carplay.latestAlbums(),
-      items: input.latestAlbums.slice(0, 4).map((item) => ({
-        id: `album:${item.id}`,
-        text: item.name,
-        detailText: item.artists[0],
-        showsDisclosureIndicator: true,
-      })),
+      items: input.latestAlbums.slice(0, 4).map(row),
     })
   }
   if (input.playlists && input.playlists.length > 0) {
     sections.push({
       header: carplay.playlists(),
-      items: input.playlists.slice(0, 4).map((item) => ({
-        id: `playlist:${item.id}`,
-        text: item.name,
-        detailText: item.childCount ? songCount(item.childCount) : undefined,
-        showsDisclosureIndicator: true,
-      })),
+      items: input.playlists.slice(0, 4).map(row),
     })
   }
 
@@ -433,6 +480,7 @@ export type SearchExploreInput = {
   readonly genres?: readonly LibraryItem[]
   readonly mixes?: readonly HomeMixRow[]
   readonly playlists?: readonly LibraryItem[]
+  readonly artFor?: CarPlayArtFor
 }
 
 export const buildSearchExploreSections = (
@@ -464,23 +512,15 @@ export const buildSearchExploreSections = (
   if (input.mixes && input.mixes.length > 0) {
     sections.push({
       header: carplay.yourMixes(),
-      items: input.mixes.slice(0, 4).map((mix) => ({
-        id: `mix:${mix.id}`,
-        text: mix.title,
-        detailText: mix.subtitle,
-        showsDisclosureIndicator: true,
-      })),
+      items: input.mixes.slice(0, 4).map(mixRow),
     })
   }
   if (input.playlists && input.playlists.length > 0) {
     sections.push({
       header: carplay.playlists(),
-      items: input.playlists.slice(0, 4).map((item) => ({
-        id: `playlist:${item.id}`,
-        text: item.name,
-        detailText: item.childCount ? songCount(item.childCount) : undefined,
-        showsDisclosureIndicator: true,
-      })),
+      items: input.playlists
+        .slice(0, 4)
+        .map((item) => mediaRow(item, undefined, input.artFor?.(item))),
     })
   }
   return trimSectionsToBudget(sections, maxItems)
@@ -489,47 +529,36 @@ export const buildSearchExploreSections = (
 export const buildPlaylistItems = (
   playlists: readonly LibraryItem[],
   offset = 0,
+  artFor?: CarPlayArtFor,
 ): readonly CarPlayListItem[] =>
   pagedRows(
     playlists,
     offset,
-    (item) => ({
-      id: `playlist:${item.id}`,
-      text: item.name,
-      detailText: item.childCount ? songCount(item.childCount) : undefined,
-      showsDisclosureIndicator: true,
-    }),
+    (item) => mediaRow(item, undefined, artFor?.(item)),
     (next) => `playlistsMore:${next}`,
   )
 
 export const buildAlbumItems = (
   albums: readonly LibraryItem[],
   offset = 0,
+  artFor?: CarPlayArtFor,
 ): readonly CarPlayListItem[] =>
   pagedRows(
     albums,
     offset,
-    (item) => ({
-      id: `album:${item.id}`,
-      text: item.name,
-      detailText: item.artists[0],
-      showsDisclosureIndicator: true,
-    }),
+    (item) => mediaRow(item, undefined, artFor?.(item)),
     (next) => `albumsMore:${next}`,
   )
 
 export const buildArtistItems = (
   artists: readonly LibraryItem[],
   offset = 0,
+  artFor?: CarPlayArtFor,
 ): readonly CarPlayListItem[] =>
   pagedRows(
     artists,
     offset,
-    (item) => ({
-      id: `artist:${item.id}`,
-      text: item.name,
-      showsDisclosureIndicator: true,
-    }),
+    (item) => mediaRow(item, undefined, artFor?.(item)),
     (next) => `artistsMore:${next}`,
   )
 
@@ -538,6 +567,7 @@ export const buildSongItems = (
   songs: readonly LibraryItem[],
   offset = 0,
   playingId?: string,
+  artFor?: CarPlayArtFor,
 ): readonly CarPlayListItem[] => {
   const favorites = songs.filter((song) => song.isFavorite)
   const rest = songs.filter((song) => !song.isFavorite)
@@ -545,7 +575,7 @@ export const buildSongItems = (
   return pagedRows(
     ordered,
     offset,
-    (item) => songRow(item, playingId),
+    (item) => songRow(item, playingId, artFor?.(item)),
     (next) => `songsMore:${next}`,
   )
 }
@@ -590,6 +620,7 @@ export const buildArtistDetailItems = (
   artistName: string,
   albums: readonly LibraryItem[],
   offset = 0,
+  artFor?: CarPlayArtFor,
 ): readonly CarPlayListItem[] => [
   {
     id: `play:artist:${artistId}`,
@@ -604,12 +635,16 @@ export const buildArtistDetailItems = (
   ...pagedRows(
     albums,
     offset,
-    (album) => ({
-      id: `album:${album.id}`,
-      text: album.name,
-      detailText: album.artists[0] ?? artistName,
-      showsDisclosureIndicator: true,
-    }),
+    (album) =>
+      withArt(
+        {
+          id: `album:${album.id}`,
+          text: album.name,
+          detailText: album.artists[0] ?? artistName,
+          showsDisclosureIndicator: true,
+        },
+        artFor?.(album),
+      ),
     (next) => `artistAlbumsMore:${artistId}@${next}`,
   ),
 ]
@@ -620,6 +655,7 @@ export const buildTrackListItems = (
   tracks: readonly LibraryItem[],
   offset = 0,
   playingId?: string,
+  artFor?: CarPlayArtFor,
 ): readonly CarPlayListItem[] => {
   const header: readonly CarPlayListItem[] =
     offset === 0
@@ -629,12 +665,17 @@ export const buildTrackListItems = (
         ]
       : []
   const slice = tracks.slice(offset, offset + CARPLAY_PAGE_SIZE)
-  const rows = slice.map((track, i) => ({
-    id: `trackAt:${offset + i}`,
-    text: track.name,
-    detailText: track.artists[0],
-    isPlaying: playingId === track.id ? true : undefined,
-  }))
+  const rows = slice.map((track, i) =>
+    withArt(
+      {
+        id: `trackAt:${offset + i}`,
+        text: track.name,
+        detailText: track.artists[0],
+        isPlaying: playingId === track.id ? true : undefined,
+      },
+      artFor?.(track),
+    ),
+  )
   const next = offset + CARPLAY_PAGE_SIZE
   const more =
     next < tracks.length

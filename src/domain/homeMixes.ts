@@ -2,6 +2,8 @@ import {
   HOME_INSTANT_MIX_TARGET,
   homeMixCardSubtitle,
   homeMixCardTitle,
+  resolveHomeMixNamingSeed,
+  seededMixTitle,
   titleCaseGenreLabel,
   primaryArtistName,
 } from '@/src/domain/homeFeed'
@@ -120,22 +122,27 @@ export const tryBuildHomeMixCard = (
           seedOptionsForCandidate(candidate),
         )
   if (playable.length < min || !isMixDiverseEnough(playable)) return null
-  const seedLabel = candidate.id.startsWith('genre:')
+  const isGenre = candidate.id.startsWith('genre:')
+  const seedLabel = isGenre
     ? titleCaseGenreLabel(candidate.seedLabel)
     : candidate.seedLabel
-  const title = homeMixCardTitle(seedLabel, playable)
+  const namingSeed = resolveHomeMixNamingSeed(seedLabel, playable, {
+    forceSeed: isGenre,
+  })
+  const title = seededMixTitle(namingSeed) || homeMixCardTitle('', playable)
   const titleKey = mixTitleKey(title)
   if (!titleKey || usedTitles.has(titleKey)) return null
   return {
     id: candidate.id,
     title,
-    subtitle: homeMixCardSubtitle(seedLabel, playable),
+    subtitle: homeMixCardSubtitle(namingSeed, playable),
     tracks: playable,
   }
 }
 
 export const retitleHomeMixCard = <
   T extends {
+    readonly id?: string
     readonly title: string
     readonly subtitle: string
     readonly tracks: readonly LibraryItem[]
@@ -145,9 +152,12 @@ export const retitleHomeMixCard = <
 ): T => {
   const seed = mix.title.replace(/\s+mix$/i, '').trim()
   if (!seed) return mix
-  const title = homeMixCardTitle(seed, mix.tracks)
+  const namingSeed = resolveHomeMixNamingSeed(seed, mix.tracks, {
+    forceSeed: Boolean(mix.id?.startsWith('genre:')),
+  })
+  const title = seededMixTitle(namingSeed) || homeMixCardTitle('', mix.tracks)
   if (title === mix.title) return mix
-  return { ...mix, title, subtitle: homeMixCardSubtitle(seed, mix.tracks) }
+  return { ...mix, title, subtitle: homeMixCardSubtitle(namingSeed, mix.tracks) }
 }
 
 export const appendHomeMixCard = (

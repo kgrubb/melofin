@@ -15,7 +15,7 @@ import {
 } from '@/src/carplay/nativeTemplates'
 import {
   buildHomeSections,
-  buildLibraryHubItems,
+  buildLibraryHubSections,
   buildQueueItems,
   buildSearchExploreSections,
   CARPLAY_DEFAULT_MAX_ITEMS,
@@ -24,12 +24,12 @@ import {
   type CarPlaySection,
   type HomeMixRow,
 } from '@/src/carplay/templates'
+import { carPlayArtFor, carPlayMixArtworkUris } from '@/src/carplay/itemArt'
 import { mapPool } from '@/src/domain/asyncPool'
 import type { QueueTrack } from '@/src/domain/queue'
 import { carplay } from '@/src/i18n/carplayCopy'
 import { logger } from '@/src/logging/logger'
 import {
-  artworkUrl,
   fetchFavoriteArtists,
   fetchFavoriteTracks,
   fetchLatestAlbums,
@@ -37,6 +37,7 @@ import {
   fetchRecentPlaylists,
   fetchRecentSongs,
   fetchResume,
+  type LibraryItem,
 } from '@/src/services/jellyfin/library'
 import { useHomeMixesStore } from '@/src/store/homeMixes'
 import { useLibraryStore } from '@/src/store/library'
@@ -72,6 +73,7 @@ type Session = {
   search: CarPlayListHandle | null
   stackTop: CarPlayListHandle | null
   trackBuffer: readonly QueueTrack[]
+  latestAlbums: readonly LibraryItem[]
   maxItems: number
   homeGen: number
   connected: boolean
@@ -85,6 +87,7 @@ const session: Session = {
   search: null,
   stackTop: null,
   trackBuffer: [],
+  latestAlbums: [],
   maxItems: CARPLAY_DEFAULT_MAX_ITEMS,
   homeGen: 0,
   connected: false,
@@ -137,33 +140,13 @@ const decorateArtwork = async (
     return { header: section.header, items }
   })
 
-const mixRows = (): readonly HomeMixRow[] => {
-  const mixes = Object.values(useHomeMixesStore.getState().byId)
-  const context = useSessionStore.getState().context
-  return mixes.map((mix) => {
-    const artworkUris =
-      context && mix.tracks.length > 0
-        ? mix.tracks
-            .slice(0, 8)
-            .map(
-              (track) =>
-                artworkUrl(
-                  context,
-                  track.imageItemId ?? track.id,
-                  track.imageTag,
-                  'thumb',
-                ) ?? '',
-            )
-            .filter(Boolean)
-        : []
-    return {
-      id: mix.id,
-      title: mix.title,
-      subtitle: mix.subtitle,
-      artworkUris,
-    }
-  })
-}
+const mixRows = (): readonly HomeMixRow[] =>
+  Object.values(useHomeMixesStore.getState().byId).map((mix) => ({
+    id: mix.id,
+    title: mix.title,
+    subtitle: mix.subtitle,
+    artworkUris: carPlayMixArtworkUris(mix.tracks),
+  }))
 
 const homeFromCache = (): readonly CarPlaySection[] => {
   const library = useLibraryStore.getState()
@@ -173,13 +156,14 @@ const homeFromCache = (): readonly CarPlaySection[] => {
       {
         mixes: mixRows(),
         playlists: library.playlists.slice(0, 8),
-        latestAlbums: library.albums.slice(0, 8),
+        latestAlbums: session.latestAlbums,
         favoriteTracks: library.songs.filter((song) => song.isFavorite).slice(0, 8),
         favoriteArtists: library.artists
           .filter((artist) => artist.isFavorite)
           .slice(0, 8),
         downloadCount,
         playingId: playingId(),
+        artFor: carPlayArtFor,
       },
       session.maxItems,
     ),
@@ -230,6 +214,9 @@ const refreshHome = async (gen: number): Promise<void> => {
 
   if (gen !== session.homeGen || !session.home) return
 
+  const latestAlbums = okValue(results[4]) ?? []
+  session.latestAlbums = latestAlbums
+
   const downloadCount = offlineEntries().filter((entry) => entry.complete).length
   const sections = trimSectionsToBudget(
     buildHomeSections(
@@ -238,11 +225,12 @@ const refreshHome = async (gen: number): Promise<void> => {
         recent: okValue(results[1]),
         favoriteTracks: okValue(results[2]),
         favoriteArtists: okValue(results[3]),
-        latestAlbums: okValue(results[4]),
+        latestAlbums,
         playlists: okValue(results[5]),
         mixes: mixRows(),
         downloadCount,
         playingId: playingId(),
+        artFor: carPlayArtFor,
       },
       session.maxItems,
     ),
@@ -256,6 +244,8 @@ const refreshHome = async (gen: number): Promise<void> => {
     session.home.setSections(decorated)
   }
 
+  paintLibrary()
+
   if (session.search) {
     const explore = trimSectionsToBudget(
       buildSearchExploreSections(
@@ -264,6 +254,7 @@ const refreshHome = async (gen: number): Promise<void> => {
           mixes: mixRows(),
           playlists:
             okValue(results[5]) ?? useLibraryStore.getState().playlists.slice(0, 8),
+          artFor: carPlayArtFor,
         },
         session.maxItems,
       ),
@@ -277,9 +268,39 @@ const refreshHome = async (gen: number): Promise<void> => {
   }
 }
 
+const libraryFromCache = (): readonly CarPlaySection[] => {
+  const downloadCount = offlineEntries().filter((entry) => entry.complete).length
+  return buildLibraryHubSections(
+    {
+      recentAlbums: session.latestAlbums,
+      downloadCount,
+      artFor: carPlayArtFor,
+    },
+    session.maxItems,
+  )
+}
+
 const paintLibrary = (): void => {
   if (!session.library) return
-  session.library.setItems(buildLibraryHubItems(offlineEntries()))
+  const sections = libraryFromCache()
+  session.library.setSections(sections)
+  const artGen = currentArtworkGeneration()
+  void decorateArtwork(sections, artGen).then((decorated) => {
+    if (!session.library || artGen !== currentArtworkGeneration()) return
+    session.library.setSections(decorated)
+  })
+}
+
+const publishListArt = (
+  handle: CarPlayListHandle,
+  items: readonly CarPlayListItem[],
+): void => {
+  const artGen = currentArtworkGeneration()
+  void decorateArtwork([{ items }], artGen).then((decorated) => {
+    if (session.stackTop !== handle || artGen !== currentArtworkGeneration()) return
+    const next = decorated[0]?.items
+    if (next) handle.setItems(next)
+  })
 }
 
 export const pushCarPlayList = (
@@ -290,6 +311,7 @@ export const pushCarPlayList = (
   const handle = createListTemplate(title, items, handlePress, { emptyTitle })
   session.stackTop = handle
   CarPlay.pushTemplate(handle.template, true)
+  publishListArt(handle, items)
   return handle
 }
 
@@ -300,6 +322,7 @@ export const replaceCarPlayList = (
 ): void => {
   if (session.stackTop) {
     session.stackTop.setItems(items)
+    publishListArt(session.stackTop, items)
     return
   }
   pushCarPlayList(_title, items, emptyTitle)
@@ -314,9 +337,16 @@ export const getCarPlayTrackBuffer = (): readonly QueueTrack[] =>
 
 export const isCarPlaySessionConnected = (): boolean => session.connected
 
+const settle = (run: () => void | Promise<void>): void => {
+  void Promise.resolve(run()).catch((cause) => {
+    logger.warn('CarPlay action failed', { cause })
+  })
+}
+
 const configureNowPlaying = (): void => {
   try {
     CarPlay.enableNowPlaying(true)
+    // Once per JS lifetime. Native NP is a singleton and recreating stacks listeners.
     if (session.nowPlaying) return
     session.nowPlaying = new NowPlayingTemplate({
       albumArtistButtonEnabled: true,
@@ -336,15 +366,10 @@ const configureNowPlaying = (): void => {
           image: require('../../assets/carplay/radio.png'),
         },
       ],
-      onUpNextButtonPressed: () => {
-        void pressHandler('action:upNext')
-      },
-      onAlbumArtistButtonPressed: () => {
-        void pressHandler('action:albumArtist')
-      },
-      onButtonPressed: ({ id }) => {
-        void nowPlayingHandler(id)
-      },
+      onUpNextButtonPressed: () => settle(() => pressHandler('action:upNext')),
+      onAlbumArtistButtonPressed: () =>
+        settle(() => pressHandler('action:albumArtist')),
+      onButtonPressed: ({ id }) => settle(() => nowPlayingHandler(id)),
     })
   } catch (cause) {
     logger.warn('CarPlay Now Playing config failed', { cause })
@@ -353,10 +378,17 @@ const configureNowPlaying = (): void => {
 
 export const connectCarPlaySession = (): void => {
   try {
+    session.tabBar = null
+    session.home = null
+    session.library = null
+    session.search = null
+    session.stackTop = null
+    session.trackBuffer = []
+    session.latestAlbums = []
     session.connected = true
     bumpArtworkGeneration()
 
-    // Root template first so CarPlay is never left on a blank scene if NP setup throws.
+    // Root first so CarPlay is not left on a blank scene if Now Playing setup throws.
     session.home = createListTemplate(carplay.home(), [], handlePress, {
       tabTitle: carplay.home(),
       tabSystemImageName: 'house.fill',
@@ -388,6 +420,7 @@ export const connectCarPlaySession = (): void => {
       buildSearchExploreSections({
         mixes: mixRows(),
         playlists: useLibraryStore.getState().playlists.slice(0, 8),
+        artFor: carPlayArtFor,
       }),
     )
 
@@ -397,7 +430,12 @@ export const connectCarPlaySession = (): void => {
         session.library.template,
         session.search.template,
       ],
-      onTemplateSelect: () => undefined,
+      onTemplateSelect: (template) => {
+        // Search tab opens the keyboard find-and-play flow immediately.
+        if (session.search && template?.id === session.search.template.id) {
+          searchOpener()
+        }
+      },
     })
     CarPlay.setRootTemplate(session.tabBar)
     configureNowPlaying()
@@ -434,10 +472,10 @@ export const disconnectCarPlaySession = (): void => {
   bumpArtworkGeneration()
   clearArtworkCache()
   session.tabBar = null
-  session.nowPlaying = null
   session.home = null
   session.library = null
   session.search = null
   session.stackTop = null
   session.trackBuffer = []
+  session.latestAlbums = []
 }
