@@ -144,6 +144,51 @@ describe('homeFeed', () => {
       ]),
     ).toBe('Tyler, The Creator Mix')
     expect(
+      homeMixCardTitle('Elder Brother', [
+        item('1', 'Audio', { artists: ['Kendrick Lamar'] }),
+        item('2', 'Audio', { artists: ['Kendrick Lamar'] }),
+        item('3', 'Audio', { artists: ['Frank Ocean'] }),
+        item('4', 'Audio', { artists: ['SZA'] }),
+        item('5', 'Audio', { artists: ['JID'] }),
+      ]),
+    ).toBe('Kendrick Lamar Mix')
+    expect(
+      homeMixCardTitle('Elder Brother', [
+        item('1', 'Audio', { artists: ['Elder Brother'] }),
+        item('2', 'Audio', { artists: ['Kendrick Lamar'] }),
+        item('3', 'Audio', { artists: ['Kendrick Lamar'] }),
+        item('4', 'Audio', { artists: ['Frank Ocean'] }),
+      ]),
+    ).toBe('Kendrick Lamar Mix')
+    expect(
+      homeMixCardTitle(
+        'Rock',
+        [
+          item('1', 'Audio', { artists: ['Foo Fighters'] }),
+          item('2', 'Audio', { artists: ['Nirvana'] }),
+          item('3', 'Audio', { artists: ['Queens'] }),
+          item('4', 'Audio', { artists: ['Pearl'] }),
+        ],
+        undefined,
+        { forceSeed: true },
+      ),
+    ).toBe('Rock Mix')
+    expect(
+      displayHomeMixCard({
+        id: 'genre:rock',
+        title: 'Rock Mix',
+        subtitle: 'x',
+        tracks: [
+          item('1', 'Audio', { artists: ['Foo Fighters'] }),
+          item('2', 'Audio', { artists: ['Nirvana'] }),
+          item('3', 'Audio', { artists: ['Queens'] }),
+        ],
+      }),
+    ).toEqual({
+      title: 'Rock Mix',
+      subtitle: 'Foo Fighters, Nirvana, Queens and more',
+    })
+    expect(
       homeMixCardTitle('Mix 1', [
         item('1', 'Audio', { artists: ['Radiohead'] }),
         item('2', 'Audio', { artists: ['Radiohead'] }),

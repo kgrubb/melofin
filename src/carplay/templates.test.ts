@@ -11,6 +11,7 @@ import {
   buildGenreItems,
   buildHomeSections,
   buildLibraryHubItems,
+  buildLibraryHubSections,
   buildOfflineItems,
   buildPlaylistItems,
   buildQueueItems,
@@ -63,6 +64,53 @@ const album = (id: string, name = id) => ({
 })
 
 describe('carplay templates', () => {
+  it('builds library hub sections with recent albums then browse', () => {
+    const sections = buildLibraryHubSections({
+      recentAlbums: [album('al1', 'New')],
+      downloadCount: 1,
+      artFor: (item) => `art:${item.id}`,
+    })
+    expect(sections[0]?.header).toBe(carplay.latestAlbums())
+    expect(sections[0]?.items[0]?.artworkUri).toBe('art:al1')
+    expect(sections[1]?.header).toBeUndefined()
+    expect(sections[1]?.items.map((item) => item.id)).toEqual([
+      'browse:playlists',
+      'browse:albums',
+      'browse:artists',
+      'browse:songs',
+      'browse:genres',
+      'browse:mixes',
+      'browse:offline',
+    ])
+  })
+
+  it('keeps full library browse when maxItems is tight', () => {
+    const albums = [album('a1', 'A'), album('a2', 'B'), album('a3', 'C'), album('a4', 'D')]
+    const sections = buildLibraryHubSections(
+      { recentAlbums: albums, downloadCount: 1 },
+      8,
+    )
+    expect(sections[0]?.items).toHaveLength(1)
+    expect(sections[1]?.items.map((item) => item.id)).toEqual([
+      'browse:playlists',
+      'browse:albums',
+      'browse:artists',
+      'browse:songs',
+      'browse:genres',
+      'browse:mixes',
+      'browse:offline',
+    ])
+  })
+
+  it('omits latest albums from library hub when budget only fits browse', () => {
+    const sections = buildLibraryHubSections(
+      { recentAlbums: [album('a1', 'A')], downloadCount: 1 },
+      7,
+    )
+    expect(sections).toHaveLength(1)
+    expect(sections[0]?.items).toHaveLength(7)
+  })
+
   it('builds library hub without shuffle/search rows', () => {
     const hub = buildLibraryHubItems([
       offlineEntry('t1'),
@@ -404,7 +452,10 @@ describe('carplay templates', () => {
     expect(sections.some((s) => s.header === carplay.latestAlbums())).toBe(true)
     expect(sections.some((s) => s.header === carplay.playlists())).toBe(true)
     const mixes = sections.find((s) => s.header === carplay.yourMixes())
-    expect(mixes?.items.some((item) => item.imageRowUris?.length === 2)).toBe(true)
+    expect(mixes?.items).toHaveLength(2)
+    expect(mixes?.items[0]?.imageRowUris).toEqual(['u1', 'u2'])
+    expect(mixes?.items[0]?.id).toBe('mix:m1')
+    expect(mixes?.items[1]?.id).toBe('mix:m2')
   })
 
   it('builds home mix rail without image row when art missing', () => {
@@ -413,6 +464,31 @@ describe('carplay templates', () => {
     })
     const mixes = sections.find((s) => s.header === carplay.yourMixes())
     expect(mixes?.items.every((item) => !item.imageRowUris)).toBe(true)
+    expect(mixes?.items[0]?.showsDisclosureIndicator).toBe(true)
+  })
+
+  it('attaches artwork uris on home media rows when artFor is provided', () => {
+    const sections = buildHomeSections(
+      {
+        latestAlbums: [album('la1', 'Latest')],
+        favoriteTracks: [
+          {
+            id: 'ft1',
+            name: 'Fav',
+            type: 'Audio',
+            artists: ['A'],
+            durationMs: 1,
+            imageTag: 't',
+          },
+        ],
+        artFor: (item) => `thumb:${item.id}`,
+      },
+      40,
+    )
+    const albums = sections.find((s) => s.header === carplay.latestAlbums())
+    const tracks = sections.find((s) => s.header === carplay.favoriteTracks())
+    expect(albums?.items[0]?.artworkUri).toBe('thumb:la1')
+    expect(tracks?.items[0]?.artworkUri).toBe('thumb:ft1')
   })
 
   it('builds search explore mixes and playlists', () => {

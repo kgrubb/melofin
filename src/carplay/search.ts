@@ -11,8 +11,11 @@ import {
 } from '@/src/services/jellyfin/library'
 import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
-import { pushCarPlayList, setCarPlayTrackBuffer } from '@/src/carplay/session'
-import { buildArtistDetailItems, buildTrackListItems } from '@/src/carplay/templates'
+import { presentCarPlayNotice } from '@/src/carplay/feedback'
+import { pushCarPlayList } from '@/src/carplay/session'
+import { orderSearchResults } from '@/src/carplay/searchOrder'
+import { buildArtistDetailItems } from '@/src/carplay/templates'
+import { carPlayArtFor } from '@/src/carplay/itemArt'
 import { logger } from '@/src/logging/logger'
 import type { QueueTrack } from '@/src/domain/queue'
 
@@ -25,7 +28,10 @@ const searchDetail = (item: LibraryItem) => {
 
 const playOrBrowse = async (item: LibraryItem): Promise<void> => {
   const session = useSessionStore.getState()
-  if (!session.context || !session.session) return
+  if (!session.context || !session.session) {
+    presentCarPlayNotice(carplay.unavailable())
+    return
+  }
   const { context } = session
   const userId = session.session.userId
   const playQueue = usePlayerStore.getState().playQueue
@@ -34,11 +40,16 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
     const albums = await fetchAlbumsByArtist(context, userId, item.id)
     if (!albums.ok) {
       logger.warn('CarPlay search artist failed', { id: item.id })
+      presentCarPlayNotice(carplay.unavailable())
+      return
+    }
+    if (albums.value.length === 0) {
+      presentCarPlayNotice(carplay.noAlbums())
       return
     }
     pushCarPlayList(
       item.name,
-      buildArtistDetailItems(item.id, item.name, albums.value),
+      buildArtistDetailItems(item.id, item.name, albums.value, 0, carPlayArtFor),
       carplay.noAlbums(),
     )
     return
@@ -61,8 +72,14 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
     item.type === 'Playlist'
       ? await fetchPlaylistTracks(context, userId, item.id)
       : await fetchChildren(context, userId, item.id)
-  if (!result.ok || result.value.length === 0) {
+  if (!result.ok) {
+    logger.warn('CarPlay search load failed', { id: item.id, type: item.type })
+    presentCarPlayNotice(carplay.unavailable())
+    return
+  }
+  if (result.value.length === 0) {
     logger.warn('CarPlay search empty', { id: item.id, type: item.type })
+    presentCarPlayNotice(carplay.nothingToPlay())
     return
   }
 
@@ -72,25 +89,25 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
       artworkUrl(context, track.imageItemId ?? track.id, track.imageTag, 'hero'),
     ),
   )
-
-  if (item.type === 'Playlist' || item.type === 'MusicAlbum') {
-    const containerType = item.type === 'Playlist' ? 'playlist' : 'album'
-    setCarPlayTrackBuffer(queue)
-    pushCarPlayList(
-      item.name,
-      buildTrackListItems(containerType, item.id, result.value),
-      carplay.noSongs(),
-    )
-    return
-  }
-
   playQueue(queue, 0)
 }
 
+let searchOpen = false
+
+/** Clears the open guard (disconnect / root rebuild). */
+export const resetCarPlaySearchOpen = (): void => {
+  searchOpen = false
+}
+
 export const openCarPlaySearch = (): void => {
+  if (searchOpen) return
+  searchOpen = true
   const state = { results: [] as LibraryItem[], searchGen: 0 }
   CarPlay.pushTemplate(
     new SearchTemplate({
+      onWillDisappear: () => {
+        searchOpen = false
+      },
       onSearch: async (query) => {
         const gen = ++state.searchGen
         const session = useSessionStore.getState()
@@ -105,7 +122,12 @@ export const openCarPlaySearch = (): void => {
           query,
         )
         if (gen !== state.searchGen) return []
-        state.results = result.ok ? [...result.value] : []
+        if (!result.ok) {
+          logger.warn('CarPlay search failed', { query })
+          state.results = []
+          return []
+        }
+        state.results = [...orderSearchResults(result.value)]
         return state.results.map((item) => ({
           text: item.name,
           detailText: searchDetail(item),
@@ -124,8 +146,13 @@ export const openCarPlaySearch = (): void => {
         }))
       },
       onItemSelect: async ({ index }) => {
-        const item = state.results[index]
-        if (item) await playOrBrowse(item)
+        try {
+          const item = state.results[index]
+          if (item) await playOrBrowse(item)
+        } catch (cause) {
+          logger.warn('CarPlay select failed', { cause, index })
+          presentCarPlayNotice(carplay.unavailable())
+        }
       },
     }),
     true,

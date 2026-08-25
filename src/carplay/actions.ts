@@ -8,6 +8,8 @@ import {
   setCarPlayTrackBuffer,
 } from '@/src/carplay/session'
 import { openCarPlaySearch } from '@/src/carplay/search'
+import { presentCarPlayNotice } from '@/src/carplay/feedback'
+import { carPlayArtFor, carPlayMixArtworkUris } from '@/src/carplay/itemArt'
 import {
   buildAlbumItems,
   buildArtistDetailItems,
@@ -18,9 +20,9 @@ import {
   buildQueueItems,
   buildSongItems,
   buildTrackListItems,
+  mixRow,
   parseCarPlayItemId,
   tracksFromOffline,
-  type CarPlayListItem,
 } from '@/src/carplay/templates'
 import { logger } from '@/src/logging/logger'
 import type { QueueTrack } from '@/src/domain/queue'
@@ -84,8 +86,15 @@ const playTracks = (
   startIndex = 0,
   shuffle = false,
 ) => {
-  if (tracks.length === 0) return
+  if (tracks.length === 0) {
+    presentCarPlayNotice(carplay.nothingToPlay())
+    return
+  }
   usePlayerStore.getState().playQueue(tracks, startIndex, null, shuffle)
+}
+
+const noticeLoad = (ok: boolean): void => {
+  presentCarPlayNotice(ok ? carplay.nothingToPlay() : carplay.unavailable())
 }
 
 const openTrackList = (
@@ -99,7 +108,14 @@ const openTrackList = (
   setCarPlayTrackBuffer(toQueue(context, tracks))
   pushCarPlayList(
     title,
-    buildTrackListItems(containerType, containerId, tracks, 0, playingId()),
+    buildTrackListItems(
+      containerType,
+      containerId,
+      tracks,
+      0,
+      playingId(),
+      carPlayArtFor,
+    ),
     carplay.noSongs(),
   )
 }
@@ -116,9 +132,16 @@ const pushArtistDetail = async (
   const albums = await fetchAlbumsByArtist(context, userId, artistId)
   if (!albums.ok) {
     logger.warn('CarPlay artist albums failed', { artistId })
+    presentCarPlayNotice(carplay.unavailable())
     return false
   }
-  const items = buildArtistDetailItems(artistId, name, albums.value, offset)
+  const items = buildArtistDetailItems(
+    artistId,
+    name,
+    albums.value,
+    offset,
+    carPlayArtFor,
+  )
   if (replace) replaceCarPlayList(name, items, carplay.noAlbums())
   else pushCarPlayList(name, items, carplay.noAlbums())
   return true
@@ -239,25 +262,25 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
     if (action.section === 'playlists') {
       pushCarPlayList(
         carplay.playlists(),
-        buildPlaylistItems(library.playlists),
+        buildPlaylistItems(library.playlists, 0, carPlayArtFor),
         carplay.noPlaylists(),
       )
     } else if (action.section === 'albums') {
       pushCarPlayList(
         carplay.albums(),
-        buildAlbumItems(library.albums),
+        buildAlbumItems(library.albums, 0, carPlayArtFor),
         carplay.noAlbums(),
       )
     } else if (action.section === 'artists') {
       pushCarPlayList(
         carplay.artists(),
-        buildArtistItems(library.artists),
+        buildArtistItems(library.artists, 0, carPlayArtFor),
         carplay.noArtists(),
       )
     } else if (action.section === 'songs') {
       pushCarPlayList(
         carplay.songs(),
-        buildSongItems(library.songs, 0, playingId()),
+        buildSongItems(library.songs, 0, playingId(), carPlayArtFor),
         carplay.noSongs(),
       )
     } else if (action.section === 'genres') {
@@ -276,18 +299,20 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
             buildGenreItems(genreCache),
             carplay.noGenres(),
           )
+        } else {
+          presentCarPlayNotice(carplay.unavailable())
         }
       }
     } else if (action.section === 'mixes') {
       const mixes = Object.values(useHomeMixesStore.getState().byId)
       pushCarPlayList(
         carplay.mixes(),
-        mixes.map(
-          (mix): CarPlayListItem => ({
-            id: `mix:${mix.id}`,
-            text: mix.title,
-            detailText: mix.subtitle,
-            showsDisclosureIndicator: true,
+        mixes.map((mix) =>
+          mixRow({
+            id: mix.id,
+            title: mix.title,
+            subtitle: mix.subtitle,
+            artworkUris: carPlayMixArtworkUris(mix.tracks),
           }),
         ),
       )
@@ -304,7 +329,11 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
   if (action.kind === 'playlistsMore') {
     replaceCarPlayList(
       carplay.playlists(),
-      buildPlaylistItems(useLibraryStore.getState().playlists, action.offset),
+      buildPlaylistItems(
+        useLibraryStore.getState().playlists,
+        action.offset,
+        carPlayArtFor,
+      ),
       carplay.noPlaylists(),
     )
     return
@@ -312,7 +341,11 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
   if (action.kind === 'albumsMore') {
     replaceCarPlayList(
       carplay.albums(),
-      buildAlbumItems(useLibraryStore.getState().albums, action.offset),
+      buildAlbumItems(
+        useLibraryStore.getState().albums,
+        action.offset,
+        carPlayArtFor,
+      ),
       carplay.noAlbums(),
     )
     return
@@ -320,7 +353,11 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
   if (action.kind === 'artistsMore') {
     replaceCarPlayList(
       carplay.artists(),
-      buildArtistItems(useLibraryStore.getState().artists, action.offset),
+      buildArtistItems(
+        useLibraryStore.getState().artists,
+        action.offset,
+        carPlayArtFor,
+      ),
       carplay.noArtists(),
     )
     return
@@ -328,7 +365,12 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
   if (action.kind === 'songsMore') {
     replaceCarPlayList(
       carplay.songs(),
-      buildSongItems(useLibraryStore.getState().songs, action.offset, playingId()),
+      buildSongItems(
+        useLibraryStore.getState().songs,
+        action.offset,
+        playingId(),
+        carPlayArtFor,
+      ),
       carplay.noSongs(),
     )
     return
@@ -343,6 +385,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
         trackListContext.tracks,
         action.offset,
         playingId(),
+        carPlayArtFor,
       ),
       carplay.noSongs(),
     )
@@ -370,6 +413,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
   const session = useSessionStore.getState()
   if (!session.context || !session.session) {
     logger.warn('CarPlay action skipped', { reason: 'no_session', kind: action.kind })
+    presentCarPlayNotice(carplay.unavailable())
     return
   }
   const { context } = session
@@ -379,6 +423,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
     const songs = await fetchRandomSongs(context, userId, 100)
     if (!songs.ok || songs.value.length === 0) {
       logger.warn('CarPlay shuffle empty')
+      noticeLoad(songs.ok)
       return
     }
     playTracks(toQueue(context, songs.value), 0, true)
@@ -387,7 +432,10 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
 
   if (action.kind === 'shuffleFavorites') {
     const songs = await fetchFavoriteTracks(context, userId)
-    if (!songs.ok || songs.value.length === 0) return
+    if (!songs.ok || songs.value.length === 0) {
+      noticeLoad(songs.ok)
+      return
+    }
     playTracks(toQueue(context, songs.value), 0, true)
     return
   }
@@ -407,6 +455,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       const fetched = await fetchItem(context, userId, action.id)
       if (!fetched.ok) {
         logger.warn('CarPlay song not found', { id: action.id })
+        presentCarPlayNotice(carplay.unavailable())
         return
       }
       item = fetched.value
@@ -426,6 +475,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       const songs = await fetchSongsForArtist(context, userId, action.id)
       if (!songs.ok || songs.value.length === 0) {
         logger.warn('CarPlay catalog empty', { id: action.id, kind: action.kind })
+        noticeLoad(songs.ok)
         return
       }
       playTracks(toQueue(context, songs.value), 0, shuffle)
@@ -435,6 +485,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       const result = await fetchPlaylistTracks(context, userId, action.id)
       if (!result.ok || result.value.length === 0) {
         logger.warn('CarPlay catalog empty', { id: action.id, kind: action.kind })
+        noticeLoad(result.ok)
         return
       }
       playTracks(toQueue(context, result.value), 0, shuffle)
@@ -443,6 +494,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
     const result = await fetchChildren(context, userId, action.id)
     if (!result.ok || result.value.length === 0) {
       logger.warn('CarPlay catalog empty', { id: action.id, kind: action.kind })
+      noticeLoad(result.ok)
       return
     }
     playTracks(toQueue(context, result.value), 0, shuffle)
@@ -453,6 +505,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
     const result = await fetchPlaylistTracks(context, userId, action.id)
     if (!result.ok || result.value.length === 0) {
       logger.warn('CarPlay catalog empty', { id: action.id, kind: action.kind })
+      noticeLoad(result.ok)
       return
     }
     const playlist = useLibraryStore
@@ -472,6 +525,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
     const result = await fetchChildren(context, userId, action.id)
     if (!result.ok || result.value.length === 0) {
       logger.warn('CarPlay catalog empty', { id: action.id, kind: action.kind })
+      noticeLoad(result.ok)
       return
     }
     const album = useLibraryStore
@@ -494,6 +548,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
         : await fetchInstantMixFromGenreName(context, userId, action.name)
     if (!result.ok || result.value.length === 0) {
       logger.warn('CarPlay genre mix empty', { kind: action.kind })
+      noticeLoad(result.ok)
       return
     }
     playTracks(toQueue(context, result.value), 0, true)
@@ -502,7 +557,10 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
 
   if (action.kind === 'mix') {
     const mix = useHomeMixesStore.getState().byId[action.id]
-    if (!mix || mix.tracks.length === 0) return
+    if (!mix || mix.tracks.length === 0) {
+      presentCarPlayNotice(carplay.nothingToPlay())
+      return
+    }
     playTracks(toQueue(context, mix.tracks), 0, true)
   }
 }
