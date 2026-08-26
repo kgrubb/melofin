@@ -22,7 +22,8 @@ const toNativeItem = (item: CarPlayListItem): ListItem =>
     detailText: item.detailText,
     ...(item.showsDisclosureIndicator ? { showsDisclosureIndicator: true } : {}),
     ...(item.isPlaying ? { isPlaying: true } : {}),
-    ...(item.artworkUri ? { image: { uri: item.artworkUri } } : {}),
+    // RNCarPlay loads remote/file covers via imgUrl (async). `image` is for bundled assets only.
+    ...(item.artworkUri ? { imgUrl: item.artworkUri } : {}),
     ...(item.imageRowUris && item.imageRowUris.length > 0
       ? { imgUrls: [...item.imageRowUris] }
       : {}),

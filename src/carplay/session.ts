@@ -315,6 +315,16 @@ export const pushCarPlayList = (
   return handle
 }
 
+/** Drop pushed lists so album-art / Up Next can open from a clean TabBar root. */
+export const resetCarPlayNavigation = (): void => {
+  try {
+    CarPlay.popToRootTemplate(false)
+  } catch {
+    // Already at root.
+  }
+  session.stackTop = null
+}
+
 export const replaceCarPlayList = (
   _title: string,
   items: readonly CarPlayListItem[],
@@ -343,34 +353,45 @@ const settle = (run: () => void | Promise<void>): void => {
   })
 }
 
+const nowPlayingConfig = () => ({
+  albumArtistButtonEnabled: true,
+  upNextButtonEnabled: true,
+  upNextButtonTitle: carplay.upNext(),
+  buttons: [
+    { id: 'shuffle', type: 'shuffle' as const },
+    { id: 'repeat', type: 'repeat' as const },
+    {
+      id: 'favorite',
+      type: 'image' as const,
+      image: require('../../assets/carplay/heart.png'),
+    },
+    {
+      id: 'radio',
+      type: 'image' as const,
+      image: require('../../assets/carplay/radio.png'),
+    },
+  ],
+  onUpNextButtonPressed: () => settle(() => pressHandler('action:upNext')),
+  onAlbumArtistButtonPressed: () =>
+    settle(() => pressHandler('action:albumArtist')),
+  onButtonPressed: ({ id }: { id: string }) =>
+    settle(() => nowPlayingHandler(id)),
+})
+
 const configureNowPlaying = (): void => {
   try {
     CarPlay.enableNowPlaying(true)
-    // Once per JS lifetime. Native NP is a singleton and recreating stacks listeners.
-    if (session.nowPlaying) return
-    session.nowPlaying = new NowPlayingTemplate({
-      albumArtistButtonEnabled: true,
-      upNextButtonEnabled: true,
-      upNextButtonTitle: carplay.upNext(),
-      buttons: [
-        { id: 'shuffle', type: 'shuffle' },
-        { id: 'repeat', type: 'repeat' },
-        {
-          id: 'favorite',
-          type: 'image',
-          image: require('../../assets/carplay/heart.png'),
-        },
-        {
-          id: 'radio',
-          type: 'image',
-          image: require('../../assets/carplay/radio.png'),
-        },
-      ],
-      onUpNextButtonPressed: () => settle(() => pressHandler('action:upNext')),
-      onAlbumArtistButtonPressed: () =>
-        settle(() => pressHandler('action:albumArtist')),
-      onButtonPressed: ({ id }) => settle(() => nowPlayingHandler(id)),
-    })
+    const config = nowPlayingConfig()
+    if (!session.nowPlaying) {
+      session.nowPlaying = new NowPlayingTemplate(config)
+      return
+    }
+    // Reconnect clears CPNowPlayingTemplate buttons. Re-create on the same JS id
+    // so existing listeners keep matching buttonPressed templateId.
+    CarPlay.bridge.createTemplate(
+      session.nowPlaying.id,
+      session.nowPlaying.parseConfig({ type: 'nowplaying', ...config }),
+    )
   } catch (cause) {
     logger.warn('CarPlay Now Playing config failed', { cause })
   }
