@@ -43,30 +43,27 @@ const iaImg = (id) => `${IA}/services/img/${enc(id)}`
 
 const pool = async (items, n, fn) => {
   if (!items.length) return []
-  const q = items.map((item, i) => [item, i])
-  const out = new Array(items.length)
+  const out = Array.from({ length: items.length })
+  const q = items.entries()
   await Promise.all(
     Array.from({ length: Math.min(n, items.length) }, async () => {
-      while (q.length) {
-        const [item, i] = q.shift()
-        out[i] = await fn(item, i)
-      }
+      for (const [i, item] of q) out[i] = await fn(item, i)
     }),
   )
   return out
 }
 
 const retry = async (fn, tries = 4) => {
-  let last
-  for (let i = 0; i < tries; i += 1) {
+  const attempt = async (i, last) => {
+    if (i >= tries) throw last
     try {
       return await fn()
     } catch (e) {
-      last = e
       await sleep(300 * 2 ** i)
+      return attempt(i + 1, e)
     }
   }
-  throw last
+  return attempt(0)
 }
 
 const getJson = (url) =>
@@ -117,7 +114,8 @@ const post = (path, token, body) =>
   jf(path, token, { method: 'POST', body: JSON.stringify(body) })
 
 const until = async (fn, ms = 300, n = 200) => {
-  for (let i = 0; i < n; i += 1) {
+  const attempt = async (i) => {
+    if (i >= n) throw new Error('timeout')
     try {
       const v = await fn()
       if (v) return v
@@ -125,8 +123,9 @@ const until = async (fn, ms = 300, n = 200) => {
       // retry
     }
     await sleep(ms)
+    return attempt(i + 1)
   }
-  throw new Error('timeout')
+  return attempt(0)
 }
 
 const mp3s = (files, max) =>
@@ -138,14 +137,13 @@ const mp3s = (files, max) =>
         !/spectrogram|sample|preview|__ia/i.test(n) &&
         !/\b(fuck(?:er|ing)?|shit|bitch|asshole|cunt|wank|blowjob)\b/i.test(n),
     )
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .toSorted((a, b) => a.localeCompare(b, undefined, { numeric: true }))
     .slice(0, max)
 
 const coverOf = (files) => {
-  const imgs = files.filter(
-    (f) => /\.(jpe?g|png)$/i.test(f.name) && !/spectrogram|_thumb|^__/i.test(f.name),
-  )
-  imgs.sort((a, b) => Number(b.size ?? 0) - Number(a.size ?? 0))
+  const imgs = files
+    .filter((f) => /\.(jpe?g|png)$/i.test(f.name) && !/spectrogram|_thumb|^__/i.test(f.name))
+    .toSorted((a, b) => Number(b.size ?? 0) - Number(a.size ?? 0))
   return (
     imgs.find((f) => Number(f.size ?? 0) >= 20_000)?.name ??
     ['cover.jpg', 'cover.png', 'folder.jpg', 'folder.png', 'front.jpg', 'poster.jpg'].find((n) =>
@@ -162,21 +160,21 @@ const imageMinEdge = (path) => {
       return Math.min(buf.readUInt32BE(16), buf.readUInt32BE(20))
     }
     if (buf[0] !== 0xff || buf[1] !== 0xd8) return 0
-    let i = 2
-    while (i < buf.length - 8) {
-      if (buf[i] !== 0xff) {
-        i += 1
+    const cur = { i: 2 }
+    while (cur.i < buf.length - 8) {
+      if (buf[cur.i] !== 0xff) {
+        cur.i += 1
         continue
       }
-      const m = buf[i + 1]
+      const m = buf[cur.i + 1]
       if (m === 0xc0 || m === 0xc1 || m === 0xc2) {
-        return Math.min(buf.readUInt16BE(i + 5), buf.readUInt16BE(i + 7))
+        return Math.min(buf.readUInt16BE(cur.i + 5), buf.readUInt16BE(cur.i + 7))
       }
       if (m === 0xd8 || m === 0xd9 || (m >= 0xd0 && m <= 0xd7)) {
-        i += 2
+        cur.i += 2
         continue
       }
-      i += 2 + buf.readUInt16BE(i + 2)
+      cur.i += 2 + buf.readUInt16BE(cur.i + 2)
     }
   } catch {
     // missing or not an image
@@ -225,7 +223,7 @@ const titleOf = (name) => {
   const base = name.replace(/\.[^.]+$/, '')
   const jamendo = base.match(/^\d+-+\d+-.+?-(.+)$/)
   if (jamendo?.[1]) return jamendo[1].replace(/_/g, ' ').trim()
-  return (base.split('_-_').pop() ?? base).replace(/_/g, ' ').replace(/^\d+\s*-\s*/, '').trim()
+  return (base.split('_-_').at(-1) ?? base).replace(/_/g, ' ').replace(/^\d+\s*-\s*/, '').trim()
 }
 
 const id3frame = (id, text) => {
@@ -272,10 +270,11 @@ const listMp3 = async (dir) => {
 
 const seedMedia = async (catalog) => {
   await mkdir(MEDIA, { recursive: true })
-  const need = []
-  for (const album of catalog.albums) {
-    if (!(await listMp3(albumPath(album))).length) need.push(album)
-  }
+  const need = (
+    await Promise.all(
+      catalog.albums.map(async (album) => ((await listMp3(albumPath(album))).length ? null : album)),
+    )
+  ).filter(Boolean)
   if (!need.length) {
     log(`media ready (${catalog.albums.length} albums on disk)`)
   } else {
@@ -291,23 +290,23 @@ const seedMedia = async (catalog) => {
       return { album, tracks, coverName: coverOf(data.files ?? []) }
     })
 
-    const covers = []
-    const jobs = []
-    for (const row of packed) {
-      if (!row) continue
-      const { album, tracks, coverName } = row
-      const dir = albumPath(album)
-      await mkdir(dir, { recursive: true })
-      covers.push({
-        url: coverName ? iaDl(album.identifier, coverName) : iaImg(album.identifier),
-        dest: join(dir, 'folder.jpg'),
-        artistDir: artistPath(album),
-        ident: album.identifier,
-      })
-      tracks.forEach((name, i) =>
-        jobs.push({ album, name, i, albumDir: dir, url: iaDl(album.identifier, name) }),
-      )
-    }
+    const rows = packed.filter(Boolean)
+    await Promise.all(rows.map(({ album }) => mkdir(albumPath(album), { recursive: true })))
+    const covers = rows.map(({ album, coverName }) => ({
+      url: coverName ? iaDl(album.identifier, coverName) : iaImg(album.identifier),
+      dest: join(albumPath(album), 'folder.jpg'),
+      artistDir: artistPath(album),
+      ident: album.identifier,
+    }))
+    const jobs = rows.flatMap(({ album, tracks }) =>
+      tracks.map((name, i) => ({
+        album,
+        name,
+        i,
+        albumDir: albumPath(album),
+        url: iaDl(album.identifier, name),
+      })),
+    )
 
     await pool(covers, 10, async ({ url, dest, artistDir, ident }) => {
       try {
@@ -357,18 +356,20 @@ const ensureCovers = async (catalog) => {
     await pool(weak, 6, async (album) => {
       const dest = join(albumPath(album), 'folder.jpg')
       await mkdir(albumPath(album), { recursive: true })
-      const tries = []
       const jid = album.identifier.match(/^jamendo-(\d+)$/)?.[1]
-      if (jid) tries.push(`https://usercontent.jamendo.com?type=album&id=${jid}&width=600`)
-      try {
-        const data = await getJson(`${IA}/metadata/${album.identifier}`)
-        const coverName = coverOf(data.files ?? [])
-        const names = new Set(coverName ? [coverName, 'cover.jpg'] : ['cover.jpg'])
-        for (const name of names) tries.push(iaDl(album.identifier, name))
-      } catch {
-        // metadata unavailable
-      }
-      tries.push(iaImg(album.identifier))
+      const fromMeta = await getJson(`${IA}/metadata/${album.identifier}`)
+        .then((data) => {
+          const coverName = coverOf(data.files ?? [])
+          return [...new Set(coverName ? [coverName, 'cover.jpg'] : ['cover.jpg'])].map((name) =>
+            iaDl(album.identifier, name),
+          )
+        })
+        .catch(() => [])
+      const tries = [
+        ...(jid ? [`https://usercontent.jamendo.com?type=album&id=${jid}&width=600`] : []),
+        ...fromMeta,
+        iaImg(album.identifier),
+      ]
       const tmp = `${dest}.upgrade`
       const currentEdge = imageMinEdge(dest)
       for (const url of tries) {
@@ -388,25 +389,21 @@ const ensureCovers = async (catalog) => {
       if (!have(dest) && imageMinEdge(dest) === 0) log(`cover skipped ${album.identifier}`)
     })
   }
-  let upsampled = 0
+  const upsampled = { count: 0 }
   for (const album of catalog.albums) {
     const dest = join(albumPath(album), 'folder.jpg')
-    if (upsampleCover(dest)) upsampled += 1
+    if (upsampleCover(dest)) upsampled.count += 1
     const poster = join(artistPath(album), 'folder.jpg')
     if (!coverOk(dest) && imageMinEdge(dest) === 0) continue
     if (imageMinEdge(dest) > imageMinEdge(poster)) await copyPoster(dest, artistPath(album))
   }
-  if (upsampled) log(`upsampled ${upsampled} covers to ${COVER_TARGET_EDGE}px`)
+  if (upsampled.count) log(`upsampled ${upsampled.count} covers to ${COVER_TARGET_EDGE}px`)
 }
 
 const pruneEmptyMetadataImages = async () => {
   const root = join(DEMO, 'config/metadata/library')
-  let files = []
-  try {
-    files = await readdir(root, { recursive: true })
-  } catch {
-    return
-  }
+  const files = await readdir(root, { recursive: true }).catch(() => null)
+  if (!files) return
   for (const rel of files) {
     const path = join(root, rel)
     try {
