@@ -458,14 +458,10 @@ export const fetchAlbumsByGenre = async (
   )
   const seen = new Set(catalog.map((album) => album.id))
   const derived: LibraryItem[] = []
-  const folded = await genreTrackQueries(userId, genreId, name).reduce<
-    Promise<{
-      readonly latest: readonly LibraryItem[]
-      readonly lastError: Result<readonly LibraryItem[]> | undefined
-    }>
-  >(async (prior, query) => {
-    const acc = await prior
-    if (signal?.aborted) return acc
+  let latest: readonly LibraryItem[] = catalog
+  let lastError: Result<readonly LibraryItem[]> | undefined
+  for (const query of genreTrackQueries(userId, genreId, name)) {
+    if (signal?.aborted) break
     const result = await deriveAlbumsFromGenreTrackPages(
       context,
       query,
@@ -473,12 +469,11 @@ export const fetchAlbumsByGenre = async (
       signal,
       { startIndex: 0, derived, seen },
     )
-    return result.ok
-      ? { latest: result.value, lastError: acc.lastError }
-      : { latest: acc.latest, lastError: result }
-  }, Promise.resolve({ latest: catalog, lastError: undefined }))
-  if (folded.latest.length > 0 || !folded.lastError) return ok(folded.latest)
-  return folded.lastError
+    if (result.ok) latest = result.value
+    else lastError = result
+  }
+  if (latest.length > 0 || !lastError) return ok(latest)
+  return lastError
 }
 
 export const fetchPlaylists = async (
@@ -652,7 +647,7 @@ const loadGenreAlbumProbe = async (
     }
   }
 
-  const afterId = ingestAlbums(
+  let probe: Probe = ingestAlbums(
     { albumCount: 0, sampleAlbums: [] },
     await fetchItemsPage(
       context,
@@ -662,27 +657,24 @@ const loadGenreAlbumProbe = async (
       signal,
     ),
   )
-  if (!needMore(afterId) || signal?.aborted) return afterId
+  if (!needMore(probe) || signal?.aborted) return probe
 
-  const afterName = name
-    ? ingestAlbums(
-        afterId,
-        await fetchItemsPage(
-          context,
-          browseGenreAlbumsProbeQuery(userId, genre.id, name),
-          0,
-          BROWSE_GENRE_PROBE_ALBUMS,
-          signal,
-        ),
-      )
-    : afterId
-  if (!needMore(afterName) || signal?.aborted) return afterName
-
-  return genreTrackQueries(userId, genre.id, name || undefined).reduce<
-    Promise<Probe>
-  >(async (prior, query) => {
-    const probe = await prior
+  if (name) {
+    probe = ingestAlbums(
+      probe,
+      await fetchItemsPage(
+        context,
+        browseGenreAlbumsProbeQuery(userId, genre.id, name),
+        0,
+        BROWSE_GENRE_PROBE_ALBUMS,
+        signal,
+      ),
+    )
     if (!needMore(probe) || signal?.aborted) return probe
+  }
+
+  for (const query of genreTrackQueries(userId, genre.id, name || undefined)) {
+    if (!needMore(probe) || signal?.aborted) break
     const tracks = await fetchItemsPage(
       context,
       query,
@@ -690,16 +682,17 @@ const loadGenreAlbumProbe = async (
       BROWSE_GENRE_TRACK_PROBE,
       signal,
     )
-    if (!tracks.ok) return probe
+    if (!tracks.ok) continue
     const derived = uniqueAlbumsFromTracks(tracks.value.items)
     for (const album of derived) {
       if (album.id) uniqueIds.add(album.id)
     }
-    return {
+    probe = {
       albumCount: Math.max(probe.albumCount, uniqueIds.size),
       sampleAlbums: pickBrowseGenreAlbums(probe.sampleAlbums, derived),
     }
-  }, Promise.resolve(afterName))
+  }
+  return probe
 }
 
 /** Random album covers for a genre tile. Fills from tracks when albums repeat art. */
@@ -741,7 +734,7 @@ export const fetchBrowseGenres = async (
     sortBy: ['Random'],
   })
   if (!preview.ok) return preview
-  let progress: { readonly published: boolean } = { published: false }
+  let published = false
   const probes = await collectBrowseGenres(
     preview.value,
     (genre) =>
@@ -753,8 +746,8 @@ export const fetchBrowseGenres = async (
       shouldContinue: () => !signal?.aborted,
       onProgress: (entries) => {
         if (!onProgress) return
-        if (!shouldPublishBrowseProgress(entries.length, progress.published)) return
-        progress = { published: true }
+        if (!shouldPublishBrowseProgress(entries.length, published)) return
+        published = true
         onProgress(entries)
       },
     },

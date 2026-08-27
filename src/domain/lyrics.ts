@@ -139,10 +139,6 @@ const finalizeLyrics = (
   if (start < 0) return { synced: false, lines: [] }
   const end = lines.findLastIndex((line) => !isBoilerplateLine(line.text))
   const trimmed = lines.slice(start, end + 1)
-  // On-demand Genius misses often leave only chrome. Treat as empty.
-  if (trimmed.length > 0 && trimmed.every((line) => isBoilerplateLine(line.text))) {
-    return { synced: false, lines: [] }
-  }
   const anyTimed = trimmed.some((line) => line.startMs !== undefined)
   const synced =
     syncedHint === true || (syncedHint !== false && anyTimed)

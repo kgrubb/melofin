@@ -22,12 +22,9 @@ export const accountScopeKey = (scope: AccountScope): string =>
 
 /** Deterministic `Math.random` stand-in. Same seed → same sequence. */
 export const unitRandomFromSeed = (seed: string): (() => number) => {
-  let rng: { readonly state: number } = {
-    state: Number.parseInt(stableHash(seed), 16) || 1,
-  }
+  let state = Number.parseInt(stableHash(seed), 16) || 1
   return () => {
-    const state = (Math.imul(1664525, rng.state) + 1013904223) >>> 0
-    rng = { state }
+    state = (Math.imul(1664525, state) + 1013904223) >>> 0
     return state / 4294967296
   }
 }

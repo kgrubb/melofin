@@ -43,30 +43,24 @@ const iaImg = (id) => `${IA}/services/img/${enc(id)}`
 
 const pool = async (items, n, fn) => {
   if (!items.length) return []
-  const q = items.map((item, i) => [item, i])
-  const out = new Array(items.length)
-  await Promise.all(
-    Array.from({ length: Math.min(n, items.length) }, async () => {
-      while (q.length) {
-        const [item, i] = q.shift()
-        out[i] = await fn(item, i)
-      }
-    }),
+  const limit = Math.max(1, Math.min(n, items.length))
+  const batches = Array.from({ length: Math.ceil(items.length / limit) }, (_, b) =>
+    items.slice(b * limit, b * limit + limit).map((item, j) => fn(item, b * limit + j)),
   )
-  return out
+  return batches.reduce(
+    async (prev, batch) => [...(await prev), ...(await Promise.all(batch))],
+    Promise.resolve([]),
+  )
 }
 
-const retry = async (fn, tries = 4) => {
-  let last
-  for (let i = 0; i < tries; i += 1) {
-    try {
-      return await fn()
-    } catch (e) {
-      last = e
-      await sleep(300 * 2 ** i)
-    }
+const retry = async (fn, tries = 4, attempt = 0) => {
+  try {
+    return await fn()
+  } catch (e) {
+    if (attempt + 1 >= tries) throw e
+    await sleep(300 * 2 ** attempt)
+    return retry(fn, tries, attempt + 1)
   }
-  throw last
 }
 
 const getJson = (url) =>
@@ -116,17 +110,16 @@ const jf = async (path, token, init = {}) => {
 const post = (path, token, body) =>
   jf(path, token, { method: 'POST', body: JSON.stringify(body) })
 
-const until = async (fn, ms = 300, n = 200) => {
-  for (let i = 0; i < n; i += 1) {
-    try {
-      const v = await fn()
-      if (v) return v
-    } catch {
-      // retry
-    }
-    await sleep(ms)
+const until = async (fn, ms = 300, n = 200, attempt = 0) => {
+  try {
+    const v = await fn()
+    if (v) return v
+  } catch {
+    // retry
   }
-  throw new Error('timeout')
+  if (attempt + 1 >= n) throw new Error('timeout')
+  await sleep(ms)
+  return until(fn, ms, n, attempt + 1)
 }
 
 const mp3s = (files, max) =>
@@ -138,14 +131,13 @@ const mp3s = (files, max) =>
         !/spectrogram|sample|preview|__ia/i.test(n) &&
         !/\b(fuck(?:er|ing)?|shit|bitch|asshole|cunt|wank|blowjob)\b/i.test(n),
     )
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .toSorted((a, b) => a.localeCompare(b, undefined, { numeric: true }))
     .slice(0, max)
 
 const coverOf = (files) => {
-  const imgs = files.filter(
-    (f) => /\.(jpe?g|png)$/i.test(f.name) && !/spectrogram|_thumb|^__/i.test(f.name),
-  )
-  imgs.sort((a, b) => Number(b.size ?? 0) - Number(a.size ?? 0))
+  const imgs = files
+    .filter((f) => /\.(jpe?g|png)$/i.test(f.name) && !/spectrogram|_thumb|^__/i.test(f.name))
+    .toSorted((a, b) => Number(b.size ?? 0) - Number(a.size ?? 0))
   return (
     imgs.find((f) => Number(f.size ?? 0) >= 20_000)?.name ??
     ['cover.jpg', 'cover.png', 'folder.jpg', 'folder.png', 'front.jpg', 'poster.jpg'].find((n) =>
@@ -155,6 +147,17 @@ const coverOf = (files) => {
   )
 }
 
+const jpegMinEdge = (buf, i = 2) => {
+  if (i >= buf.length - 8) return 0
+  if (buf[i] !== 0xff) return jpegMinEdge(buf, i + 1)
+  const m = buf[i + 1]
+  if (m === 0xc0 || m === 0xc1 || m === 0xc2) {
+    return Math.min(buf.readUInt16BE(i + 5), buf.readUInt16BE(i + 7))
+  }
+  if (m === 0xd8 || m === 0xd9 || (m >= 0xd0 && m <= 0xd7)) return jpegMinEdge(buf, i + 2)
+  return jpegMinEdge(buf, i + 2 + buf.readUInt16BE(i + 2))
+}
+
 const imageMinEdge = (path) => {
   try {
     const buf = readFileSync(path)
@@ -162,22 +165,7 @@ const imageMinEdge = (path) => {
       return Math.min(buf.readUInt32BE(16), buf.readUInt32BE(20))
     }
     if (buf[0] !== 0xff || buf[1] !== 0xd8) return 0
-    let i = 2
-    while (i < buf.length - 8) {
-      if (buf[i] !== 0xff) {
-        i += 1
-        continue
-      }
-      const m = buf[i + 1]
-      if (m === 0xc0 || m === 0xc1 || m === 0xc2) {
-        return Math.min(buf.readUInt16BE(i + 5), buf.readUInt16BE(i + 7))
-      }
-      if (m === 0xd8 || m === 0xd9 || (m >= 0xd0 && m <= 0xd7)) {
-        i += 2
-        continue
-      }
-      i += 2 + buf.readUInt16BE(i + 2)
-    }
+    return jpegMinEdge(buf)
   } catch {
     // missing or not an image
   }
@@ -225,7 +213,7 @@ const titleOf = (name) => {
   const base = name.replace(/\.[^.]+$/, '')
   const jamendo = base.match(/^\d+-+\d+-.+?-(.+)$/)
   if (jamendo?.[1]) return jamendo[1].replace(/_/g, ' ').trim()
-  return (base.split('_-_').pop() ?? base).replace(/_/g, ' ').replace(/^\d+\s*-\s*/, '').trim()
+  return (base.split('_-_').at(-1) ?? base).replace(/_/g, ' ').replace(/^\d+\s*-\s*/, '').trim()
 }
 
 const id3frame = (id, text) => {
@@ -272,10 +260,13 @@ const listMp3 = async (dir) => {
 
 const seedMedia = async (catalog) => {
   await mkdir(MEDIA, { recursive: true })
-  const need = []
-  for (const album of catalog.albums) {
-    if (!(await listMp3(albumPath(album))).length) need.push(album)
-  }
+  const need = (
+    await Promise.all(
+      catalog.albums.map(async (album) =>
+        (await listMp3(albumPath(album))).length ? null : album,
+      ),
+    )
+  ).filter(Boolean)
   if (!need.length) {
     log(`media ready (${catalog.albums.length} albums on disk)`)
   } else {
@@ -291,23 +282,24 @@ const seedMedia = async (catalog) => {
       return { album, tracks, coverName: coverOf(data.files ?? []) }
     })
 
-    const covers = []
-    const jobs = []
-    for (const row of packed) {
-      if (!row) continue
-      const { album, tracks, coverName } = row
-      const dir = albumPath(album)
-      await mkdir(dir, { recursive: true })
-      covers.push({
-        url: coverName ? iaDl(album.identifier, coverName) : iaImg(album.identifier),
-        dest: join(dir, 'folder.jpg'),
-        artistDir: artistPath(album),
-        ident: album.identifier,
-      })
-      tracks.forEach((name, i) =>
-        jobs.push({ album, name, i, albumDir: dir, url: iaDl(album.identifier, name) }),
-      )
-    }
+    const rows = packed.filter(Boolean)
+    await Promise.all(rows.map(({ album }) => mkdir(albumPath(album), { recursive: true })))
+    const covers = rows.map(({ album, coverName }) => ({
+      url: coverName ? iaDl(album.identifier, coverName) : iaImg(album.identifier),
+      dest: join(albumPath(album), 'folder.jpg'),
+      artistDir: artistPath(album),
+      ident: album.identifier,
+    }))
+    const jobs = rows.flatMap(({ album, tracks }) => {
+      const albumDir = albumPath(album)
+      return tracks.map((name, i) => ({
+        album,
+        name,
+        i,
+        albumDir,
+        url: iaDl(album.identifier, name),
+      }))
+    })
 
     await pool(covers, 10, async ({ url, dest, artistDir, ident }) => {
       try {

@@ -468,12 +468,12 @@ const refreshCarPlayPlayingIndicators = (): void => {
 
 const wirePlayerUpdates = (): void => {
   handlers.playerUnsub?.()
-  let playingCursor: { readonly id: string | undefined } = { id: playingId() }
+  let lastId = playingId()
   patchHandlers({
     playerUnsub: usePlayerStore.subscribe((state) => {
       const nextId = state.tracks[state.currentIndex]?.id
-      if (nextId === playingCursor.id) return
-      playingCursor = { id: nextId }
+      if (nextId === lastId) return
+      lastId = nextId
       refreshCarPlayPlayingIndicators()
     }),
   })
