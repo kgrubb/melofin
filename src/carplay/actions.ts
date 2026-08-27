@@ -1,13 +1,16 @@
 import {
+  getCarPlayStackTop,
   getCarPlayTrackBuffer,
   pushCarPlayList,
   replaceCarPlayList,
+  resetCarPlayNavigation,
   setCarPlayNowPlayingHandler,
   setCarPlayPressHandler,
   setCarPlaySearchOpener,
   setCarPlayTrackBuffer,
+  showCarPlayNowPlaying,
 } from '@/src/carplay/session'
-import { openCarPlaySearch } from '@/src/carplay/search'
+import { openCarPlaySearch, resetCarPlaySearchOpen } from '@/src/carplay/search'
 import { presentCarPlayNotice } from '@/src/carplay/feedback'
 import { carPlayArtFor, carPlayMixArtworkUris } from '@/src/carplay/itemArt'
 import {
@@ -91,6 +94,7 @@ const playTracks = (
     return
   }
   usePlayerStore.getState().playQueue(tracks, startIndex, null, shuffle)
+  showCarPlayNowPlaying()
 }
 
 const noticeLoad = (ok: boolean): void => {
@@ -129,6 +133,7 @@ const pushArtistDetail = async (
 ): Promise<boolean> => {
   const artist = useLibraryStore.getState().artists.find((entry) => entry.id === artistId)
   const name = artist?.name ?? carplay.artist()
+  const expected = replace ? getCarPlayStackTop() : null
   const albums = await fetchAlbumsByArtist(context, userId, artistId)
   if (!albums.ok) {
     logger.warn('CarPlay artist albums failed', { artistId })
@@ -142,13 +147,18 @@ const pushArtistDetail = async (
     offset,
     carPlayArtFor,
   )
-  if (replace) replaceCarPlayList(name, items, carplay.noAlbums())
-  else pushCarPlayList(name, items, carplay.noAlbums())
+  if (replace) {
+    if (expected) replaceCarPlayList(name, items, carplay.noAlbums(), expected)
+  } else {
+    pushCarPlayList(name, items, carplay.noAlbums())
+  }
   return true
 }
 
 const openUpNext = () => {
   const player = usePlayerStore.getState()
+  resetCarPlayNavigation()
+  resetCarPlaySearchOpen()
   setCarPlayTrackBuffer(player.tracks)
   pushCarPlayList(carplay.upNext(), buildQueueItems(player.tracks, player.currentIndex))
 }
@@ -156,12 +166,19 @@ const openUpNext = () => {
 const openAlbumArtist = async () => {
   const player = usePlayerStore.getState()
   const track = player.tracks[player.currentIndex]
-  const session = useSessionStore.getState()
-  if (!track || !session.context || !session.session) return
+  const account = useSessionStore.getState()
+  if (!track || !account.context || !account.session) {
+    logger.warn('CarPlay album/artist skipped', { reason: 'no_track_or_session' })
+    return
+  }
+  // Clear a prior album/up-next push so a second tap does not stack blanks.
+  resetCarPlayNavigation()
+  resetCarPlaySearchOpen()
+
   if (track.albumId) {
     const result = await fetchChildren(
-      session.context,
-      session.session.userId,
+      account.context,
+      account.session.userId,
       track.albumId,
     )
     if (result.ok && result.value.length > 0) {
@@ -170,18 +187,20 @@ const openAlbumArtist = async () => {
         'album',
         track.albumId,
         result.value,
-        session.context,
+        account.context,
       )
       return
     }
   }
   if (track.artistId) {
     await pushArtistDetail(
-      session.context,
-      session.session.userId,
+      account.context,
+      account.session.userId,
       track.artistId,
     )
+    return
   }
+  logger.warn('CarPlay album/artist skipped', { reason: 'no_album_or_artist' })
 }
 
 const handleNowPlaying = async (buttonId: string): Promise<void> => {
@@ -285,7 +304,11 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       )
     } else if (action.section === 'genres') {
       genreCache = []
-      pushCarPlayList(carplay.genres(), buildGenreItems([]), carplay.noGenres())
+      const genresHandle = pushCarPlayList(
+        carplay.genres(),
+        buildGenreItems([]),
+        carplay.noGenres(),
+      )
       const session = useSessionStore.getState()
       if (session.context && session.session) {
         const genres = await fetchMusicGenresPreview(
@@ -298,6 +321,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
             carplay.genres(),
             buildGenreItems(genreCache),
             carplay.noGenres(),
+            genresHandle,
           )
         } else {
           presentCarPlayNotice(carplay.unavailable())
@@ -392,6 +416,8 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
     return
   }
   if (action.kind === 'genresMore') {
+    const expected = getCarPlayStackTop()
+    if (!expected) return
     if (genreCache.length === 0) {
       const session = useSessionStore.getState()
       if (!session.context || !session.session) return
@@ -406,6 +432,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       carplay.genres(),
       buildGenreItems(genreCache, action.offset),
       carplay.noGenres(),
+      expected,
     )
     return
   }
@@ -421,22 +448,38 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
 
   if (action.kind === 'shuffleAll') {
     const songs = await fetchRandomSongs(context, userId, 100)
-    if (!songs.ok || songs.value.length === 0) {
-      logger.warn('CarPlay shuffle empty')
+    const catalog = useLibraryStore.getState().songs
+    const pool =
+      songs.ok && songs.value.length > 0
+        ? songs.value
+        : catalog.length > 0
+          ? catalog
+          : null
+    if (!pool) {
+      logger.warn('CarPlay shuffle empty', { remoteOk: songs.ok })
       noticeLoad(songs.ok)
       return
     }
-    playTracks(toQueue(context, songs.value), 0, true)
+    playTracks(toQueue(context, pool), 0, true)
     return
   }
 
   if (action.kind === 'shuffleFavorites') {
     const songs = await fetchFavoriteTracks(context, userId)
-    if (!songs.ok || songs.value.length === 0) {
+    const localFavs = useLibraryStore
+      .getState()
+      .songs.filter((song) => song.isFavorite)
+    const pool =
+      songs.ok && songs.value.length > 0
+        ? songs.value
+        : localFavs.length > 0
+          ? localFavs
+          : null
+    if (!pool) {
       noticeLoad(songs.ok)
       return
     }
-    playTracks(toQueue(context, songs.value), 0, true)
+    playTracks(toQueue(context, pool), 0, true)
     return
   }
 

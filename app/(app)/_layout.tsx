@@ -25,9 +25,6 @@ export default function AppLayout() {
     (s) =>
       `${Object.keys(s.offlineIndex.entries).length}:${totalSizeBytes(s.offlineIndex)}`,
   )
-  const artists = useLibraryStore((s) => s.artists)
-  const albums = useLibraryStore((s) => s.albums)
-  const playlists = useLibraryStore((s) => s.playlists)
   const maybeSyncOnOpen = useLibraryStore((s) => s.maybeSyncOnOpen)
   const nowPlayingOpen = usePlayerStore((s) => s.nowPlayingOpen)
   const sheetOpen =
@@ -52,10 +49,16 @@ export default function AppLayout() {
     void maybeSyncOnOpen()
   }, [context, session, maybeSyncOnOpen])
 
+  const librarySignature = useLibraryStore(
+    (s) =>
+      // Hub counts + songsCount (not songs.length) so loadMoreSongs does not thrash CarPlay sync.
+      `${s.playlists.length}:${s.albums.length}:${s.artists.length}:${s.songsCount}`,
+  )
+
   useEffect(() => {
     if (!context || !session) return
     registerCarPlay()
-  }, [context, session, offlineSignature, artists, playlists, albums])
+  }, [context, session, offlineSignature, librarySignature])
 
   return (
     <View style={styles.root}>

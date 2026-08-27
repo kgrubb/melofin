@@ -1,5 +1,5 @@
 import { carplay } from '@/src/i18n/carplayCopy'
-import { SearchTemplate, CarPlay } from 'react-native-carplay'
+import { SearchTemplate, CarPlay, type ListItem } from 'react-native-carplay'
 import type { LibraryItem } from '@/src/services/jellyfin/library'
 import {
   artworkUrl,
@@ -12,7 +12,7 @@ import {
 import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
 import { presentCarPlayNotice } from '@/src/carplay/feedback'
-import { pushCarPlayList } from '@/src/carplay/session'
+import { pushCarPlayList, showCarPlayNowPlaying } from '@/src/carplay/session'
 import { orderSearchResults } from '@/src/carplay/searchOrder'
 import { buildArtistDetailItems } from '@/src/carplay/templates'
 import { carPlayArtFor } from '@/src/carplay/itemArt'
@@ -65,6 +65,7 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
       ],
       0,
     )
+    showCarPlayNowPlaying()
     return
   }
 
@@ -90,6 +91,7 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
     ),
   )
   playQueue(queue, 0)
+  showCarPlayNowPlaying()
 }
 
 let searchOpen = false
@@ -103,9 +105,9 @@ export const openCarPlaySearch = (): void => {
   if (searchOpen) return
   searchOpen = true
   const state = { results: [] as LibraryItem[], searchGen: 0 }
-  CarPlay.pushTemplate(
-    new SearchTemplate({
-      onWillDisappear: () => {
+  const template = new SearchTemplate({
+      // didDisappear keeps the open guard while Now Playing covers Search.
+      onDidDisappear: () => {
         searchOpen = false
       },
       onSearch: async (query) => {
@@ -128,22 +130,20 @@ export const openCarPlaySearch = (): void => {
           return []
         }
         state.results = [...orderSearchResults(result.value)]
-        return state.results.map((item) => ({
-          text: item.name,
-          detailText: searchDetail(item),
-          ...(item.imageTag
-            ? {
-                image: {
-                  uri: artworkUrl(
-                    session.context!,
-                    item.imageItemId ?? item.id,
-                    item.imageTag,
-                    'thumb',
-                  ),
-                },
-              }
-            : {}),
-        }))
+        return state.results.map((item) => {
+          const uri = artworkUrl(
+            session.context!,
+            item.imageItemId ?? item.id,
+            item.imageTag,
+            'thumb',
+          )
+          // Runtime accepts imgUrl URLs; typings mark it null-only.
+          return {
+            text: item.name,
+            detailText: searchDetail(item),
+            ...(uri ? { imgUrl: uri } : {}),
+          } as ListItem
+        })
       },
       onItemSelect: async ({ index }) => {
         try {
@@ -154,7 +154,11 @@ export const openCarPlaySearch = (): void => {
           presentCarPlayNotice(carplay.unavailable())
         }
       },
-    }),
-    true,
-  )
+    })
+  try {
+    CarPlay.pushTemplate(template, true)
+  } catch (cause) {
+    searchOpen = false
+    logger.warn('CarPlay search present failed', { cause })
+  }
 }

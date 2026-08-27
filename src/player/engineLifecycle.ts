@@ -149,6 +149,37 @@ const pushLockScreenTrack = (track: ReturnType<typeof currentTrack>) => {
   }
 }
 
+const LOCK_SCREEN_REMOTE = {
+  showSeekForward: false,
+  showSeekBackward: false,
+  showNextTrack: true,
+  showPreviousTrack: true,
+} as const
+
+/** Re-bind Now Playing so CarPlay cover art returns after reconnect. */
+export const refreshLockScreenNowPlaying = (): void => {
+  if (Platform.OS === 'web') return
+  const track = currentTrack(usePlayerStore.getState())
+  const player = activePlayer()
+  if (!player || !track) return
+  const meta = lockScreenMetadata(track)
+  if (!meta) return
+  try {
+    // Drop artwork first so expo-audio reloads instead of reusing its URL cache.
+    if (meta.artworkUrl) {
+      player.updateLockScreenMetadata({
+        title: meta.title,
+        artist: meta.artist,
+        albumTitle: meta.albumTitle,
+        duration: meta.duration,
+      })
+    }
+    player.setActiveForLockScreen(true, meta, LOCK_SCREEN_REMOTE)
+  } catch {
+    // Lock screen may be inactive.
+  }
+}
+
 const advanceFromEnd = () => {
   if (stateRef.advancing) return
   if (!usePlayerStore.getState().isPlaying) return
@@ -319,12 +350,7 @@ const applyPlayPlan = (plan: TransportPlan) => {
       active.setActiveForLockScreen(
         true,
         lockScreenMetadata(track),
-        {
-          showSeekForward: false,
-          showSeekBackward: false,
-          showNextTrack: true,
-          showPreviousTrack: true,
-        },
+        LOCK_SCREEN_REMOTE,
       )
     }
 
