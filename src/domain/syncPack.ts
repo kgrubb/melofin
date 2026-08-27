@@ -106,7 +106,8 @@ export const selectPrefetchEvictionsExcludingPacks = (
         entry.complete &&
         !protectedIds.has(entry.itemId),
     )
-    .toSorted((a, b) => a.lastAccessedAt - b.lastAccessedAt)
+    .slice()
+    .sort((a, b) => a.lastAccessedAt - b.lastAccessedAt)
 
   return sorted.reduce<{ ids: string[]; freed: number }>(
     (acc, entry) => {
