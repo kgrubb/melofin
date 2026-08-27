@@ -9,15 +9,19 @@ type CacheEntry = {
   readonly uri: string
 }
 
-let artworkGeneration = 0
+type ArtworkEpoch = {
+  readonly generation: number
+}
+
+let artworkEpoch: ArtworkEpoch = { generation: 0 }
 const lru = new Map<string, CacheEntry>()
 
 export const bumpArtworkGeneration = (): number => {
-  artworkGeneration += 1
-  return artworkGeneration
+  artworkEpoch = { generation: artworkEpoch.generation + 1 }
+  return artworkEpoch.generation
 }
 
-export const currentArtworkGeneration = (): number => artworkGeneration
+export const currentArtworkGeneration = (): number => artworkEpoch.generation
 
 export const clearArtworkCache = (): void => {
   lru.clear()
@@ -76,7 +80,7 @@ export const resolveCarPlayArtwork = async (opts: {
   readonly edge?: number
   readonly generation: number
 }): Promise<string | undefined> => {
-  if (opts.generation !== artworkGeneration) return undefined
+  if (opts.generation !== artworkEpoch.generation) return undefined
   const edge = opts.edge && opts.edge > 0 ? Math.round(opts.edge) : 90
   const source = opts.uri?.trim()
   if (!source) return undefined
@@ -85,31 +89,31 @@ export const resolveCarPlayArtwork = async (opts: {
   const hit = lru.get(key)
   if (hit) {
     touch(key, hit.uri)
-    return opts.generation === artworkGeneration ? hit.uri : undefined
+    return opts.generation === artworkEpoch.generation ? hit.uri : undefined
   }
 
   if (isLocalUri(source)) {
-    return opts.generation === artworkGeneration ? touch(key, source) : undefined
+    return opts.generation === artworkEpoch.generation ? touch(key, source) : undefined
   }
 
   const resized = resizeArtworkUrl(source, 'thumb') ?? source
   const dir = ensureArtDir()
   if (!dir) {
-    return opts.generation === artworkGeneration ? resized : undefined
+    return opts.generation === artworkEpoch.generation ? resized : undefined
   }
 
   try {
     const dest = new File(Paths.document, 'melofin', 'carplay-art', cacheFileName(key))
     if (dest.exists) {
       const uri = dest.uri
-      return opts.generation === artworkGeneration ? touch(key, uri) : undefined
+      return opts.generation === artworkEpoch.generation ? touch(key, uri) : undefined
     }
     const downloaded = await File.downloadFileAsync(resized, dest, { idempotent: true })
-    if (opts.generation !== artworkGeneration) return undefined
+    if (opts.generation !== artworkEpoch.generation) return undefined
     const uri = downloaded.uri
     return touch(key, uri)
   } catch (cause) {
     logger.warn('CarPlay artwork fetch failed', { cause, itemId: opts.itemId })
-    return opts.generation === artworkGeneration ? resized : undefined
+    return opts.generation === artworkEpoch.generation ? resized : undefined
   }
 }

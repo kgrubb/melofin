@@ -49,38 +49,35 @@ type PressHandler = (itemId: string) => void | Promise<void>
 type SearchOpener = () => void
 type NowPlayingHandler = (buttonId: string) => void | Promise<void>
 
-let pressHandler: PressHandler = async () => undefined
-let searchOpener: SearchOpener = () => undefined
-let nowPlayingHandler: NowPlayingHandler = async () => undefined
-let playerUnsub: (() => void) | null = null
-
-export const setCarPlayPressHandler = (fn: PressHandler): void => {
-  pressHandler = fn
-}
-
-export const setCarPlaySearchOpener = (fn: SearchOpener): void => {
-  searchOpener = fn
-}
-
-export const setCarPlayNowPlayingHandler = (fn: NowPlayingHandler): void => {
-  nowPlayingHandler = fn
+type Handlers = {
+  readonly press: PressHandler
+  readonly search: SearchOpener
+  readonly nowPlaying: NowPlayingHandler
+  readonly playerUnsub: (() => void) | null
 }
 
 type Session = {
-  tabBar: TabBarTemplate | null
-  nowPlaying: NowPlayingTemplate | null
-  home: CarPlayListHandle | null
-  library: CarPlayListHandle | null
-  search: CarPlayListHandle | null
-  stack: CarPlayListHandle[]
-  trackBuffer: readonly QueueTrack[]
-  latestAlbums: readonly LibraryItem[]
-  maxItems: number
-  homeGen: number
-  connected: boolean
+  readonly tabBar: TabBarTemplate | null
+  readonly nowPlaying: NowPlayingTemplate | null
+  readonly home: CarPlayListHandle | null
+  readonly library: CarPlayListHandle | null
+  readonly search: CarPlayListHandle | null
+  readonly stack: readonly CarPlayListHandle[]
+  readonly trackBuffer: readonly QueueTrack[]
+  readonly latestAlbums: readonly LibraryItem[]
+  readonly maxItems: number
+  readonly homeGen: number
+  readonly connected: boolean
 }
 
-const session: Session = {
+const idleHandlers = (): Handlers => ({
+  press: async () => undefined,
+  search: () => undefined,
+  nowPlaying: async () => undefined,
+  playerUnsub: null,
+})
+
+const idleSession = (): Session => ({
   tabBar: null,
   nowPlaying: null,
   home: null,
@@ -92,6 +89,29 @@ const session: Session = {
   maxItems: CARPLAY_DEFAULT_MAX_ITEMS,
   homeGen: 0,
   connected: false,
+})
+
+let handlers: Handlers = idleHandlers()
+let session: Session = idleSession()
+
+const patchHandlers = (patch: Partial<Handlers>): void => {
+  handlers = { ...handlers, ...patch }
+}
+
+const patchSession = (patch: Partial<Session>): void => {
+  session = { ...session, ...patch }
+}
+
+export const setCarPlayPressHandler = (fn: PressHandler): void => {
+  patchHandlers({ press: fn })
+}
+
+export const setCarPlaySearchOpener = (fn: SearchOpener): void => {
+  patchHandlers({ search: fn })
+}
+
+export const setCarPlayNowPlayingHandler = (fn: NowPlayingHandler): void => {
+  patchHandlers({ nowPlaying: fn })
 }
 
 const stackTop = (): CarPlayListHandle | null =>
@@ -100,7 +120,7 @@ const stackTop = (): CarPlayListHandle | null =>
 const dropFromStack = (handle: CarPlayListHandle): void => {
   const index = session.stack.indexOf(handle)
   if (index >= 0) {
-    session.stack = session.stack.slice(0, index)
+    patchSession({ stack: session.stack.slice(0, index) })
   }
 }
 
@@ -114,10 +134,10 @@ const playingId = () => {
 
 const handlePress = (itemId: string) => {
   if (itemId === 'action:search') {
-    searchOpener()
+    handlers.search()
     return
   }
-  return pressHandler(itemId)
+  return handlers.press(itemId)
 }
 
 const decorateArtwork = async (
@@ -226,7 +246,7 @@ const refreshHome = async (gen: number): Promise<void> => {
   if (gen !== session.homeGen || !session.home) return
 
   const latestAlbums = okValue(results[4]) ?? []
-  session.latestAlbums = latestAlbums
+  patchSession({ latestAlbums })
 
   const downloadCount = offlineEntries().filter((entry) => entry.complete).length
   const sections = trimSectionsToBudget(
@@ -331,7 +351,7 @@ export const pushCarPlayList = (
     logger.warn('CarPlay push failed', { cause, title })
     return handle
   }
-  session.stack = [...session.stack, handle]
+  patchSession({ stack: [...session.stack, handle] })
   publishListArt(handle, items)
   return handle
 }
@@ -343,7 +363,7 @@ export const resetCarPlayNavigation = (): void => {
   } catch {
     // Already at root.
   }
-  session.stack = []
+  patchSession({ stack: [] })
 }
 
 /** Push the shared Now Playing template after playback starts. */
@@ -379,7 +399,7 @@ export const replaceCarPlayList = (
 }
 
 export const setCarPlayTrackBuffer = (tracks: readonly QueueTrack[]): void => {
-  session.trackBuffer = tracks
+  patchSession({ trackBuffer: tracks })
 }
 
 export const getCarPlayTrackBuffer = (): readonly QueueTrack[] =>
@@ -411,11 +431,11 @@ const nowPlayingConfig = () => ({
       image: require('../../assets/carplay/radio.png'),
     },
   ],
-  onUpNextButtonPressed: () => settle(() => pressHandler('action:upNext')),
+  onUpNextButtonPressed: () => settle(() => handlers.press('action:upNext')),
   onAlbumArtistButtonPressed: () =>
-    settle(() => pressHandler('action:albumArtist')),
+    settle(() => handlers.press('action:albumArtist')),
   onButtonPressed: ({ id }: { id: string }) =>
-    settle(() => nowPlayingHandler(id)),
+    settle(() => handlers.nowPlaying(id)),
 })
 
 const configureNowPlaying = (): void => {
@@ -423,7 +443,7 @@ const configureNowPlaying = (): void => {
     CarPlay.enableNowPlaying(true)
     const config = nowPlayingConfig()
     if (!session.nowPlaying) {
-      session.nowPlaying = new NowPlayingTemplate(config)
+      patchSession({ nowPlaying: new NowPlayingTemplate(config) })
       return
     }
     // Reconnect clears CPNowPlayingTemplate buttons. Re-create on the same JS id
@@ -447,40 +467,47 @@ const refreshCarPlayPlayingIndicators = (): void => {
 }
 
 const wirePlayerUpdates = (): void => {
-  playerUnsub?.()
-  let lastId = playingId()
-  playerUnsub = usePlayerStore.subscribe((state) => {
-    const nextId = state.tracks[state.currentIndex]?.id
-    if (nextId === lastId) return
-    lastId = nextId
-    refreshCarPlayPlayingIndicators()
+  handlers.playerUnsub?.()
+  let playingCursor: { readonly id: string | undefined } = { id: playingId() }
+  patchHandlers({
+    playerUnsub: usePlayerStore.subscribe((state) => {
+      const nextId = state.tracks[state.currentIndex]?.id
+      if (nextId === playingCursor.id) return
+      playingCursor = { id: nextId }
+      refreshCarPlayPlayingIndicators()
+    }),
+  })
+}
+
+const clearLiveTemplates = (): void => {
+  handlers.playerUnsub?.()
+  patchHandlers({ playerUnsub: null })
+  patchSession({
+    connected: false,
+    tabBar: null,
+    home: null,
+    library: null,
+    search: null,
+    stack: [],
   })
 }
 
 export const connectCarPlaySession = (): void => {
   try {
-    session.tabBar = null
-    session.home = null
-    session.library = null
-    session.search = null
-    session.stack = []
-    session.trackBuffer = []
-    session.latestAlbums = []
-    session.connected = true
     bumpArtworkGeneration()
 
     // Root first so CarPlay is not left on a blank scene if Now Playing setup throws.
-    session.home = createListTemplate(carplay.home(), [], handlePress, {
+    const home = createListTemplate(carplay.home(), [], handlePress, {
       tabTitle: carplay.home(),
       tabSystemImageName: 'house.fill',
       emptyTitle: carplay.home(),
     })
-    session.library = createListTemplate(carplay.library(), [], handlePress, {
+    const library = createListTemplate(carplay.library(), [], handlePress, {
       tabTitle: carplay.library(),
       tabSystemImageName: 'rectangle.stack.fill',
       emptyTitle: carplay.noPlaylists(),
     })
-    session.search = createListTemplate(carplay.search(), [], handlePress, {
+    const search = createListTemplate(carplay.search(), [], handlePress, {
       tabTitle: carplay.search(),
       tabSystemImageName: 'magnifyingglass',
       emptyTitle: carplay.searchHint(),
@@ -489,15 +516,26 @@ export const connectCarPlaySession = (): void => {
       ],
     })
 
-    void session.home.getMaximumListItemCount().then((count) => {
+    patchSession({
+      home,
+      library,
+      search,
+      stack: [],
+      trackBuffer: [],
+      latestAlbums: [],
+      connected: true,
+      tabBar: null,
+    })
+
+    void home.getMaximumListItemCount().then((count) => {
       if (Number.isFinite(count) && count > 0) {
-        session.maxItems = count
+        patchSession({ maxItems: count })
       }
     })
 
-    session.home.setSections(homeFromCache())
+    home.setSections(homeFromCache())
     paintLibrary()
-    session.search.setSections(
+    search.setSections(
       buildSearchExploreSections({
         mixes: mixRows(),
         playlists: useLibraryStore.getState().playlists.slice(0, 8),
@@ -505,32 +543,22 @@ export const connectCarPlaySession = (): void => {
       }),
     )
 
-    session.tabBar = new TabBarTemplate({
-      templates: [
-        session.home.template,
-        session.library.template,
-        session.search.template,
-      ],
+    const tabBar = new TabBarTemplate({
+      templates: [home.template, library.template, search.template],
       // Search opens from the tab row / bar button only (auto-push fought tab switches).
       onTemplateSelect: () => undefined,
     })
-    CarPlay.setRootTemplate(session.tabBar)
+    CarPlay.setRootTemplate(tabBar)
     configureNowPlaying()
     refreshLockScreenNowPlaying()
 
-    session.homeGen += 1
-    void refreshHome(session.homeGen)
+    const homeGen = session.homeGen + 1
+    patchSession({ tabBar, homeGen })
+    void refreshHome(homeGen)
     wirePlayerUpdates()
   } catch (cause) {
     logger.warn('CarPlay connect failed', { cause })
-    playerUnsub?.()
-    playerUnsub = null
-    session.connected = false
-    session.tabBar = null
-    session.home = null
-    session.library = null
-    session.search = null
-    session.stack = []
+    clearLiveTemplates()
   }
 }
 
@@ -548,16 +576,8 @@ export const syncCarPlaySession = (): void => {
 }
 
 export const disconnectCarPlaySession = (): void => {
-  playerUnsub?.()
-  playerUnsub = null
-  session.connected = false
+  clearLiveTemplates()
   bumpArtworkGeneration()
   clearArtworkCache()
-  session.tabBar = null
-  session.home = null
-  session.library = null
-  session.search = null
-  session.stack = []
-  session.trackBuffer = []
-  session.latestAlbums = []
+  patchSession({ trackBuffer: [], latestAlbums: [] })
 }

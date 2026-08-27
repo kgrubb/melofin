@@ -241,7 +241,7 @@ const advanceFromEnd = () => {
         if (started) {
           stateRef.handoffActive = true
           stateRef.handoffForKey = nextKey
-          // Secondary is already audible — don't wait for primary replace for Now Playing.
+          // Secondary is already audible. Don't wait for primary replace for Now Playing.
           pushLockScreenTrack(store.tracks[nextIndex(store)])
           void (async () => {
             try {

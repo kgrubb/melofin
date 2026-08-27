@@ -6,7 +6,7 @@ export const toCarPlayNativeListItem = (item: CarPlayListItem) => ({
   detailText: item.detailText,
   ...(item.showsDisclosureIndicator ? { showsDisclosureIndicator: true } : {}),
   ...(item.isPlaying ? { isPlaying: true } : {}),
-  // imgUrl loads remote/file covers async; `image` is bundled assets only.
+  // imgUrl loads remote/file covers async. `image` is bundled assets only.
   ...(item.artworkUri ? { imgUrl: item.artworkUri } : {}),
   ...(item.imageRowUris && item.imageRowUris.length > 0
     ? { imgUrls: [...item.imageRowUris] }

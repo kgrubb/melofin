@@ -94,28 +94,38 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
   showCarPlayNowPlaying()
 }
 
-let searchOpen = false
+type SearchGuard = {
+  readonly open: boolean
+}
+
+type SearchPanel = {
+  readonly results: readonly LibraryItem[]
+  readonly searchGen: number
+}
+
+let searchGuard: SearchGuard = { open: false }
 
 /** Clears the open guard (disconnect / root rebuild). */
 export const resetCarPlaySearchOpen = (): void => {
-  searchOpen = false
+  searchGuard = { open: false }
 }
 
 export const openCarPlaySearch = (): void => {
-  if (searchOpen) return
-  searchOpen = true
-  const state = { results: [] as LibraryItem[], searchGen: 0 }
+  if (searchGuard.open) return
+  searchGuard = { open: true }
+  let panel: SearchPanel = { results: [], searchGen: 0 }
   const template = new SearchTemplate({
       // didDisappear keeps the open guard while Now Playing covers Search.
       onDidDisappear: () => {
-        searchOpen = false
+        searchGuard = { open: false }
       },
       onSearch: async (query) => {
-        const gen = ++state.searchGen
+        const gen = panel.searchGen + 1
+        panel = { ...panel, searchGen: gen }
         const session = useSessionStore.getState()
         if (!session.context || !session.session || !query.trim()) {
-          if (gen !== state.searchGen) return []
-          state.results = []
+          if (gen !== panel.searchGen) return []
+          panel = { ...panel, results: [] }
           return []
         }
         const result = await searchLibrary(
@@ -123,21 +133,22 @@ export const openCarPlaySearch = (): void => {
           session.session.userId,
           query,
         )
-        if (gen !== state.searchGen) return []
+        if (gen !== panel.searchGen) return []
         if (!result.ok) {
           logger.warn('CarPlay search failed', { query })
-          state.results = []
+          panel = { ...panel, results: [] }
           return []
         }
-        state.results = [...orderSearchResults(result.value)]
-        return state.results.map((item) => {
+        const results = [...orderSearchResults(result.value)]
+        panel = { ...panel, results }
+        return results.map((item) => {
           const uri = artworkUrl(
             session.context!,
             item.imageItemId ?? item.id,
             item.imageTag,
             'thumb',
           )
-          // Runtime accepts imgUrl URLs; typings mark it null-only.
+          // Runtime accepts imgUrl URLs. Typings mark it null-only.
           return {
             text: item.name,
             detailText: searchDetail(item),
@@ -147,7 +158,7 @@ export const openCarPlaySearch = (): void => {
       },
       onItemSelect: async ({ index }) => {
         try {
-          const item = state.results[index]
+          const item = panel.results[index]
           if (item) await playOrBrowse(item)
         } catch (cause) {
           logger.warn('CarPlay select failed', { cause, index })
@@ -158,7 +169,7 @@ export const openCarPlaySearch = (): void => {
   try {
     CarPlay.pushTemplate(template, true)
   } catch (cause) {
-    searchOpen = false
+    searchGuard = { open: false }
     logger.warn('CarPlay search present failed', { cause })
   }
 }

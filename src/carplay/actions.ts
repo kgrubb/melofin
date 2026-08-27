@@ -62,8 +62,19 @@ type TrackListContext = {
   readonly tracks: readonly LibraryItem[]
 }
 
-let trackListContext: TrackListContext | null = null
-let genreCache: readonly LibraryItem[] = []
+type ActionCaches = {
+  readonly trackListContext: TrackListContext | null
+  readonly genreCache: readonly LibraryItem[]
+}
+
+let caches: ActionCaches = {
+  trackListContext: null,
+  genreCache: [],
+}
+
+const patchCaches = (patch: Partial<ActionCaches>): void => {
+  caches = { ...caches, ...patch }
+}
 
 const offlineEntries = () =>
   Object.values(useSettingsStore.getState().offlineIndex.entries)
@@ -108,7 +119,7 @@ const openTrackList = (
   tracks: readonly LibraryItem[],
   context: JellyfinContext,
 ) => {
-  trackListContext = { title, containerType, containerId, tracks }
+  patchCaches({ trackListContext: { title, containerType, containerId, tracks } })
   setCarPlayTrackBuffer(toQueue(context, tracks))
   pushCarPlayList(
     title,
@@ -303,7 +314,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
         carplay.noSongs(),
       )
     } else if (action.section === 'genres') {
-      genreCache = []
+      patchCaches({ genreCache: [] })
       const genresHandle = pushCarPlayList(
         carplay.genres(),
         buildGenreItems([]),
@@ -316,10 +327,10 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
           session.session.userId,
         )
         if (genres.ok) {
-          genreCache = genres.value
+          patchCaches({ genreCache: genres.value })
           replaceCarPlayList(
             carplay.genres(),
-            buildGenreItems(genreCache),
+            buildGenreItems(genres.value),
             carplay.noGenres(),
             genresHandle,
           )
@@ -400,13 +411,14 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
     return
   }
   if (action.kind === 'tracksMore') {
-    if (!trackListContext) return
+    const trackList = caches.trackListContext
+    if (!trackList) return
     replaceCarPlayList(
-      trackListContext.title,
+      trackList.title,
       buildTrackListItems(
-        trackListContext.containerType,
-        trackListContext.containerId,
-        trackListContext.tracks,
+        trackList.containerType,
+        trackList.containerId,
+        trackList.tracks,
         action.offset,
         playingId(),
         carPlayArtFor,
@@ -418,7 +430,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
   if (action.kind === 'genresMore') {
     const expected = getCarPlayStackTop()
     if (!expected) return
-    if (genreCache.length === 0) {
+    if (caches.genreCache.length === 0) {
       const session = useSessionStore.getState()
       if (!session.context || !session.session) return
       const genres = await fetchMusicGenresPreview(
@@ -426,11 +438,11 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
         session.session.userId,
       )
       if (!genres.ok) return
-      genreCache = genres.value
+      patchCaches({ genreCache: genres.value })
     }
     replaceCarPlayList(
       carplay.genres(),
-      buildGenreItems(genreCache, action.offset),
+      buildGenreItems(caches.genreCache, action.offset),
       carplay.noGenres(),
       expected,
     )
@@ -493,18 +505,22 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
     return
   }
   if (action.kind === 'song') {
-    let item = useLibraryStore.getState().songs.find((song) => song.id === action.id)
-    if (!item) {
-      const fetched = await fetchItem(context, userId, action.id)
-      if (!fetched.ok) {
-        logger.warn('CarPlay song not found', { id: action.id })
-        presentCarPlayNotice(carplay.unavailable())
-        return
-      }
-      item = fetched.value
+    const fromLibrary = useLibraryStore
+      .getState()
+      .songs.find((song) => song.id === action.id)
+    if (fromLibrary) {
+      if (fromLibrary.type !== 'Audio') return
+      playTracks(toQueue(context, [fromLibrary]), 0)
+      return
     }
-    if (item.type !== 'Audio') return
-    playTracks(toQueue(context, [item]), 0)
+    const fetched = await fetchItem(context, userId, action.id)
+    if (!fetched.ok) {
+      logger.warn('CarPlay song not found', { id: action.id })
+      presentCarPlayNotice(carplay.unavailable())
+      return
+    }
+    if (fetched.value.type !== 'Audio') return
+    playTracks(toQueue(context, [fetched.value]), 0)
     return
   }
   if (action.kind === 'artistAlbumsMore') {
