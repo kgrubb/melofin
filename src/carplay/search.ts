@@ -1,5 +1,5 @@
 import { carplay } from '@/src/i18n/carplayCopy'
-import { SearchTemplate, CarPlay } from 'react-native-carplay'
+import { SearchTemplate, CarPlay, type ListItem } from 'react-native-carplay'
 import type { LibraryItem } from '@/src/services/jellyfin/library'
 import {
   artworkUrl,
@@ -12,7 +12,7 @@ import {
 import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
 import { presentCarPlayNotice } from '@/src/carplay/feedback'
-import { pushCarPlayList } from '@/src/carplay/session'
+import { pushCarPlayList, showCarPlayNowPlaying } from '@/src/carplay/session'
 import { orderSearchResults } from '@/src/carplay/searchOrder'
 import { buildArtistDetailItems } from '@/src/carplay/templates'
 import { carPlayArtFor } from '@/src/carplay/itemArt'
@@ -65,6 +65,7 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
       ],
       0,
     )
+    showCarPlayNowPlaying()
     return
   }
 
@@ -90,30 +91,41 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
     ),
   )
   playQueue(queue, 0)
+  showCarPlayNowPlaying()
 }
 
-let searchOpen = false
+type SearchGuard = {
+  readonly open: boolean
+}
+
+type SearchPanel = {
+  readonly results: readonly LibraryItem[]
+  readonly searchGen: number
+}
+
+let searchGuard: SearchGuard = { open: false }
 
 /** Clears the open guard (disconnect / root rebuild). */
 export const resetCarPlaySearchOpen = (): void => {
-  searchOpen = false
+  searchGuard = { open: false }
 }
 
 export const openCarPlaySearch = (): void => {
-  if (searchOpen) return
-  searchOpen = true
-  const state = { results: [] as LibraryItem[], searchGen: 0 }
-  CarPlay.pushTemplate(
-    new SearchTemplate({
-      onWillDisappear: () => {
-        searchOpen = false
+  if (searchGuard.open) return
+  searchGuard = { open: true }
+  let panel: SearchPanel = { results: [], searchGen: 0 }
+  const template = new SearchTemplate({
+      // didDisappear keeps the open guard while Now Playing covers Search.
+      onDidDisappear: () => {
+        searchGuard = { open: false }
       },
       onSearch: async (query) => {
-        const gen = ++state.searchGen
+        const gen = panel.searchGen + 1
+        panel = { ...panel, searchGen: gen }
         const session = useSessionStore.getState()
         if (!session.context || !session.session || !query.trim()) {
-          if (gen !== state.searchGen) return []
-          state.results = []
+          if (gen !== panel.searchGen) return []
+          panel = { ...panel, results: [] }
           return []
         }
         const result = await searchLibrary(
@@ -121,40 +133,43 @@ export const openCarPlaySearch = (): void => {
           session.session.userId,
           query,
         )
-        if (gen !== state.searchGen) return []
+        if (gen !== panel.searchGen) return []
         if (!result.ok) {
           logger.warn('CarPlay search failed', { query })
-          state.results = []
+          panel = { ...panel, results: [] }
           return []
         }
-        state.results = [...orderSearchResults(result.value)]
-        return state.results.map((item) => ({
-          text: item.name,
-          detailText: searchDetail(item),
-          ...(item.imageTag
-            ? {
-                image: {
-                  uri: artworkUrl(
-                    session.context!,
-                    item.imageItemId ?? item.id,
-                    item.imageTag,
-                    'thumb',
-                  ),
-                },
-              }
-            : {}),
-        }))
+        const results = [...orderSearchResults(result.value)]
+        panel = { ...panel, results }
+        return results.map((item) => {
+          const uri = artworkUrl(
+            session.context!,
+            item.imageItemId ?? item.id,
+            item.imageTag,
+            'thumb',
+          )
+          // Runtime accepts imgUrl URLs. Typings mark it null-only.
+          return {
+            text: item.name,
+            detailText: searchDetail(item),
+            ...(uri ? { imgUrl: uri } : {}),
+          } as ListItem
+        })
       },
       onItemSelect: async ({ index }) => {
         try {
-          const item = state.results[index]
+          const item = panel.results[index]
           if (item) await playOrBrowse(item)
         } catch (cause) {
           logger.warn('CarPlay select failed', { cause, index })
           presentCarPlayNotice(carplay.unavailable())
         }
       },
-    }),
-    true,
-  )
+    })
+  try {
+    CarPlay.pushTemplate(template, true)
+  } catch (cause) {
+    searchGuard = { open: false }
+    logger.warn('CarPlay search present failed', { cause })
+  }
 }

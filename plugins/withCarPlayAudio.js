@@ -57,12 +57,12 @@ const sceneConfigMethod = `
 `
 
 const withCarPlayAudio = (config) => {
-  let next = withEntitlementsPlist(config, (mod) => {
+  const withEntitlement = withEntitlementsPlist(config, (mod) => {
     mod.modResults['com.apple.developer.carplay-audio'] = true
     return mod
   })
 
-  next = withInfoPlist(next, (mod) => {
+  const withModes = withInfoPlist(withEntitlement, (mod) => {
     const modes = mod.modResults.UIBackgroundModes ?? []
     mod.modResults.UIBackgroundModes = modes.includes('audio')
       ? modes
@@ -71,19 +71,19 @@ const withCarPlayAudio = (config) => {
     return mod
   })
 
-  next = withBuildSourceFile(next, {
+  const withCarDelegate = withBuildSourceFile(withModes, {
     filePath: 'CarSceneDelegate.swift',
     contents: carSceneDelegate,
     overwrite: true,
   })
 
-  next = withBuildSourceFile(next, {
+  const withPhoneDelegate = withBuildSourceFile(withCarDelegate, {
     filePath: 'PhoneSceneDelegate.swift',
     contents: phoneSceneDelegate,
     overwrite: true,
   })
 
-  next = withDangerousMod(next, [
+  return withDangerousMod(withPhoneDelegate, [
     'ios',
     async (mod) => {
       const root = mod.modRequest.platformProjectRoot
@@ -91,12 +91,12 @@ const withCarPlayAudio = (config) => {
       const appDelegate = path.join(root, appName, 'AppDelegate.swift')
       const bridging = path.join(root, appName, `${appName}-Bridging-Header.h`)
       if (fs.existsSync(appDelegate)) {
-        let contents = fs.readFileSync(appDelegate, 'utf8')
-        if (!contents.includes('configurationForConnecting')) {
-          if (!contents.includes('import CarPlay')) {
-            contents = contents.replace('import Expo', 'import CarPlay\nimport Expo')
-          }
-          contents = contents.replace(
+        const raw = fs.readFileSync(appDelegate, 'utf8')
+        if (!raw.includes('configurationForConnecting')) {
+          const withImport = raw.includes('import CarPlay')
+            ? raw
+            : raw.replace('import Expo', 'import CarPlay\nimport Expo')
+          const contents = withImport.replace(
             '\nclass ReactNativeDelegate:',
             `${sceneConfigMethod}\n\nclass ReactNativeDelegate:`,
           )
@@ -109,8 +109,6 @@ const withCarPlayAudio = (config) => {
       return mod
     },
   ])
-
-  return next
 }
 
 module.exports = createRunOncePlugin(withCarPlayAudio, 'with-carplay-audio', '2.1.0')

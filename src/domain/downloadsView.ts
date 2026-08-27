@@ -83,12 +83,15 @@ export const keptOfflineEntries = (
 ): readonly OfflineEntry[] =>
   Object.values(entries)
     .filter(isKeptOffline)
-    .sort((a, b) => b.downloadedAt - a.downloadedAt || a.title.localeCompare(b.title))
+    .toSorted(
+      (a, b) =>
+        b.downloadedAt - a.downloadedAt || a.title.localeCompare(b.title),
+    )
 
 export const playAllEntries = (
   entries: readonly OfflineEntry[],
 ): readonly OfflineEntry[] =>
-  [...entries].sort((a, b) => {
+  entries.toSorted((a, b) => {
     const album = a.album.localeCompare(b.album)
     if (album !== 0) return album
     return a.title.localeCompare(b.title)
@@ -193,7 +196,7 @@ export const buildDownloadAlbums = (
   const albumPacks = packs
     .filter((pack) => pack.kind === 'album')
     .map((pack) => packToCollection(pack, entries))
-    .sort(compareTitle)
+    .toSorted(compareTitle)
   const covered = new Set<string>()
   for (const pack of packs) {
     if (pack.kind !== 'album') continue
@@ -201,7 +204,7 @@ export const buildDownloadAlbums = (
   }
   const groups = new Map<
     string,
-    { album: string; artist: string; trackIds: string[] }
+    { readonly album: string; readonly artist: string; readonly trackIds: readonly string[] }
   >()
   for (const entry of Object.values(entries)) {
     if (!isKeptOffline(entry) || covered.has(entry.itemId)) continue
@@ -210,7 +213,11 @@ export const buildDownloadAlbums = (
     const key = albumGroupKey(album, artist)
     const existing = groups.get(key)
     if (existing) {
-      existing.trackIds.push(entry.itemId)
+      groups.set(key, {
+        album: existing.album,
+        artist: existing.artist,
+        trackIds: [...existing.trackIds, entry.itemId],
+      })
       continue
     }
     groups.set(key, { album, artist, trackIds: [entry.itemId] })
@@ -222,7 +229,7 @@ export const buildDownloadAlbums = (
         kind: 'album',
         title: group.album,
         artist: group.artist,
-        trackIds: [...group.trackIds].sort((a, b) => {
+        trackIds: group.trackIds.toSorted((a, b) => {
           const left = entries[a]
           const right = entries[b]
           return (left?.title ?? a).localeCompare(right?.title ?? b)
@@ -230,7 +237,7 @@ export const buildDownloadAlbums = (
         byId: entries,
       }),
     )
-    .sort(compareTitle)
+    .toSorted(compareTitle)
   return [...albumPacks, ...inferred]
 }
 
@@ -241,7 +248,7 @@ export const buildDownloadPlaylists = (
   packs
     .filter((pack) => pack.kind === 'playlist')
     .map((pack) => packToCollection(pack, entries))
-    .sort(compareTitle)
+    .toSorted(compareTitle)
 
 export const completeEntriesForIds = (
   trackIds: readonly string[],

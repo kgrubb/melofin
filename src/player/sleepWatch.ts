@@ -2,8 +2,12 @@ import { AppState, type NativeEventSubscription } from 'react-native'
 import { shouldFireDeadline } from '@/src/domain/sleepTimer'
 import { usePlayerStore } from '@/src/store/player'
 
-let appSub: NativeEventSubscription | null = null
-let interval: ReturnType<typeof setInterval> | null = null
+type SleepWatch = {
+  readonly appSub: NativeEventSubscription | null
+  readonly interval: ReturnType<typeof setInterval> | null
+}
+
+let watch: SleepWatch = { appSub: null, interval: null }
 
 const fireIfDue = () => {
   const store = usePlayerStore.getState()
@@ -16,19 +20,17 @@ const fireIfDue = () => {
 export const syncSleepWatch = (): void => {
   const needsWatch = usePlayerStore.getState().sleep.deadlineMs !== null
   if (needsWatch) {
-    if (!appSub) {
-      appSub = AppState.addEventListener('change', (state) => {
+    const appSub =
+      watch.appSub ??
+      AppState.addEventListener('change', (state) => {
         if (state === 'active') fireIfDue()
       })
-    }
-    if (!interval) interval = setInterval(fireIfDue, 1000)
+    const interval = watch.interval ?? setInterval(fireIfDue, 1000)
+    watch = { appSub, interval }
     fireIfDue()
     return
   }
-  appSub?.remove()
-  appSub = null
-  if (interval) {
-    clearInterval(interval)
-    interval = null
-  }
+  watch.appSub?.remove()
+  if (watch.interval) clearInterval(watch.interval)
+  watch = { appSub: null, interval: null }
 }

@@ -152,29 +152,33 @@ const seedDownloadsIndex = async (page, creds) => {
     `/Users/${userId}/Items?IncludeItemTypes=Audio&Recursive=true&SortBy=Album,SortName&Fields=AlbumId,AlbumPrimaryImageTag&Limit=80`,
   )
   const now = Date.now()
-  const entries = {}
-  for (const track of data.Items ?? []) {
-    const seconds = Number(track.RunTimeTicks ?? 0) / 10_000_000
-    const albumId = track.AlbumId || track.ParentId
-    const tag = track.AlbumPrimaryImageTag || track.ImageTags?.Primary
-    entries[track.Id] = {
-      itemId: track.Id,
-      title: track.Name ?? 'Track',
-      artist: track.AlbumArtist || track.Artists?.[0] || '',
-      album: track.Album ?? 'Album',
-      durationMs: Math.round(seconds * 1000),
-      path: `audio/${track.Id}`,
-      sizeBytes: Math.max(400_000, Math.round(seconds * 16_000)),
-      artworkPath:
-        albumId && tag
-          ? `${creds.serverUrl}/Items/${albumId}/Images/Primary?maxWidth=960&maxHeight=960&quality=96&tag=${encodeURIComponent(tag)}&api_key=${encodeURIComponent(token)}`
-          : undefined,
-      downloadedAt: now,
-      lastAccessedAt: now,
-      kind: 'user',
-      complete: true,
-    }
-  }
+  const entries = Object.fromEntries(
+    (data.Items ?? []).map((track) => {
+      const seconds = Number(track.RunTimeTicks ?? 0) / 10_000_000
+      const albumId = track.AlbumId || track.ParentId
+      const tag = track.AlbumPrimaryImageTag || track.ImageTags?.Primary
+      return [
+        track.Id,
+        {
+          itemId: track.Id,
+          title: track.Name ?? 'Track',
+          artist: track.AlbumArtist || track.Artists?.[0] || '',
+          album: track.Album ?? 'Album',
+          durationMs: Math.round(seconds * 1000),
+          path: `audio/${track.Id}`,
+          sizeBytes: Math.max(400_000, Math.round(seconds * 16_000)),
+          artworkPath:
+            albumId && tag
+              ? `${creds.serverUrl}/Items/${albumId}/Images/Primary?maxWidth=960&maxHeight=960&quality=96&tag=${encodeURIComponent(tag)}&api_key=${encodeURIComponent(token)}`
+              : undefined,
+          downloadedAt: now,
+          lastAccessedAt: now,
+          kind: 'user',
+          complete: true,
+        },
+      ]
+    }),
+  )
   if (!Object.keys(entries).length) {
     process.stderr.write('warning: no demo tracks to seed Downloads\n')
     return
@@ -269,12 +273,12 @@ const compressPng = async (sharp, buf) => {
 }
 
 const createShot = (sharp, outDir) => {
-  const taken = []
+  const state = { count: 0 }
   const shot = async (page, name) => {
-    if (taken.length >= STORE_MAX) {
+    if (state.count >= STORE_MAX) {
       throw new Error(`App Store allows at most ${STORE_MAX} screenshots; extra shot "${name}"`)
     }
-    const dest = join(outDir, `${String(taken.length + 1).padStart(2, '0')}-${name}.png`)
+    const dest = join(outDir, `${String(state.count + 1).padStart(2, '0')}-${name}.png`)
     const raw = await page.screenshot({
       type: 'png',
       animations: 'disabled',
@@ -285,12 +289,12 @@ const createShot = (sharp, outDir) => {
     const packed = await compressPng(sharp, raw)
     const info = assertStorePng(name, packed)
     await writeFile(dest, packed)
-    taken.push(name)
+    state.count += 1
     process.stdout.write(
       `wrote ${dest} (${info.width}×${info.height} RGB ${kb(raw.length)} → ${kb(packed.length)})\n`,
     )
   }
-  return { shot, taken }
+  return { shot, state }
 }
 
 const waitForPlayHero = async (page, playLabel) => {
@@ -320,9 +324,9 @@ const login = async (page, creds, strings) => {
   await page.getByRole('button', { name: auth.signIn }).click()
 }
 
-const captureFullSet = async (page, strings, outDir, sharp) => {
+const captureFullSet = async (page, strings, outDir, sharp, creds) => {
   const s = strings
-  const { shot, taken } = createShot(sharp, outDir)
+  const { shot, state } = createShot(sharp, outDir)
 
   await waitForHome(page)
   await seedDownloadsIndex(page, creds)
@@ -434,12 +438,10 @@ const captureFullSet = async (page, strings, outDir, sharp) => {
   await waitForArt(page)
   await shot(page, 'downloads')
 
-  if (taken.length !== STORE_MAX) {
-    throw new Error(`expected ${STORE_MAX} App Store screenshots, captured ${taken.length}`)
+  if (state.count !== STORE_MAX) {
+    throw new Error(`expected ${STORE_MAX} App Store screenshots, captured ${state.count}`)
   }
 }
-
-let creds
 
 const RESUME = process.env.MELOFIN_SCREENSHOT_RESUME === '1'
 
@@ -448,7 +450,7 @@ const main = async () => {
     await rm(STORE_OUT, { recursive: true, force: true })
   }
   await mkdir(STORE_OUT, { recursive: true })
-  creds = await credentials()
+  const creds = await credentials()
   process.stdout.write(`capturing App Store 6.9" ${STORE_PX.width}×${STORE_PX.height} RGB PNG\n`)
   process.stdout.write(`locales: ${LOCALES.join(', ')}\n`)
   await waitForUrl(`${creds.serverUrl}/System/Info/Public`, 10_000)
@@ -507,7 +509,7 @@ const main = async () => {
       const page = await context.newPage()
       process.stdout.write(`\ncapturing full set ${locale} (${appLang}) -> ${outDir}\n`)
       await login(page, creds, strings)
-      await captureFullSet(page, strings, outDir, sharp)
+      await captureFullSet(page, strings, outDir, sharp, creds)
       await context.close()
     }
   } finally {

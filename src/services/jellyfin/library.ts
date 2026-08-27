@@ -458,9 +458,10 @@ export const fetchAlbumsByGenre = async (
   )
   const seen = new Set(catalog.map((album) => album.id))
   const derived: LibraryItem[] = []
-  let latest = catalog
+  let latest: readonly LibraryItem[] = catalog
   let lastError: Result<readonly LibraryItem[]> | undefined
   for (const query of genreTrackQueries(userId, genreId, name)) {
+    if (signal?.aborted) break
     const result = await deriveAlbumsFromGenreTrackPages(
       context,
       query,
@@ -470,7 +471,6 @@ export const fetchAlbumsByGenre = async (
     )
     if (result.ok) latest = result.value
     else lastError = result
-    if (signal?.aborted) break
   }
   if (latest.length > 0 || !lastError) return ok(latest)
   return lastError
@@ -621,23 +621,34 @@ const loadGenreAlbumProbe = async (
 }> => {
   const name = genre.name.trim()
   const uniqueIds = new Set<string>()
-  let albumCount = 0
-  let sampleAlbums: readonly LibraryItem[] = []
   const artTarget = minAlbums !== undefined ? 1 : BROWSE_GENRE_ART_SAMPLES
-  const needMore = () =>
-    sampleAlbums.length < artTarget ||
-    (minAlbums !== undefined && albumCount < minAlbums)
 
-  const ingestAlbums = (page: Result<Page>) => {
+  type Probe = {
+    readonly albumCount: number
+    readonly sampleAlbums: readonly LibraryItem[]
+  }
+
+  const needMore = (probe: Probe) =>
+    probe.sampleAlbums.length < artTarget ||
+    (minAlbums !== undefined && probe.albumCount < minAlbums)
+
+  const ingestAlbums = (probe: Probe, page: Result<Page>): Probe => {
     const items = page.ok ? page.value.items : []
     for (const album of items) {
       if (album.id) uniqueIds.add(album.id)
     }
-    albumCount = Math.max(albumCount, albumCountFromPage(page), uniqueIds.size)
-    sampleAlbums = pickBrowseGenreAlbums(sampleAlbums, items)
+    return {
+      albumCount: Math.max(
+        probe.albumCount,
+        albumCountFromPage(page),
+        uniqueIds.size,
+      ),
+      sampleAlbums: pickBrowseGenreAlbums(probe.sampleAlbums, items),
+    }
   }
 
-  ingestAlbums(
+  let probe: Probe = ingestAlbums(
+    { albumCount: 0, sampleAlbums: [] },
     await fetchItemsPage(
       context,
       browseGenreAlbumsProbeQuery(userId, genre.id),
@@ -646,9 +657,11 @@ const loadGenreAlbumProbe = async (
       signal,
     ),
   )
-  if (!needMore() || signal?.aborted) return { sampleAlbums, albumCount }
+  if (!needMore(probe) || signal?.aborted) return probe
+
   if (name) {
-    ingestAlbums(
+    probe = ingestAlbums(
+      probe,
       await fetchItemsPage(
         context,
         browseGenreAlbumsProbeQuery(userId, genre.id, name),
@@ -657,21 +670,29 @@ const loadGenreAlbumProbe = async (
         signal,
       ),
     )
+    if (!needMore(probe) || signal?.aborted) return probe
   }
-  if (!needMore() || signal?.aborted) return { sampleAlbums, albumCount }
+
   for (const query of genreTrackQueries(userId, genre.id, name || undefined)) {
-    if (signal?.aborted) break
-    const tracks = await fetchItemsPage(context, query, 0, BROWSE_GENRE_TRACK_PROBE, signal)
+    if (!needMore(probe) || signal?.aborted) break
+    const tracks = await fetchItemsPage(
+      context,
+      query,
+      0,
+      BROWSE_GENRE_TRACK_PROBE,
+      signal,
+    )
     if (!tracks.ok) continue
     const derived = uniqueAlbumsFromTracks(tracks.value.items)
     for (const album of derived) {
       if (album.id) uniqueIds.add(album.id)
     }
-    albumCount = Math.max(albumCount, uniqueIds.size)
-    sampleAlbums = pickBrowseGenreAlbums(sampleAlbums, derived)
-    if (!needMore()) break
+    probe = {
+      albumCount: Math.max(probe.albumCount, uniqueIds.size),
+      sampleAlbums: pickBrowseGenreAlbums(probe.sampleAlbums, derived),
+    }
   }
-  return { sampleAlbums, albumCount }
+  return probe
 }
 
 /** Random album covers for a genre tile. Fills from tracks when albums repeat art. */

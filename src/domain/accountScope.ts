@@ -3,6 +3,7 @@ const FNV_PRIME = 16777619
 
 /** FNV-1a 32-bit hex. Stable across JS engines for path segments. */
 export const stableHash = (input: string): string => {
+  // Indexed loop is intentional: charCodeAt in a tight pass beats spread/reduce here.
   let hash = FNV_OFFSET
   for (let i = 0; i < input.length; i += 1) {
     hash ^= input.charCodeAt(i)

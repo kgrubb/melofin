@@ -106,21 +106,21 @@ export const trimSectionsToBudget = (
 ): readonly CarPlaySection[] => {
   const budget = Math.max(0, Math.floor(maxItems))
   if (budget === 0) return []
-  const out: CarPlaySection[] = []
-  let used = 0
-  for (const section of sections) {
-    if (used >= budget) break
-    const items: CarPlayListItem[] = []
-    for (const item of section.items) {
-      if (used >= budget) break
-      items.push(item)
-      used += 1
-    }
-    if (items.length > 0) {
-      out.push({ header: section.header, items })
-    }
-  }
-  return out
+  return sections.reduce<{
+    readonly out: readonly CarPlaySection[]
+    readonly used: number
+  }>(
+    (acc, section) => {
+      if (acc.used >= budget) return acc
+      const items = section.items.slice(0, budget - acc.used)
+      if (items.length === 0) return acc
+      return {
+        out: [...acc.out, { header: section.header, items }],
+        used: acc.used + items.length,
+      }
+    },
+    { out: [], used: 0 },
+  ).out
 }
 
 export const parseCarPlayItemId = (raw: string): CarPlayItemAction | null => {

@@ -8,10 +8,10 @@ type ArtTrack = {
   readonly imageTag?: string
 }
 
-/** Jellyfin thumb URL for a CarPlay list row, when the account and image tag exist. */
+/** Jellyfin thumb URL for a CarPlay list row. */
 export const carPlayArtFor = (item: LibraryItem): string | undefined => {
   const context = useSessionStore.getState().context
-  if (!context || !item.imageTag) return undefined
+  if (!context) return undefined
   return artworkUrl(
     context,
     item.imageItemId ?? item.id,
@@ -28,7 +28,6 @@ export const carPlayMixArtworkUris = (
   const context = useSessionStore.getState().context
   if (!context || tracks.length === 0) return []
   return tracks
-    .filter((track) => Boolean(track.imageTag))
     .slice(0, limit)
     .map(
       (track) =>

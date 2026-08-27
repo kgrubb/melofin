@@ -123,33 +123,26 @@ export const mapLyricDto = (dto: {
 
 /** Re-clean cached/offline payloads that were stored before scrape filtering. */
 export const sanitizeLyricsPayload = (payload: LyricsPayload): LyricsPayload => {
-  const lines: LyricLine[] = []
-  for (const line of payload.lines) {
+  const lines = payload.lines.flatMap((line) => {
     const cleaned = cleanLyricText(line.text)
-    if (!cleaned) continue
-    lines.push(...expandCleanedText(cleaned, line.startMs))
-  }
+    if (!cleaned) return []
+    return expandCleanedText(cleaned, line.startMs)
+  })
   return finalizeLyrics(lines, payload.synced)
 }
 
 const finalizeLyrics = (
-  lines: LyricLine[],
+  lines: readonly LyricLine[],
   syncedHint?: boolean | null,
 ): LyricsPayload => {
-  while (lines.length > 0 && isBoilerplateLine(lines[0]!.text)) {
-    lines.shift()
-  }
-  while (lines.length > 0 && isBoilerplateLine(lines[lines.length - 1]!.text)) {
-    lines.pop()
-  }
-  // On-demand Genius misses often leave only chrome. Treat as empty.
-  if (lines.length > 0 && lines.every((line) => isBoilerplateLine(line.text))) {
-    return { synced: false, lines: [] }
-  }
-  const anyTimed = lines.some((line) => line.startMs !== undefined)
+  const start = lines.findIndex((line) => !isBoilerplateLine(line.text))
+  if (start < 0) return { synced: false, lines: [] }
+  const end = lines.findLastIndex((line) => !isBoilerplateLine(line.text))
+  const trimmed = lines.slice(start, end + 1)
+  const anyTimed = trimmed.some((line) => line.startMs !== undefined)
   const synced =
     syncedHint === true || (syncedHint !== false && anyTimed)
-  return { synced: synced && anyTimed, lines }
+  return { synced: synced && anyTimed, lines: trimmed }
 }
 
 /** Index of the active synced line for `positionMs`, or -1. */

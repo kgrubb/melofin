@@ -6,14 +6,11 @@ import { resources, type AppLanguage } from '@/src/i18n/resources'
 
 type CommonJson = (typeof resources)['en']['common']
 
-const get = (obj: CommonJson, path: string): unknown => {
-  let cur: unknown = obj
-  for (const part of path.split('.')) {
+const get = (obj: CommonJson, path: string): unknown =>
+  path.split('.').reduce<unknown>((cur, part) => {
     if (!cur || typeof cur !== 'object') return undefined
-    cur = (cur as Record<string, unknown>)[part]
-  }
-  return cur
-}
+    return (cur as Record<string, unknown>)[part]
+  }, obj)
 
 beforeAll(async () => {
   if (!i18n.isInitialized) {

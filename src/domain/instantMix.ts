@@ -143,7 +143,7 @@ export const enrichSeedGenres = (
   // Ignore one-offs (e.g. a single holiday primary among rap rows).
   const minCount =
     sameArtist.length === 1 ? 1 : Math.max(2, Math.ceil(sameArtist.length / 2))
-  const ranked = [...counts.values()].sort((a, b) => b.count - a.count)
+  const ranked = [...counts.values()].toSorted((a, b) => b.count - a.count)
   const dominant = ranked.filter((entry) => entry.count >= minCount)
   return (dominant.length > 0 ? dominant : ranked.slice(0, 1)).map(
     (entry) => entry.genre,
@@ -172,10 +172,11 @@ export const filterInstantMixTracks = (
           : genreFitScoreAgainst(seedTags, tags)
       return score >= GENRE_FIT_MIN ? [{ track, index, score }] : []
     })
-  scored.sort(
-    (left, right) => right.score - left.score || left.index - right.index,
-  )
-  return scored.map((entry) => entry.track)
+  return scored
+    .toSorted(
+      (left, right) => right.score - left.score || left.index - right.index,
+    )
+    .map((entry) => entry.track)
 }
 
 export const mixArtistKey = (track: LibraryItem): string => {

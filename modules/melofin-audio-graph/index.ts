@@ -34,13 +34,16 @@ type MelofinAudioGraphNative = {
   ) => NativeSubscription
 }
 
-let native: MelofinAudioGraphNative | null = null
+let nativeSlot: { readonly mod: MelofinAudioGraphNative | null } = {
+  mod: null,
+}
 
 const loadNative = (): MelofinAudioGraphNative | null => {
-  if (native) return native
+  if (nativeSlot.mod) return nativeSlot.mod
   try {
-    native = requireNativeModule<MelofinAudioGraphNative>('MelofinAudioGraph')
-    return native
+    const mod = requireNativeModule<MelofinAudioGraphNative>('MelofinAudioGraph')
+    nativeSlot = { mod }
+    return mod
   } catch {
     return null
   }

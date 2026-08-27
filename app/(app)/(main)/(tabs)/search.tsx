@@ -301,14 +301,14 @@ export default function SearchScreen() {
       setRecents([])
       return
     }
-    let cancelled = false
+    const controller = new AbortController()
     setRecents([])
     void readJsonFile(searchRecentsPath(serverUrl, userId)).then((result) => {
-      if (cancelled) return
+      if (controller.signal.aborted) return
       setRecents(parseSearchRecents(result.ok ? result.value : null))
     })
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [serverUrl, userId])
 

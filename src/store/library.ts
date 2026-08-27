@@ -156,7 +156,11 @@ const finishMeta = async (
 }
 
 /** Bumped on clearCache so an in-flight sync cannot write after an account switch. */
-let librarySyncGen = 0
+type LibrarySyncEpoch = {
+  readonly generation: number
+}
+
+let librarySyncEpoch: LibrarySyncEpoch = { generation: 0 }
 
 type LibraryState = LibraryCache & {
   readonly hydrated: boolean
@@ -281,7 +285,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     })
   },
   clearCache: async () => {
-    librarySyncGen += 1
+    librarySyncEpoch = { generation: librarySyncEpoch.generation + 1 }
     await Promise.all([
       writeSection(ALBUMS_FILE, []),
       writeSection(ARTISTS_FILE, []),
@@ -398,8 +402,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       return false
     }
 
-    const syncGen = librarySyncGen
-    const stillCurrent = () => librarySyncGen === syncGen
+    const syncGen = librarySyncEpoch.generation
+    const stillCurrent = () => librarySyncEpoch.generation === syncGen
 
     const finish = (patch: {
       readonly syncError?: string | null

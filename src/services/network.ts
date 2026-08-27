@@ -2,7 +2,11 @@ import { Platform } from 'react-native'
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo'
 import type { PlaybackNetwork } from '@/src/domain/playbackSource'
 
-const cache = { network: 'wifiLike' as PlaybackNetwork }
+type NetworkCache = {
+  readonly network: PlaybackNetwork
+}
+
+let cache: NetworkCache = { network: 'wifiLike' }
 
 export const classifyPlaybackNetwork = (
   state: NetInfoState,
@@ -22,8 +26,9 @@ export const classifyPlaybackNetwork = (
 }
 
 export const rememberPlaybackNetwork = (state: NetInfoState): PlaybackNetwork => {
-  cache.network = classifyPlaybackNetwork(state)
-  return cache.network
+  const network = classifyPlaybackNetwork(state)
+  cache = { network }
+  return network
 }
 
 /** Updated by NetInfo listener. Safe to read during load. */

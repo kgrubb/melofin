@@ -33,6 +33,7 @@ export const genreTileCovers = (
 
 const shuffleCopy = <T>(items: readonly T[], random: () => number): readonly T[] => {
   const next = [...items]
+  // In-place Fisher-Yates: O(n) swaps. Immutable per-swap copies would be O(n²).
   for (let i = next.length - 1; i > 0; i -= 1) {
     const j = Math.floor(random() * (i + 1))
     const tmp = next[i]!
@@ -58,7 +59,7 @@ export const sampleBrowseGenresStable = (
   items: readonly BrowseGenre[],
   limit = BROWSE_GENRES_DISPLAY_LIMIT,
 ): readonly BrowseGenre[] => {
-  const ordered = [...items].sort((left, right) =>
+  const ordered = items.toSorted((left, right) =>
     left.genre.id.localeCompare(right.genre.id),
   )
   return sampleBrowseGenres(

@@ -5,6 +5,7 @@ import {
   type ListSection,
 } from 'react-native-carplay'
 import type { CarPlayListItem, CarPlaySection } from '@/src/carplay/templates'
+import { toCarPlayNativeListItem } from '@/src/carplay/listItemNative'
 import { logger } from '@/src/logging/logger'
 
 export type CarPlayListHandle = {
@@ -17,16 +18,7 @@ export type CarPlayListHandle = {
 }
 
 const toNativeItem = (item: CarPlayListItem): ListItem =>
-  ({
-    text: item.text,
-    detailText: item.detailText,
-    ...(item.showsDisclosureIndicator ? { showsDisclosureIndicator: true } : {}),
-    ...(item.isPlaying ? { isPlaying: true } : {}),
-    ...(item.artworkUri ? { image: { uri: item.artworkUri } } : {}),
-    ...(item.imageRowUris && item.imageRowUris.length > 0
-      ? { imgUrls: [...item.imageRowUris] }
-      : {}),
-  }) as ListItem
+  toCarPlayNativeListItem(item) as ListItem
 
 const toNativeSections = (sections: readonly CarPlaySection[]): ListSection[] =>
   sections.map((section) => ({
@@ -56,6 +48,7 @@ export type CreateListOptions = {
   readonly tabTitle?: string
   readonly tabSystemImageName?: string
   readonly trailingNavigationBarButtons?: BarButton[]
+  readonly onDidDisappear?: () => void
 }
 
 export const createListTemplate = (
@@ -64,7 +57,10 @@ export const createListTemplate = (
   onItemPress: (itemId: string) => void | Promise<void>,
   options?: CreateListOptions,
 ): CarPlayListHandle => {
-  const state = {
+  type TemplateState = {
+    readonly sections: readonly CarPlaySection[]
+  }
+  let state: TemplateState = {
     sections: (options?.sections ?? asSections(items)).map((section) => ({
       header: section.header,
       items: [...section.items],
@@ -85,6 +81,9 @@ export const createListTemplate = (
       : {}),
     ...(options?.trailingNavigationBarButtons
       ? { trailingNavigationBarButtons: options.trailingNavigationBarButtons }
+      : {}),
+    ...(options?.onDidDisappear
+      ? { onDidDisappear: options.onDidDisappear }
       : {}),
     sections: toNativeSections(state.sections),
     onItemSelect: ({ index }) =>
@@ -109,17 +108,21 @@ export const createListTemplate = (
   return {
     template,
     setItems: (next) => {
-      state.sections = asSections(next).map((section) => ({
-        header: section.header,
-        items: [...section.items],
-      }))
+      state = {
+        sections: asSections(next).map((section) => ({
+          header: section.header,
+          items: [...section.items],
+        })),
+      }
       publish()
     },
     setSections: (next) => {
-      state.sections = next.map((section) => ({
-        header: section.header,
-        items: [...section.items],
-      }))
+      state = {
+        sections: next.map((section) => ({
+          header: section.header,
+          items: [...section.items],
+        })),
+      }
       publish()
     },
     refreshArtwork: publish,

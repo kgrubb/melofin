@@ -9,47 +9,44 @@ const targetPaths = fs
   .filter((entry) => entry.isDirectory() && entry.name !== 'en')
   .map((entry) => path.join(localesDir, entry.name, 'common.json'))
 
-const flatten = (obj, prefix = '', out = new Set()) => {
-  for (const [key, value] of Object.entries(obj)) {
+const flatten = (obj, prefix = '') =>
+  Object.entries(obj).flatMap(([key, value]) => {
     const next = prefix ? `${prefix}.${key}` : key
-    if (value && typeof value === 'object' && !Array.isArray(value)) flatten(value, next, out)
-    else out.add(next)
-  }
-  return out
-}
+    if (value && typeof value === 'object' && !Array.isArray(value)) return flatten(value, next)
+    return [next]
+  })
 
-const collectStrings = (obj, prefix = '', out = []) => {
-  for (const [key, value] of Object.entries(obj)) {
+const collectStrings = (obj, prefix = '') =>
+  Object.entries(obj).flatMap(([key, value]) => {
     const next = prefix ? `${prefix}.${key}` : key
-    if (value && typeof value === 'object' && !Array.isArray(value)) collectStrings(value, next, out)
-    else if (typeof value === 'string') out.push([next, value])
-  }
-  return out
-}
+    if (value && typeof value === 'object' && !Array.isArray(value)) return collectStrings(value, next)
+    if (typeof value === 'string') return [[next, value]]
+    return []
+  })
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'))
-const baseKeys = flatten(readJson(basePath))
-const allLocaleFiles = [
-  basePath,
-  ...targetPaths,
-]
-let failed = false
+const baseKeys = new Set(flatten(readJson(basePath)))
+const allLocaleFiles = [basePath, ...targetPaths]
 
-for (const file of allLocaleFiles) {
-  for (const [key, value] of collectStrings(readJson(file))) {
-    if (/\{\{\w+\}\}/.test(value)) {
-      failed = true
-      console.error(`${path.relative(root, file)}:${key} uses {{var}}; ICU expects {var}`)
+const icuErrors = allLocaleFiles.flatMap((file) =>
+  collectStrings(readJson(file))
+    .filter(([, value]) => /\{\{\w+\}\}/.test(value))
+    .map(([key]) => `${path.relative(root, file)}:${key} uses {{var}}; ICU expects {var}`),
+)
+
+const mismatches = targetPaths
+  .map((file) => {
+    const targetKeys = new Set(flatten(readJson(file)))
+    return {
+      file,
+      missing: [...baseKeys].filter((key) => !targetKeys.has(key)),
+      extra: [...targetKeys].filter((key) => !baseKeys.has(key)),
     }
-  }
-}
+  })
+  .filter(({ missing, extra }) => missing.length > 0 || extra.length > 0)
 
-for (const file of targetPaths) {
-  const targetKeys = flatten(readJson(file))
-  const missing = [...baseKeys].filter((key) => !targetKeys.has(key))
-  const extra = [...targetKeys].filter((key) => !baseKeys.has(key))
-  if (missing.length === 0 && extra.length === 0) continue
-  failed = true
+for (const message of icuErrors) console.error(message)
+for (const { file, missing, extra } of mismatches) {
   console.error(`\n${path.relative(root, file)} key mismatch:`)
   if (missing.length > 0) {
     console.error(`  Missing (${missing.length}):`)
@@ -61,5 +58,5 @@ for (const file of targetPaths) {
   }
 }
 
-if (failed) process.exit(1)
+if (icuErrors.length > 0 || mismatches.length > 0) process.exit(1)
 console.log('Locale key parity check passed.')
