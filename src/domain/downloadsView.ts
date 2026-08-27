@@ -83,7 +83,8 @@ export const keptOfflineEntries = (
 ): readonly OfflineEntry[] =>
   Object.values(entries)
     .filter(isKeptOffline)
-    .toSorted(
+    .slice()
+    .sort(
       (a, b) =>
         b.downloadedAt - a.downloadedAt || a.title.localeCompare(b.title),
     )
@@ -91,7 +92,7 @@ export const keptOfflineEntries = (
 export const playAllEntries = (
   entries: readonly OfflineEntry[],
 ): readonly OfflineEntry[] =>
-  entries.toSorted((a, b) => {
+  [...entries].sort((a, b) => {
     const album = a.album.localeCompare(b.album)
     if (album !== 0) return album
     return a.title.localeCompare(b.title)
@@ -196,7 +197,8 @@ export const buildDownloadAlbums = (
   const albumPacks = packs
     .filter((pack) => pack.kind === 'album')
     .map((pack) => packToCollection(pack, entries))
-    .toSorted(compareTitle)
+    .slice()
+    .sort(compareTitle)
   const covered = new Set<string>()
   for (const pack of packs) {
     if (pack.kind !== 'album') continue
@@ -229,7 +231,7 @@ export const buildDownloadAlbums = (
         kind: 'album',
         title: group.album,
         artist: group.artist,
-        trackIds: group.trackIds.toSorted((a, b) => {
+        trackIds: [...group.trackIds].sort((a, b) => {
           const left = entries[a]
           const right = entries[b]
           return (left?.title ?? a).localeCompare(right?.title ?? b)
@@ -237,7 +239,8 @@ export const buildDownloadAlbums = (
         byId: entries,
       }),
     )
-    .toSorted(compareTitle)
+    .slice()
+    .sort(compareTitle)
   return [...albumPacks, ...inferred]
 }
 
@@ -248,7 +251,8 @@ export const buildDownloadPlaylists = (
   packs
     .filter((pack) => pack.kind === 'playlist')
     .map((pack) => packToCollection(pack, entries))
-    .toSorted(compareTitle)
+    .slice()
+    .sort(compareTitle)
 
 export const completeEntriesForIds = (
   trackIds: readonly string[],
