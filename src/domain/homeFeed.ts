@@ -221,7 +221,7 @@ const artistCountsFromTracks = (
       order: prev?.order ?? counts.size,
     })
   }
-  return [...counts.values()].toSorted(
+  return [...counts.values()].sort(
     (a, b) => b.count - a.count || a.order - b.order,
   )
 }
@@ -350,7 +350,8 @@ export const latestAlbumsFromCatalog = (
   if (limit <= 0 || albums.length === 0) return []
   return albums
     .filter((album) => album.type === 'MusicAlbum' && album.id)
-    .toSorted(
+    .slice()
+    .sort(
       (left, right) =>
         (right.dateCreatedMs ?? 0) - (left.dateCreatedMs ?? 0) ||
         left.name.localeCompare(right.name),
@@ -418,7 +419,7 @@ export const rankArtistsFromTracks = (
     })
   }
   return [...counts.values()]
-    .toSorted((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
     .slice(0, limit)
     .map((entry) => ({
       id: entry.id,
@@ -457,7 +458,8 @@ export const downloadsFromOffline = (
 ): readonly LibraryItem[] =>
   Object.values(entries)
     .filter((entry) => entry.complete)
-    .toSorted((a, b) => b.lastAccessedAt - a.lastAccessedAt)
+    .slice()
+    .sort((a, b) => b.lastAccessedAt - a.lastAccessedAt)
     .map((entry) => ({
       id: entry.itemId,
       name: entry.title,

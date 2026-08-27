@@ -10,5 +10,5 @@ export const orderSearchResults = (
     if (item.type === 'Playlist') return 2
     return 3
   }
-  return items.toSorted((a, b) => rank(a) - rank(b))
+  return [...items].sort((a, b) => rank(a) - rank(b))
 }

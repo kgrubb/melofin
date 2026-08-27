@@ -28,7 +28,8 @@ export const aggregateDevices = (
       seen.add(device.id)
       return true
     })
-    .toSorted((a, b) => {
+    .slice()
+    .sort((a, b) => {
       const kind = KIND_ORDER[a.kind] - KIND_ORDER[b.kind]
       if (kind !== 0) return kind
       return a.name.localeCompare(b.name)

@@ -57,17 +57,17 @@ export const sortLibraryItems = <T extends LibraryViewItem>(
   sort: LibrarySort,
 ): readonly T[] => {
   if (sort === 'name') {
-    return items.toSorted(compareName)
+    return [...items].sort(compareName)
   }
   if (sort === 'dateAdded') {
-    return items.toSorted((a, b) => {
+    return [...items].sort((a, b) => {
       const av = a.dateCreatedMs ?? 0
       const bv = b.dateCreatedMs ?? 0
       if (bv !== av) return bv - av
       return compareName(a, b)
     })
   }
-  return items.toSorted((a, b) => {
+  return [...items].sort((a, b) => {
     const av = a.lastPlayedMs ?? 0
     const bv = b.lastPlayedMs ?? 0
     if (bv !== av) return bv - av
