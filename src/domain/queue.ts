@@ -278,6 +278,13 @@ export const removeAt = (state: QueueState, index: number): QueueState => {
   }
 }
 
+/** Immutable list move used by queue reorder (UI path, not audio hot path). */
+const moveItem = <T>(items: readonly T[], from: number, to: number): readonly T[] => {
+  if (from === to) return items
+  const without = [...items.slice(0, from), ...items.slice(from + 1)]
+  return [...without.slice(0, to), items[from]!, ...without.slice(to)]
+}
+
 export const moveTrack = (
   state: QueueState,
   from: number,
@@ -292,9 +299,7 @@ export const moveTrack = (
   ) {
     return state
   }
-  const tracks = [...state.tracks]
-  const [item] = tracks.splice(from, 1)
-  tracks.splice(to, 0, item!)
+  const tracks = moveItem(state.tracks, from, to)
   const currentIndex =
     state.currentIndex === from
       ? to
@@ -374,11 +379,12 @@ export const moveQueueViewTrack = (
     const fromPos = remaining.indexOf(fromStore)
     const toPos = remaining.indexOf(toStore)
     if (fromPos < 0 || toPos < 0 || fromPos === toPos) return state
-    const [moved] = remaining.splice(fromPos, 1)
-    remaining.splice(toPos, 0, moved!)
     return {
       ...state,
-      shuffleOrder: [...state.shuffleOrder.slice(0, pos), ...remaining],
+      shuffleOrder: [
+        ...state.shuffleOrder.slice(0, pos),
+        ...moveItem(remaining, fromPos, toPos),
+      ],
     }
   }
   return moveTrack(state, view[fromView]!, view[toView]!)

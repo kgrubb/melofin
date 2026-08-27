@@ -56,27 +56,23 @@ export const sortLibraryItems = <T extends LibraryViewItem>(
   items: readonly T[],
   sort: LibrarySort,
 ): readonly T[] => {
-  const copy = [...items]
   if (sort === 'name') {
-    copy.sort(compareName)
-    return copy
+    return items.toSorted(compareName)
   }
   if (sort === 'dateAdded') {
-    copy.sort((a, b) => {
+    return items.toSorted((a, b) => {
       const av = a.dateCreatedMs ?? 0
       const bv = b.dateCreatedMs ?? 0
       if (bv !== av) return bv - av
       return compareName(a, b)
     })
-    return copy
   }
-  copy.sort((a, b) => {
+  return items.toSorted((a, b) => {
     const av = a.lastPlayedMs ?? 0
     const bv = b.lastPlayedMs ?? 0
     if (bv !== av) return bv - av
     return compareName(a, b)
   })
-  return copy
 }
 
 export const applyLibraryView = <T extends LibraryViewItem>(

@@ -31,16 +31,16 @@ import { useSessionStore } from '@/src/store/session'
 const isAuthError = (error: AppError): boolean =>
   error.code === 'unauthorized' || error.code === 'forbidden'
 
-const authGate = { inFlight: false }
+let authGate: { readonly inFlight: boolean } = { inFlight: false }
 
 const handleAuthFailure = (error: AppError) => {
   if (!isAuthError(error) || authGate.inFlight) return
-  authGate.inFlight = true
+  authGate = { inFlight: true }
   void useSessionStore
     .getState()
     .markUnauthorized()
     .finally(() => {
-      authGate.inFlight = false
+      authGate = { inFlight: false }
     })
 }
 

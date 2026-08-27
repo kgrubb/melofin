@@ -57,7 +57,10 @@ export const createListTemplate = (
   onItemPress: (itemId: string) => void | Promise<void>,
   options?: CreateListOptions,
 ): CarPlayListHandle => {
-  const state = {
+  type TemplateState = {
+    readonly sections: readonly CarPlaySection[]
+  }
+  let state: TemplateState = {
     sections: (options?.sections ?? asSections(items)).map((section) => ({
       header: section.header,
       items: [...section.items],
@@ -105,17 +108,21 @@ export const createListTemplate = (
   return {
     template,
     setItems: (next) => {
-      state.sections = asSections(next).map((section) => ({
-        header: section.header,
-        items: [...section.items],
-      }))
+      state = {
+        sections: asSections(next).map((section) => ({
+          header: section.header,
+          items: [...section.items],
+        })),
+      }
       publish()
     },
     setSections: (next) => {
-      state.sections = next.map((section) => ({
-        header: section.header,
-        items: [...section.items],
-      }))
+      state = {
+        sections: next.map((section) => ({
+          header: section.header,
+          items: [...section.items],
+        })),
+      }
       publish()
     },
     refreshArtwork: publish,

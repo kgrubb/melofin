@@ -7,13 +7,17 @@ type RouteListener = (routeName: string | null) => void
 const routeListeners = new Set<RouteListener>()
 const deviceListeners = new Set<(devices: readonly CastDevice[]) => void>()
 
-const state = {
-  currentRoute: null as string | null,
+type AirPlayRouteState = {
+  readonly currentRoute: string | null
+}
+
+let state: AirPlayRouteState = {
+  currentRoute: null,
 }
 
 export const notifyAirPlayRoute = (routeName: string | null): void => {
   if (Platform.OS !== 'ios') return
-  state.currentRoute = routeName
+  state = { currentRoute: routeName }
   routeListeners.forEach((cb) => cb(routeName))
   const devices: CastDevice[] = routeName
     ? [{ id: 'airplay', name: routeName, kind: 'airplay', subtitle: 'AirPlay' }]

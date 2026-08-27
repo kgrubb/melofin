@@ -28,7 +28,7 @@ export const uniqueAlbumsFromTracks = (
       imageItemId: albumId,
     })
   }
-  return [...albums].sort(compareAlbumName)
+  return albums.toSorted(compareAlbumName)
 }
 
 /** Union album lists. `preferred` wins on id collision (real MusicAlbum DTOs). */
@@ -43,7 +43,7 @@ export const mergeAlbumLists = (
   for (const album of preferred) {
     if (album.id) byId.set(album.id, album)
   }
-  return [...byId.values()].sort(compareAlbumName)
+  return [...byId.values()].toSorted(compareAlbumName)
 }
 
 /** Audio crawls to run — Jellyfin tags some songs by genre name and others by id. */

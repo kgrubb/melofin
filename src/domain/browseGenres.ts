@@ -59,7 +59,7 @@ export const sampleBrowseGenresStable = (
   items: readonly BrowseGenre[],
   limit = BROWSE_GENRES_DISPLAY_LIMIT,
 ): readonly BrowseGenre[] => {
-  const ordered = [...items].sort((left, right) =>
+  const ordered = items.toSorted((left, right) =>
     left.genre.id.localeCompare(right.genre.id),
   )
   return sampleBrowseGenres(
