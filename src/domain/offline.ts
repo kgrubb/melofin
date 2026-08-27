@@ -96,8 +96,7 @@ export const selectPrefetchEvictions = (
 
   const candidates = Object.values(index.entries)
     .filter((entry) => entry.kind === 'prefetch' && entry.complete)
-    .slice()
-    .sort((a, b) => a.lastAccessedAt - b.lastAccessedAt)
+    .toSorted((a, b) => a.lastAccessedAt - b.lastAccessedAt)
 
   return candidates
     .reduce<{ ids: string[]; freed: number }>(
