@@ -3,17 +3,19 @@ import { mapPool } from '@/src/domain/asyncPool'
 
 describe('mapPool', () => {
   it('caps concurrency and preserves order', async () => {
-    let active = 0
-    let max = 0
+    let stats: { readonly active: number; readonly max: number } = {
+      active: 0,
+      max: 0,
+    }
     const out = await mapPool([10, 20, 30, 40], 2, async (n, index) => {
-      active += 1
-      max = Math.max(max, active)
+      const active = stats.active + 1
+      stats = { active, max: Math.max(stats.max, active) }
       await new Promise((resolve) => setTimeout(resolve, 5 - index))
-      active -= 1
+      stats = { ...stats, active: stats.active - 1 }
       return n + 1
     })
     expect(out).toEqual([11, 21, 31, 41])
-    expect(max).toBeLessThanOrEqual(2)
+    expect(stats.max).toBeLessThanOrEqual(2)
   })
 
   it('stops starting work when shouldContinue is false', async () => {

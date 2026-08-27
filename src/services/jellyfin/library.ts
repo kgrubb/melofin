@@ -458,9 +458,14 @@ export const fetchAlbumsByGenre = async (
   )
   const seen = new Set(catalog.map((album) => album.id))
   const derived: LibraryItem[] = []
-  let latest = catalog
-  let lastError: Result<readonly LibraryItem[]> | undefined
-  for (const query of genreTrackQueries(userId, genreId, name)) {
+  const folded = await genreTrackQueries(userId, genreId, name).reduce<
+    Promise<{
+      readonly latest: readonly LibraryItem[]
+      readonly lastError: Result<readonly LibraryItem[]> | undefined
+    }>
+  >(async (prior, query) => {
+    const acc = await prior
+    if (signal?.aborted) return acc
     const result = await deriveAlbumsFromGenreTrackPages(
       context,
       query,
@@ -468,12 +473,12 @@ export const fetchAlbumsByGenre = async (
       signal,
       { startIndex: 0, derived, seen },
     )
-    if (result.ok) latest = result.value
-    else lastError = result
-    if (signal?.aborted) break
-  }
-  if (latest.length > 0 || !lastError) return ok(latest)
-  return lastError
+    return result.ok
+      ? { latest: result.value, lastError: acc.lastError }
+      : { latest: acc.latest, lastError: result }
+  }, Promise.resolve({ latest: catalog, lastError: undefined }))
+  if (folded.latest.length > 0 || !folded.lastError) return ok(folded.latest)
+  return folded.lastError
 }
 
 export const fetchPlaylists = async (
@@ -621,23 +626,34 @@ const loadGenreAlbumProbe = async (
 }> => {
   const name = genre.name.trim()
   const uniqueIds = new Set<string>()
-  let albumCount = 0
-  let sampleAlbums: readonly LibraryItem[] = []
   const artTarget = minAlbums !== undefined ? 1 : BROWSE_GENRE_ART_SAMPLES
-  const needMore = () =>
-    sampleAlbums.length < artTarget ||
-    (minAlbums !== undefined && albumCount < minAlbums)
 
-  const ingestAlbums = (page: Result<Page>) => {
+  type Probe = {
+    readonly albumCount: number
+    readonly sampleAlbums: readonly LibraryItem[]
+  }
+
+  const needMore = (probe: Probe) =>
+    probe.sampleAlbums.length < artTarget ||
+    (minAlbums !== undefined && probe.albumCount < minAlbums)
+
+  const ingestAlbums = (probe: Probe, page: Result<Page>): Probe => {
     const items = page.ok ? page.value.items : []
     for (const album of items) {
       if (album.id) uniqueIds.add(album.id)
     }
-    albumCount = Math.max(albumCount, albumCountFromPage(page), uniqueIds.size)
-    sampleAlbums = pickBrowseGenreAlbums(sampleAlbums, items)
+    return {
+      albumCount: Math.max(
+        probe.albumCount,
+        albumCountFromPage(page),
+        uniqueIds.size,
+      ),
+      sampleAlbums: pickBrowseGenreAlbums(probe.sampleAlbums, items),
+    }
   }
 
-  ingestAlbums(
+  const afterId = ingestAlbums(
+    { albumCount: 0, sampleAlbums: [] },
     await fetchItemsPage(
       context,
       browseGenreAlbumsProbeQuery(userId, genre.id),
@@ -646,32 +662,44 @@ const loadGenreAlbumProbe = async (
       signal,
     ),
   )
-  if (!needMore() || signal?.aborted) return { sampleAlbums, albumCount }
-  if (name) {
-    ingestAlbums(
-      await fetchItemsPage(
-        context,
-        browseGenreAlbumsProbeQuery(userId, genre.id, name),
-        0,
-        BROWSE_GENRE_PROBE_ALBUMS,
-        signal,
-      ),
+  if (!needMore(afterId) || signal?.aborted) return afterId
+
+  const afterName = name
+    ? ingestAlbums(
+        afterId,
+        await fetchItemsPage(
+          context,
+          browseGenreAlbumsProbeQuery(userId, genre.id, name),
+          0,
+          BROWSE_GENRE_PROBE_ALBUMS,
+          signal,
+        ),
+      )
+    : afterId
+  if (!needMore(afterName) || signal?.aborted) return afterName
+
+  return genreTrackQueries(userId, genre.id, name || undefined).reduce<
+    Promise<Probe>
+  >(async (prior, query) => {
+    const probe = await prior
+    if (!needMore(probe) || signal?.aborted) return probe
+    const tracks = await fetchItemsPage(
+      context,
+      query,
+      0,
+      BROWSE_GENRE_TRACK_PROBE,
+      signal,
     )
-  }
-  if (!needMore() || signal?.aborted) return { sampleAlbums, albumCount }
-  for (const query of genreTrackQueries(userId, genre.id, name || undefined)) {
-    if (signal?.aborted) break
-    const tracks = await fetchItemsPage(context, query, 0, BROWSE_GENRE_TRACK_PROBE, signal)
-    if (!tracks.ok) continue
+    if (!tracks.ok) return probe
     const derived = uniqueAlbumsFromTracks(tracks.value.items)
     for (const album of derived) {
       if (album.id) uniqueIds.add(album.id)
     }
-    albumCount = Math.max(albumCount, uniqueIds.size)
-    sampleAlbums = pickBrowseGenreAlbums(sampleAlbums, derived)
-    if (!needMore()) break
-  }
-  return { sampleAlbums, albumCount }
+    return {
+      albumCount: Math.max(probe.albumCount, uniqueIds.size),
+      sampleAlbums: pickBrowseGenreAlbums(probe.sampleAlbums, derived),
+    }
+  }, Promise.resolve(afterName))
 }
 
 /** Random album covers for a genre tile. Fills from tracks when albums repeat art. */
@@ -713,7 +741,7 @@ export const fetchBrowseGenres = async (
     sortBy: ['Random'],
   })
   if (!preview.ok) return preview
-  let published = false
+  let progress: { readonly published: boolean } = { published: false }
   const probes = await collectBrowseGenres(
     preview.value,
     (genre) =>
@@ -725,8 +753,8 @@ export const fetchBrowseGenres = async (
       shouldContinue: () => !signal?.aborted,
       onProgress: (entries) => {
         if (!onProgress) return
-        if (!shouldPublishBrowseProgress(entries.length, published)) return
-        published = true
+        if (!shouldPublishBrowseProgress(entries.length, progress.published)) return
+        progress = { published: true }
         onProgress(entries)
       },
     },

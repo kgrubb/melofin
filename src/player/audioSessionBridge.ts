@@ -18,12 +18,14 @@ const RESUME_DEBOUNCE_MS = 350
 export const startAudioSessionBridge = (
   handlers: AudioSessionBridgeHandlers,
 ): (() => void) => {
-  let resumeTimer: ReturnType<typeof setTimeout> | null = null
+  let resume: { readonly timer: ReturnType<typeof setTimeout> | null } = {
+    timer: null,
+  }
 
   const clearResume = () => {
-    if (!resumeTimer) return
-    clearTimeout(resumeTimer)
-    resumeTimer = null
+    if (!resume.timer) return
+    clearTimeout(resume.timer)
+    resume = { timer: null }
   }
 
   const requestPause = (fields: {
@@ -41,11 +43,13 @@ export const startAudioSessionBridge = (
     readonly ports?: readonly string[]
   }) => {
     clearResume()
-    resumeTimer = setTimeout(() => {
-      resumeTimer = null
-      logger.info('audio.route_resume', fields)
-      handlers.resumeAfterRoute()
-    }, RESUME_DEBOUNCE_MS)
+    resume = {
+      timer: setTimeout(() => {
+        resume = { timer: null }
+        logger.info('audio.route_resume', fields)
+        handlers.resumeAfterRoute()
+      }, RESUME_DEBOUNCE_MS),
+    }
   }
 
   const stop = subscribeAudioSession(

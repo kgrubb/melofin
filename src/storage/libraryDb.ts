@@ -9,7 +9,9 @@ type SqlDatabase = {
   getAllAsync: <T>(source: string, ...params: unknown[]) => Promise<T[]>
 }
 
-let dbPromise: Promise<SqlDatabase | null> | null = null
+let dbSlot: { readonly promise: Promise<SqlDatabase | null> | null } = {
+  promise: null,
+}
 
 const SONG_COLUMNS = [
   'id',
@@ -115,26 +117,28 @@ export const patchSongUserData = async (
 
 const openDb = async (): Promise<SqlDatabase | null> => {
   if (Platform.OS === 'web') return null
-  if (!dbPromise) {
-    dbPromise = (async () => {
-      try {
-        const SQLite = await import('expo-sqlite')
-        if (typeof SQLite.openDatabaseAsync !== 'function') return null
-        const db = await SQLite.openDatabaseAsync('melofin-library.db')
-        await db.execAsync(`
+  if (!dbSlot.promise) {
+    dbSlot = {
+      promise: (async () => {
+        try {
+          const SQLite = await import('expo-sqlite')
+          if (typeof SQLite.openDatabaseAsync !== 'function') return null
+          const db = await SQLite.openDatabaseAsync('melofin-library.db')
+          await db.execAsync(`
         PRAGMA journal_mode = WAL;
         ${SONGS_TABLE_DDL('songs')}
       `)
-        const sql = db as SqlDatabase
-        await ensureSongColumns(sql)
-        return sql
-      } catch {
-        // Expo Go / missing native binary. Songs stay in-memory/JSON until a rebuild.
-        return null
-      }
-    })()
+          const sql = db as SqlDatabase
+          await ensureSongColumns(sql)
+          return sql
+        } catch {
+          // Expo Go / missing native binary. Songs stay in-memory/JSON until a rebuild.
+          return null
+        }
+      })(),
+    }
   }
-  return dbPromise
+  return dbSlot.promise
 }
 
 const rowToSong = (row: Record<string, unknown>): LibraryItem => ({

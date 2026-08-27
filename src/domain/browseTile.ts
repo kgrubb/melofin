@@ -35,10 +35,10 @@ export const browseTileColor = (seed: string): string => {
   return BROWSE_TILE_COLORS[index] ?? BROWSE_TILE_COLORS[0]
 }
 
-export const pairItems = <T>(items: readonly T[]): readonly (readonly [T, T | undefined])[] => {
-  const rows: (readonly [T, T | undefined])[] = []
-  for (let i = 0; i < items.length; i += 2) {
-    rows.push([items[i]!, items[i + 1]])
-  }
-  return rows
-}
+export const pairItems = <T>(
+  items: readonly T[],
+): readonly (readonly [T, T | undefined])[] =>
+  Array.from({ length: Math.ceil(items.length / 2) }, (_, row) => {
+    const i = row * 2
+    return [items[i]!, items[i + 1]] as const
+  })
