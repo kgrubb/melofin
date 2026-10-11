@@ -27,7 +27,7 @@ import {
 } from '@/src/carplay/templates'
 import { carPlayArtFor, carPlayMixArtworkUris } from '@/src/carplay/itemArt'
 import { mapPool } from '@/src/domain/asyncPool'
-import { queueViewTracks, type QueueTrack } from '@/src/domain/queue'
+import { queueViewIndices, queueViewTracks, type QueueTrack } from '@/src/domain/queue'
 import { carplay } from '@/src/i18n/carplayCopy'
 import { logger } from '@/src/logging/logger'
 import { refreshLockScreenNowPlaying } from '@/src/player/engineLifecycle'
@@ -530,9 +530,10 @@ const refreshCarPlayPlayingIndicators = (): void => {
 
 const wirePlayerUpdates = (): void => {
   handlers.playerUnsub?.()
+  // Fingerprint play-order so Up Next rebuilds on shuffle / queue growth, not only skips.
   const playerKey = () => {
     const player = usePlayerStore.getState()
-    return `${player.tracks[player.currentIndex]?.id ?? ''}:${player.currentIndex}`
+    return `${player.shuffle ? 1 : 0}:${player.queueGen}:${queueViewIndices(player).join(',')}`
   }
   let lastKey = playerKey()
   patchHandlers({

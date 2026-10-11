@@ -142,17 +142,25 @@ const lockScreenMetadata = (
 /** Push Now Playing immediately (gapless handoff before primary replace). */
 const pushLockScreenTrack = (track: ReturnType<typeof currentTrack>) => {
   if (Platform.OS === 'web' || !track) return
-  if (!activePlayer()) return
+  const player = activePlayer()
+  if (!player) return
   const trackId = track.id
+  // Catalog URL first so gapless handoff is not waiting on a download.
+  try {
+    const immediate = lockScreenMetadata(track, track.artworkUrl)
+    if (immediate) player.updateLockScreenMetadata(immediate)
+  } catch {
+    // Lock screen may be inactive.
+  }
   void resolveLockScreenArtwork(track.artworkUrl).then((art) => {
     if (art.status === 'cancelled') return
     if (currentTrack(usePlayerStore.getState())?.id !== trackId) return
-    const player = activePlayer()
-    if (!player) return
+    const active = activePlayer()
+    if (!active) return
     const meta = lockScreenMetadata(track, art.uri)
     if (!meta) return
     try {
-      player.updateLockScreenMetadata(meta)
+      active.updateLockScreenMetadata(meta)
     } catch {
       // Lock screen may be inactive.
     }
@@ -172,27 +180,32 @@ export const refreshLockScreenNowPlaying = (): void => {
   const track = currentTrack(usePlayerStore.getState())
   if (!activePlayer() || !track) return
   const trackId = track.id
-  void resolveLockScreenArtwork(track.artworkUrl).then((art) => {
-    if (art.status === 'cancelled') return
-    if (currentTrack(usePlayerStore.getState())?.id !== trackId) return
-    const player = activePlayer()
-    if (!player) return
-    const meta = lockScreenMetadata(track, art.uri)
+  const bind = (artworkUrl: string | undefined) => {
+    const active = activePlayer()
+    if (!active) return
+    const meta = lockScreenMetadata(track, artworkUrl)
     if (!meta) return
     try {
       // Drop artwork first so expo-audio reloads instead of reusing its URL cache.
       if (meta.artworkUrl) {
-        player.updateLockScreenMetadata({
+        active.updateLockScreenMetadata({
           title: meta.title,
           artist: meta.artist,
           albumTitle: meta.albumTitle,
           duration: meta.duration,
         })
       }
-      player.setActiveForLockScreen(true, meta, LOCK_SCREEN_REMOTE)
+      active.setActiveForLockScreen(true, meta, LOCK_SCREEN_REMOTE)
     } catch {
       // Lock screen may be inactive.
     }
+  }
+  // Remotes first, then upgrade to the CarPlay local cache when ready.
+  bind(track.artworkUrl)
+  void resolveLockScreenArtwork(track.artworkUrl).then((art) => {
+    if (art.status === 'cancelled') return
+    if (currentTrack(usePlayerStore.getState())?.id !== trackId) return
+    bind(art.uri)
   })
 }
 
