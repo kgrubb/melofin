@@ -809,7 +809,7 @@ const styles = StyleSheet.create({
     pointerEvents: 'box-none',
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#05020A',
     pointerEvents: 'none',
   },

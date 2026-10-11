@@ -56,7 +56,7 @@ Melofin is a Jellyfin music client for iPhone. Browse your library, queue tracks
 
 ## Requirements
 
-- macOS Tahoe with **Xcode 26.5+** (Liquid Glass / iOS 26 SDK)
+- macOS Tahoe with **Xcode 26.5+** (Expo SDK 57 / Liquid Glass / iOS 26 SDK)
 - **Node 24** (see `.nvmrc`)
 - CocoaPods
 - An Apple Developer account

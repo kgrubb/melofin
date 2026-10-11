@@ -1236,7 +1236,7 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   genreScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 2,
   },
   genreLabelWrap: {

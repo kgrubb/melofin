@@ -1500,7 +1500,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.elevated,
   },
   genreScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   genreLabelWrap: {
     position: 'absolute',

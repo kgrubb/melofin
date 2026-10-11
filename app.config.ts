@@ -84,6 +84,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-router',
     'expo-secure-store',
     'expo-localization',
+    'expo-asset',
+    'expo-font',
+    'expo-image',
+    'expo-status-bar',
+    'expo-web-browser',
     'react-native-google-cast',
     [
       'expo-audio',
@@ -114,6 +119,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ],
   experiments: {
     typedRoutes: true,
+    reactCompiler: true,
   },
   extra: {
     privacyPolicyUrl: 'https://github.com/kgrubb/melofin/blob/main/PRIVACY.md',

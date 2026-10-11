@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   },
   /** GlassContainer wraps mini player + tab bar. */
   chromeCluster: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 20,
   },
 })
