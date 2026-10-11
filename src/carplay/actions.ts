@@ -99,14 +99,19 @@ const playingId = () => {
 const playTracks = async (
   tracks: readonly QueueTrack[],
   startIndex = 0,
-  shuffle?: boolean,
+  shuffle = false,
 ) => {
   if (tracks.length === 0) {
     presentCarPlayNotice(carplay.nothingToPlay())
     return
   }
   usePlayerStore.getState().playQueue(tracks, startIndex, null, shuffle)
-  await startPlaybackEngine().catch(() => null)
+  const engine = await startPlaybackEngine().catch(() => null)
+  if (!engine) {
+    usePlayerStore.getState().setPlaying(false)
+    presentCarPlayNotice(carplay.unavailable())
+    return
+  }
   showCarPlayNowPlaying()
 }
 
@@ -242,7 +247,18 @@ const handleNowPlaying = async (buttonId: string): Promise<void> => {
     const player = usePlayerStore.getState()
     const track = player.tracks[player.currentIndex]
     if (!track) return
-    await startRadioFromItem(track.id, track.artistId)
+    const started = await startRadioFromItem(track.id, track.artistId)
+    if (!started) {
+      presentCarPlayNotice(carplay.unavailable())
+      return
+    }
+    const engine = await startPlaybackEngine().catch(() => null)
+    if (!engine) {
+      usePlayerStore.getState().setPlaying(false)
+      presentCarPlayNotice(carplay.unavailable())
+      return
+    }
+    showCarPlayNowPlaying()
   }
 }
 
@@ -261,7 +277,10 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
 
   if (action.kind === 'offlineAll' || action.kind === 'offline') {
     const tracks = tracksFromOffline(offlineEntries(), melofinRootUri())
-    if (tracks.length === 0) return
+    if (tracks.length === 0) {
+      presentCarPlayNotice(carplay.nothingToPlay())
+      return
+    }
     const start =
       action.kind === 'offlineAll'
         ? 0
@@ -627,8 +646,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       presentCarPlayNotice(carplay.nothingToPlay())
       return
     }
-    const queue = toQueue(context, mix.tracks)
-    await playTracks(queue, Math.floor(Math.random() * queue.length), true)
+    await playTracks(toQueue(context, mix.tracks), 0, true)
   }
 }
 

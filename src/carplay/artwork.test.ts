@@ -83,10 +83,24 @@ describe('carplay artwork', () => {
   })
 
   it('resolves lock-screen artwork through the CarPlay cache', async () => {
-    expect(await resolveLockScreenArtwork(undefined)).toBeUndefined()
-    expect(await resolveLockScreenArtwork('   ')).toBeUndefined()
-    const uri = await resolveLockScreenArtwork('file:///melofin/cover.jpg')
-    expect(uri).toBe('file:///melofin/cover.jpg')
+    expect(await resolveLockScreenArtwork(undefined)).toEqual({
+      status: 'ok',
+      uri: undefined,
+    })
+    expect(await resolveLockScreenArtwork('   ')).toEqual({
+      status: 'ok',
+      uri: undefined,
+    })
+    expect(await resolveLockScreenArtwork('file:///melofin/cover.jpg')).toEqual({
+      status: 'ok',
+      uri: 'file:///melofin/cover.jpg',
+    })
+  })
+
+  it('cancels lock-screen resolve when artwork generation advances', async () => {
+    const pending = resolveLockScreenArtwork('https://example/cover.jpg')
+    bumpArtworkGeneration()
+    expect(await pending).toEqual({ status: 'cancelled' })
   })
 
   it('clears cache without throwing', () => {

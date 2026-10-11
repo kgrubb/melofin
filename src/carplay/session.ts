@@ -171,18 +171,42 @@ const decorateArtwork = async (
     return { header: section.header, items }
   })
 
+/** Last home sections shown (keeps local artwork across track changes). */
+let homePainted: readonly CarPlaySection[] = []
+
 const applyDecoratedSections = (
   handle: CarPlayListHandle | null,
   sections: readonly CarPlaySection[],
 ): void => {
   if (!handle) return
   handle.setSections(sections)
+  if (handle === session.home) homePainted = sections
   const artGen = currentArtworkGeneration()
   void decorateArtwork(sections, artGen).then((decorated) => {
     if (!handle || artGen !== currentArtworkGeneration()) return
     handle.setSections(decorated)
+    if (handle === session.home) homePainted = decorated
   })
 }
+
+const songIdFromRow = (itemId: string): string | null =>
+  itemId.startsWith('song:') ? itemId.slice('song:'.length) : null
+
+/** Patch playing dots without wiping resolved artwork. */
+const patchPlayingIndicators = (
+  sections: readonly CarPlaySection[],
+  playing: string | undefined,
+): readonly CarPlaySection[] =>
+  sections.map((section) => ({
+    header: section.header,
+    items: section.items.map((item) => {
+      const songId = songIdFromRow(item.id)
+      if (songId == null) return item
+      const isPlaying = playing != null && songId === playing ? true : undefined
+      if (item.isPlaying === isPlaying) return item
+      return isPlaying ? { ...item, isPlaying: true } : { ...item, isPlaying: undefined }
+    }),
+  }))
 
 const mixRows = (): readonly HomeMixRow[] =>
   Object.values(useHomeMixesStore.getState().byId).map((mix) => ({
@@ -281,11 +305,13 @@ const refreshHome = async (gen: number): Promise<void> => {
     session.maxItems,
   )
   session.home.setSections(sections)
+  homePainted = sections
   const artGen = currentArtworkGeneration()
   const decorated = await decorateArtwork(sections, artGen)
   if (gen !== session.homeGen || !session.home) return
   if (artGen === currentArtworkGeneration()) {
     session.home.setSections(decorated)
+    homePainted = decorated
   }
 
   paintLibrary()
@@ -463,7 +489,13 @@ const configureNowPlaying = (): void => {
 const refreshCarPlayPlayingIndicators = (): void => {
   if (!session.connected || !session.home) return
   try {
-    applyDecoratedSections(session.home, homeFromCache())
+    if (homePainted.length === 0) {
+      applyDecoratedSections(session.home, homeFromCache())
+      return
+    }
+    const next = patchPlayingIndicators(homePainted, playingId())
+    homePainted = next
+    session.home.setSections(next)
   } catch (cause) {
     logger.warn('CarPlay playing indicator refresh failed', { cause })
   }
@@ -485,6 +517,7 @@ const wirePlayerUpdates = (): void => {
 const clearLiveTemplates = (): void => {
   handlers.playerUnsub?.()
   patchHandlers({ playerUnsub: null })
+  homePainted = []
   patchSession({
     connected: false,
     tabBar: null,

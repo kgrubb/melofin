@@ -144,11 +144,12 @@ const pushLockScreenTrack = (track: ReturnType<typeof currentTrack>) => {
   if (Platform.OS === 'web' || !track) return
   if (!activePlayer()) return
   const trackId = track.id
-  void resolveLockScreenArtwork(track.artworkUrl).then((artworkUrl) => {
+  void resolveLockScreenArtwork(track.artworkUrl).then((art) => {
+    if (art.status === 'cancelled') return
     if (currentTrack(usePlayerStore.getState())?.id !== trackId) return
     const player = activePlayer()
     if (!player) return
-    const meta = lockScreenMetadata(track, artworkUrl)
+    const meta = lockScreenMetadata(track, art.uri)
     if (!meta) return
     try {
       player.updateLockScreenMetadata(meta)
@@ -171,11 +172,12 @@ export const refreshLockScreenNowPlaying = (): void => {
   const track = currentTrack(usePlayerStore.getState())
   if (!activePlayer() || !track) return
   const trackId = track.id
-  void resolveLockScreenArtwork(track.artworkUrl).then((artworkUrl) => {
+  void resolveLockScreenArtwork(track.artworkUrl).then((art) => {
+    if (art.status === 'cancelled') return
     if (currentTrack(usePlayerStore.getState())?.id !== trackId) return
     const player = activePlayer()
     if (!player) return
-    const meta = lockScreenMetadata(track, artworkUrl)
+    const meta = lockScreenMetadata(track, art.uri)
     if (!meta) return
     try {
       // Drop artwork first so expo-audio reloads instead of reusing its URL cache.
@@ -361,11 +363,12 @@ const applyPlayPlan = (plan: TransportPlan) => {
       const trackId = track?.id
       // Idempotent native bind (remote handlers are cleared before re-add).
       // Needed on resume after engine recreate as well as track start.
-      void resolveLockScreenArtwork(track?.artworkUrl).then((artworkUrl) => {
+      void resolveLockScreenArtwork(track?.artworkUrl).then((art) => {
+        if (art.status === 'cancelled') return
         if (!trackId || currentTrack(usePlayerStore.getState())?.id !== trackId) return
         const active = activePlayer()
         if (!active) return
-        const meta = lockScreenMetadata(track, artworkUrl)
+        const meta = lockScreenMetadata(track, art.uri)
         if (!meta) return
         active.setActiveForLockScreen(true, meta, LOCK_SCREEN_REMOTE)
       })

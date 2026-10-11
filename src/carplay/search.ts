@@ -66,8 +66,15 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
         ),
       ],
       0,
+      null,
+      false,
     )
-    await startPlaybackEngine().catch(() => null)
+    const engine = await startPlaybackEngine().catch(() => null)
+    if (!engine) {
+      usePlayerStore.getState().setPlaying(false)
+      presentCarPlayNotice(carplay.unavailable())
+      return
+    }
     showCarPlayNowPlaying()
     return
   }
@@ -93,8 +100,13 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
       artworkUrl(context, track.imageItemId ?? track.id, track.imageTag, 'hero'),
     ),
   )
-  playQueue(queue, 0)
-  await startPlaybackEngine().catch(() => null)
+  playQueue(queue, 0, null, false)
+  const engine = await startPlaybackEngine().catch(() => null)
+  if (!engine) {
+    usePlayerStore.getState().setPlaying(false)
+    presentCarPlayNotice(carplay.unavailable())
+    return
+  }
   showCarPlayNowPlaying()
 }
 
@@ -146,7 +158,7 @@ export const openCarPlaySearch = (): void => {
         const results = [...orderSearchResults(result.value)]
         panel = { ...panel, results }
         const generation = currentArtworkGeneration()
-        return Promise.all(
+        const rows = await Promise.all(
           results.map(async (item) => {
             const uri = artworkUrl(
               session.context!,
@@ -170,6 +182,8 @@ export const openCarPlaySearch = (): void => {
             } as ListItem
           }),
         )
+        if (gen !== panel.searchGen) return []
+        return rows
       },
       onItemSelect: async ({ index }) => {
         try {

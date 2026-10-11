@@ -566,13 +566,16 @@ export const loadCurrent = async (
         })
         if (Platform.OS !== 'web') {
           try {
-            const artworkUrl = await resolveLockScreenArtwork(track.artworkUrl)
-            if (currentTrack(usePlayerStore.getState())?.id === track.id) {
+            const art = await resolveLockScreenArtwork(track.artworkUrl)
+            if (
+              art.status === 'ok' &&
+              currentTrack(usePlayerStore.getState())?.id === track.id
+            ) {
               active.updateLockScreenMetadata({
                 title: track.title,
                 artist: track.artist,
                 albumTitle: track.album,
-                artworkUrl,
+                artworkUrl: art.uri ?? track.artworkUrl,
                 duration: track.durationMs > 0 ? track.durationMs / 1000 : undefined,
               })
             }

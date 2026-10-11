@@ -118,11 +118,22 @@ export const resolveCarPlayArtwork = async (opts: {
   }
 }
 
+/** Result of resolving lock-screen art. `cancelled` means generation advanced. */
+export type LockScreenArtwork =
+  | { readonly status: 'ok'; readonly uri: string | undefined }
+  | { readonly status: 'cancelled' }
+
 /** Now Playing / lock screen: same local cache CarPlay's native loader needs. */
 export const resolveLockScreenArtwork = async (
   uri: string | undefined,
-): Promise<string | undefined> => {
-  if (!uri?.trim()) return undefined
+): Promise<LockScreenArtwork> => {
   const generation = currentArtworkGeneration()
-  return resolveCarPlayArtwork({ uri, edge: 600, generation })
+  if (!uri?.trim()) {
+    return generation === currentArtworkGeneration()
+      ? { status: 'ok', uri: undefined }
+      : { status: 'cancelled' }
+  }
+  const resolved = await resolveCarPlayArtwork({ uri, edge: 600, generation })
+  if (generation !== currentArtworkGeneration()) return { status: 'cancelled' }
+  return { status: 'ok', uri: resolved }
 }
