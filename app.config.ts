@@ -85,7 +85,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-secure-store',
     'expo-localization',
     'react-native-google-cast',
-    './plugins/withPinnedGoogleCast.js',
     [
       'expo-audio',
       {

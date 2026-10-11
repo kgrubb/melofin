@@ -16,7 +16,7 @@ If you are unsure whether something fits, open an issue first.
 You need:
 
 - Node from `.nvmrc` (24+)
-- macOS 15 + Xcode 16.1+
+- macOS Tahoe + Xcode 26.5+
 - CocoaPods
 - A Jellyfin server to talk to
 
