@@ -113,6 +113,9 @@ import { Icon } from '@/src/ui/Icon'
 import { colors, motion, radii, scrollUnderChromePad, spacing } from '@/src/theme/tokens'
 import { albumCardCopyFromT, homeMixCopyFromT } from '@/src/i18n/homeMixCopy'
 
+const randomQueueIndex = (length: number): number =>
+  Math.floor(Math.random() * length)
+
 const MIX_CARD_W = 168
 
 type HomeMix = HomeMixCard & {
@@ -286,8 +289,11 @@ const ActionChip = ({
 const HomeGreeting = () => {
   const { t } = useTranslation()
   const enabled = useMotionEnabled()
-  const seen = useRef(false)
+  const [hasGreeted, setHasGreeted] = useState(false)
   const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    setHasGreeted(true)
+  }, [])
   useEffect(() => {
     const handle: { timer?: ReturnType<typeof setTimeout> } = {}
     const tick = () => setNow(new Date())
@@ -316,8 +322,7 @@ const HomeGreeting = () => {
       : period === 'afternoon'
         ? t('home.greetingAfternoon')
         : t('home.greetingEvening')
-  const animate = seen.current && enabled
-  seen.current = true
+  const animate = hasGreeted && enabled
   return (
     <View
       style={styles.greetingWrap}
@@ -1117,7 +1122,7 @@ export default function HomeScreen() {
     if (tracks.length === 0) return
     playQueue(
       tracks,
-      Math.floor(Math.random() * tracks.length),
+      randomQueueIndex(tracks.length),
       { kind: 'mix', id: mix.id },
       true,
     )
@@ -1500,7 +1505,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.elevated,
   },
   genreScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   genreLabelWrap: {
     position: 'absolute',

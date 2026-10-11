@@ -1,4 +1,4 @@
-import UIKit
+internal import UIKit
 
 @objc(PhoneSceneDelegate)
 class PhoneSceneDelegate: UIResponder, UIWindowSceneDelegate {

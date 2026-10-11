@@ -114,7 +114,12 @@ export const DevicesSheet = () => {
           onPress={(e) => e.stopPropagation()}
           accessibilityViewIsModal
         >
-          <Glass style={styles.sheet} contentStyle={styles.sheetInner} intensity={20}>
+          <Glass
+            style={styles.sheet}
+            contentStyle={styles.sheetInner}
+            intensity={20}
+            isInteractive
+          >
             <View style={styles.grabberRow}>
               <CloseChip onPress={close} />
             </View>

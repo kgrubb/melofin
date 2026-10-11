@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
   },
   highlightWash: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.text,
     pointerEvents: 'none',
   },

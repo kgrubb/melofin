@@ -327,7 +327,7 @@ export const Icon = ({
           weight={weight}
           type="monochrome"
           resizeMode="scaleAspectFit"
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           fallback={<VectorFallback name={name} size={size} color={color} />}
         />
       </View>

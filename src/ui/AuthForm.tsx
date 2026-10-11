@@ -79,7 +79,7 @@ export const GlassGroup = ({
   const items = Children.toArray(children).filter(Boolean)
   return (
     <View style={styles.group}>
-      <Glass style={styles.groupGlass} contentStyle={styles.groupInner}>
+      <Glass style={styles.groupGlass} contentStyle={styles.groupInner} isInteractive>
         {items.map((child, index) => (
           <View key={index}>
             {index > 0 ? <View style={styles.separator} /> : null}

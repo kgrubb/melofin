@@ -38,7 +38,10 @@ export const EqBandSliders = ({ gainsDb, onChange, onCommit }: Props) => {
   const { t } = useTranslation()
   const [draft, setDraft] = useState(gainsDb)
   const draftRef = useRef(draft)
-  draftRef.current = draft
+
+  useEffect(() => {
+    draftRef.current = draft
+  }, [draft])
 
   useEffect(() => {
     setDraft(gainsDb)
