@@ -16,6 +16,7 @@ import {
 import {
   buildHomeSections,
   buildLibraryHubSections,
+  buildQueueItems,
   buildSearchExploreSections,
   CARPLAY_DEFAULT_MAX_ITEMS,
   patchCarPlayPlayingIndicators,
@@ -26,7 +27,7 @@ import {
 } from '@/src/carplay/templates'
 import { carPlayArtFor, carPlayMixArtworkUris } from '@/src/carplay/itemArt'
 import { mapPool } from '@/src/domain/asyncPool'
-import type { QueueTrack } from '@/src/domain/queue'
+import { queueViewTracks, type QueueTrack } from '@/src/domain/queue'
 import { carplay } from '@/src/i18n/carplayCopy'
 import { logger } from '@/src/logging/logger'
 import { refreshLockScreenNowPlaying } from '@/src/player/engineLifecycle'
@@ -118,12 +119,17 @@ export const setCarPlayNowPlayingHandler = (fn: NowPlayingHandler): void => {
 const stackTop = (): CarPlayListHandle | null =>
   session.stack[session.stack.length - 1] ?? null
 
+/** Pushed Up Next list, if any (rebuilds on track change). */
+let upNextHandle: CarPlayListHandle | null = null
+
 const dropFromStack = (handle: CarPlayListHandle): void => {
+  if (handle === upNextHandle) upNextHandle = null
   const index = session.stack.indexOf(handle)
   if (index >= 0) {
     patchSession({ stack: session.stack.slice(0, index) })
   }
 }
+
 
 const offlineEntries = () =>
   Object.values(useSettingsStore.getState().offlineIndex.entries)
@@ -185,8 +191,9 @@ const applyDecoratedSections = (
   const artGen = currentArtworkGeneration()
   void decorateArtwork(sections, artGen).then((decorated) => {
     if (!handle || artGen !== currentArtworkGeneration()) return
-    handle.setSections(decorated)
-    if (handle === session.home) homePainted = decorated
+    const next = patchCarPlayPlayingIndicators(decorated, playingContext())
+    handle.setSections(next)
+    if (handle === session.home) homePainted = next
   })
 }
 
@@ -301,8 +308,9 @@ const refreshHome = async (gen: number): Promise<void> => {
   const decorated = await decorateArtwork(sections, artGen)
   if (gen !== session.homeGen || !session.home) return
   if (artGen === currentArtworkGeneration()) {
-    session.home.setSections(decorated)
-    homePainted = decorated
+    const next = patchCarPlayPlayingIndicators(decorated, playingContext())
+    session.home.setSections(next)
+    homePainted = next
   }
 
   paintLibrary()
@@ -363,6 +371,7 @@ export const pushCarPlayList = (
   title: string,
   items: readonly CarPlayListItem[],
   emptyTitle?: string,
+  opts?: { readonly upNext?: boolean },
 ): CarPlayListHandle => {
   const handle = createListTemplate(title, items, handlePress, {
     emptyTitle,
@@ -375,6 +384,7 @@ export const pushCarPlayList = (
     return handle
   }
   patchSession({ stack: [...session.stack, handle] })
+  if (opts?.upNext) upNextHandle = handle
   publishListArt(handle, items)
   return handle
 }
@@ -386,6 +396,7 @@ export const resetCarPlayNavigation = (): void => {
   } catch {
     // Already at root.
   }
+  upNextHandle = null
   patchSession({ stack: [] })
 }
 
@@ -480,6 +491,14 @@ const configureNowPlaying = (): void => {
   }
 }
 
+const rebuildUpNext = (): void => {
+  if (!upNextHandle || !session.stack.includes(upNextHandle)) return
+  const player = usePlayerStore.getState()
+  const items = buildQueueItems(queueViewTracks(player), 0)
+  upNextHandle.setItems(items)
+  publishListArt(upNextHandle, items)
+}
+
 const refreshCarPlayPlayingIndicators = (): void => {
   if (!session.connected) return
   try {
@@ -495,7 +514,11 @@ const refreshCarPlayPlayingIndicators = (): void => {
         }
       }
     }
+    if (upNextHandle && session.stack.includes(upNextHandle)) {
+      rebuildUpNext()
+    }
     for (const handle of session.stack) {
+      if (handle === upNextHandle) continue
       const current = handle.getSections()
       const next = patchCarPlayPlayingIndicators(current, ctx)
       if (next !== current) handle.setSections(next)
@@ -507,12 +530,16 @@ const refreshCarPlayPlayingIndicators = (): void => {
 
 const wirePlayerUpdates = (): void => {
   handlers.playerUnsub?.()
-  let lastId = playingId()
+  const playerKey = () => {
+    const player = usePlayerStore.getState()
+    return `${player.tracks[player.currentIndex]?.id ?? ''}:${player.currentIndex}`
+  }
+  let lastKey = playerKey()
   patchHandlers({
-    playerUnsub: usePlayerStore.subscribe((state) => {
-      const nextId = state.tracks[state.currentIndex]?.id
-      if (nextId === lastId) return
-      lastId = nextId
+    playerUnsub: usePlayerStore.subscribe(() => {
+      const nextKey = playerKey()
+      if (nextKey === lastKey) return
+      lastKey = nextKey
       refreshCarPlayPlayingIndicators()
     }),
   })
@@ -522,6 +549,7 @@ const clearLiveTemplates = (): void => {
   handlers.playerUnsub?.()
   patchHandlers({ playerUnsub: null })
   homePainted = []
+  upNextHandle = null
   patchSession({
     connected: false,
     tabBar: null,

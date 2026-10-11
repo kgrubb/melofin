@@ -593,8 +593,9 @@ describe('carplay templates', () => {
     expect(next[0]?.items[0]?.isPlaying).toBeUndefined()
     expect(next[0]?.items[1]?.isPlaying).toBe(true)
     expect(next[0]?.items[1]?.artworkUri).toBe('file:///b.jpg')
-    expect(next[0]?.items[2]?.isPlaying).toBeUndefined()
-    expect(next[0]?.items[3]?.isPlaying).toBe(true)
+    // Up Next is play-order: row 0 is always now playing.
+    expect(next[0]?.items[2]?.isPlaying).toBe(true)
+    expect(next[0]?.items[3]?.isPlaying).toBeUndefined()
     expect(next[0]?.items[4]?.isPlaying).toBeUndefined()
     expect(next[0]?.items[5]).toBe(sections[0]?.items[5])
 

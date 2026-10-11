@@ -28,7 +28,7 @@ import {
   tracksFromOffline,
 } from '@/src/carplay/templates'
 import { logger } from '@/src/logging/logger'
-import type { QueueTrack } from '@/src/domain/queue'
+import { queueViewTracks, type QueueTrack } from '@/src/domain/queue'
 import {
   artworkUrl,
   fetchAlbumsByArtist,
@@ -177,8 +177,10 @@ const openUpNext = () => {
   const player = usePlayerStore.getState()
   resetCarPlayNavigation()
   resetCarPlaySearchOpen()
-  setCarPlayTrackBuffer(player.tracks)
-  pushCarPlayList(carplay.upNext(), buildQueueItems(player.tracks, player.currentIndex))
+  const view = queueViewTracks(player)
+  pushCarPlayList(carplay.upNext(), buildQueueItems(view, 0), undefined, {
+    upNext: true,
+  })
 }
 
 const openAlbumArtist = async () => {
@@ -296,8 +298,14 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
   }
 
   if (action.kind === 'queue') {
-    const player = usePlayerStore.getState()
-    await playTracks(player.tracks, action.index)
+    usePlayerStore.getState().playQueueViewIndex(action.index)
+    const engine = await startPlaybackEngine().catch(() => null)
+    if (!engine) {
+      usePlayerStore.getState().setPlaying(false)
+      presentCarPlayNotice(carplay.unavailable())
+      return
+    }
+    showCarPlayNowPlaying()
     return
   }
 

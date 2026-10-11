@@ -49,7 +49,8 @@ const playingFlagForRow = (
   if (itemId.startsWith('queue:')) {
     const index = Number(itemId.slice('queue:'.length))
     if (!Number.isFinite(index)) return null
-    return index === ctx.currentIndex ? true : undefined
+    // Up Next is play-order from the current track; row 0 is now playing.
+    return index === 0 ? true : undefined
   }
   return null
 }
