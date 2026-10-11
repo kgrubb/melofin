@@ -376,14 +376,18 @@ const applyPlayPlan = (plan: TransportPlan) => {
       const trackId = track?.id
       // Idempotent native bind (remote handlers are cleared before re-add).
       // Needed on resume after engine recreate as well as track start.
-      void resolveLockScreenArtwork(track?.artworkUrl).then((art) => {
-        if (art.status === 'cancelled') return
+      const bindLockScreen = (artworkUrl: string | undefined) => {
         if (!trackId || currentTrack(usePlayerStore.getState())?.id !== trackId) return
         const active = activePlayer()
         if (!active) return
-        const meta = lockScreenMetadata(track, art.uri)
+        const meta = lockScreenMetadata(track, artworkUrl)
         if (!meta) return
         active.setActiveForLockScreen(true, meta, LOCK_SCREEN_REMOTE)
+      }
+      bindLockScreen(track?.artworkUrl)
+      void resolveLockScreenArtwork(track?.artworkUrl).then((art) => {
+        if (art.status === 'cancelled') return
+        bindLockScreen(art.uri)
       })
     }
 

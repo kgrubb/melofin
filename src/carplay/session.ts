@@ -350,12 +350,18 @@ const paintLibrary = (): void => {
   applyDecoratedSections(session.library, libraryFromCache())
 }
 
+/** Invalidate in-flight list art so an older decorate cannot clobber a newer list. */
+const listArtPublishGen = new WeakMap<CarPlayListHandle, number>()
+
 const publishListArt = (
   handle: CarPlayListHandle,
   items: readonly CarPlayListItem[],
 ): void => {
   const artGen = currentArtworkGeneration()
+  const publishId = (listArtPublishGen.get(handle) ?? 0) + 1
+  listArtPublishGen.set(handle, publishId)
   void decorateArtwork([{ items }], artGen).then((decorated) => {
+    if (listArtPublishGen.get(handle) !== publishId) return
     if (!session.stack.includes(handle) || artGen !== currentArtworkGeneration()) {
       return
     }
