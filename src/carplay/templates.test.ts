@@ -21,6 +21,7 @@ import {
   CARPLAY_DEFAULT_MAX_ITEMS,
   CARPLAY_PAGE_SIZE,
   parseCarPlayItemId,
+  patchCarPlayPlayingIndicators,
   tracksFromOffline,
   trimSectionsToBudget,
   type CarPlayListItem,
@@ -567,6 +568,42 @@ describe('carplay templates', () => {
       durationMs: 0,
     }))
     expect(buildGenreItems(many).at(-1)?.id).toBe(`genresMore:${CARPLAY_PAGE_SIZE}`)
+  })
+
+  it('patches playing dots on song, trackAt, queue, and offline rows', () => {
+    const buffer = [{ id: 't0' }, { id: 't1' }, { id: 't2' }]
+    const sections: readonly CarPlaySection[] = [
+      {
+        items: [
+          { id: 'song:t0', text: 'A', isPlaying: true },
+          { id: 'trackAt:1', text: 'B', artworkUri: 'file:///b.jpg' },
+          { id: 'queue:0', text: 'Q0', isPlaying: true },
+          { id: 'queue:1', text: 'Q1' },
+          { id: 'offline:t2', text: 'Off' },
+          { id: 'album:x', text: 'Album', showsDisclosureIndicator: true },
+        ],
+      },
+    ]
+    const next = patchCarPlayPlayingIndicators(sections, {
+      playingId: 't1',
+      trackBuffer: buffer,
+      currentIndex: 1,
+    })
+    expect(next).not.toBe(sections)
+    expect(next[0]?.items[0]?.isPlaying).toBeUndefined()
+    expect(next[0]?.items[1]?.isPlaying).toBe(true)
+    expect(next[0]?.items[1]?.artworkUri).toBe('file:///b.jpg')
+    expect(next[0]?.items[2]?.isPlaying).toBeUndefined()
+    expect(next[0]?.items[3]?.isPlaying).toBe(true)
+    expect(next[0]?.items[4]?.isPlaying).toBeUndefined()
+    expect(next[0]?.items[5]).toBe(sections[0]?.items[5])
+
+    const same = patchCarPlayPlayingIndicators(next, {
+      playingId: 't1',
+      trackBuffer: buffer,
+      currentIndex: 1,
+    })
+    expect(same).toBe(next)
   })
 
   it('pages track lists and builds queue rows with art', () => {

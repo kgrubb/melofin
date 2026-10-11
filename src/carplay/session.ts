@@ -18,6 +18,7 @@ import {
   buildLibraryHubSections,
   buildSearchExploreSections,
   CARPLAY_DEFAULT_MAX_ITEMS,
+  patchCarPlayPlayingIndicators,
   trimSectionsToBudget,
   type CarPlayListItem,
   type CarPlaySection,
@@ -189,24 +190,14 @@ const applyDecoratedSections = (
   })
 }
 
-const songIdFromRow = (itemId: string): string | null =>
-  itemId.startsWith('song:') ? itemId.slice('song:'.length) : null
-
-/** Patch playing dots without wiping resolved artwork. */
-const patchPlayingIndicators = (
-  sections: readonly CarPlaySection[],
-  playing: string | undefined,
-): readonly CarPlaySection[] =>
-  sections.map((section) => ({
-    header: section.header,
-    items: section.items.map((item) => {
-      const songId = songIdFromRow(item.id)
-      if (songId == null) return item
-      const isPlaying = playing != null && songId === playing ? true : undefined
-      if (item.isPlaying === isPlaying) return item
-      return isPlaying ? { ...item, isPlaying: true } : { ...item, isPlaying: undefined }
-    }),
-  }))
+const playingContext = () => {
+  const player = usePlayerStore.getState()
+  return {
+    playingId: playingId(),
+    trackBuffer: session.trackBuffer,
+    currentIndex: player.currentIndex,
+  }
+}
 
 const mixRows = (): readonly HomeMixRow[] =>
   Object.values(useHomeMixesStore.getState().byId).map((mix) => ({
@@ -361,7 +352,10 @@ const publishListArt = (
       return
     }
     const next = decorated[0]?.items
-    if (next) handle.setItems(next)
+    if (!next) return
+    // Re-apply playing dots after art resolve so a mid-flight track change wins.
+    const sections = patchCarPlayPlayingIndicators([{ items: next }], playingContext())
+    handle.setSections(sections)
   })
 }
 
@@ -487,15 +481,25 @@ const configureNowPlaying = (): void => {
 }
 
 const refreshCarPlayPlayingIndicators = (): void => {
-  if (!session.connected || !session.home) return
+  if (!session.connected) return
   try {
-    if (homePainted.length === 0) {
-      applyDecoratedSections(session.home, homeFromCache())
-      return
+    const ctx = playingContext()
+    if (session.home) {
+      if (homePainted.length === 0) {
+        applyDecoratedSections(session.home, homeFromCache())
+      } else {
+        const next = patchCarPlayPlayingIndicators(homePainted, ctx)
+        if (next !== homePainted) {
+          homePainted = next
+          session.home.setSections(next)
+        }
+      }
     }
-    const next = patchPlayingIndicators(homePainted, playingId())
-    homePainted = next
-    session.home.setSections(next)
+    for (const handle of session.stack) {
+      const current = handle.getSections()
+      const next = patchCarPlayPlayingIndicators(current, ctx)
+      if (next !== current) handle.setSections(next)
+    }
   } catch (cause) {
     logger.warn('CarPlay playing indicator refresh failed', { cause })
   }

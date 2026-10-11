@@ -375,7 +375,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
     } else {
       pushCarPlayList(
         carplay.downloads(),
-        buildOfflineItems(offlineEntries(), melofinRootUri()),
+        buildOfflineItems(offlineEntries(), melofinRootUri(), playingId()),
         carplay.nothingDownloaded(),
       )
     }

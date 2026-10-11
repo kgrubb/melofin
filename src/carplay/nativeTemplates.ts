@@ -12,6 +12,7 @@ export type CarPlayListHandle = {
   readonly template: ListTemplate
   setItems(items: readonly CarPlayListItem[]): void
   setSections(sections: readonly CarPlaySection[]): void
+  getSections(): readonly CarPlaySection[]
   refreshArtwork(): void
   getMaximumListItemCount(): Promise<number>
   getMaximumListItemImageSize(): Promise<{ width: number; height: number }>
@@ -125,6 +126,7 @@ export const createListTemplate = (
       }
       publish()
     },
+    getSections: () => state.sections,
     refreshArtwork: publish,
     getMaximumListItemCount: () => template.getMaximumListItemCount(),
     getMaximumListItemImageSize: () => template.getMaximumListItemImageSize(),

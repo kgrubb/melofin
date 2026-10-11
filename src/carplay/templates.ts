@@ -22,6 +22,64 @@ export type CarPlaySection = {
   readonly items: readonly CarPlayListItem[]
 }
 
+export type CarPlayPlayingContext = {
+  readonly playingId?: string
+  readonly trackBuffer?: readonly { readonly id: string }[]
+  readonly currentIndex?: number
+}
+
+const playingFlagForRow = (
+  itemId: string,
+  ctx: CarPlayPlayingContext,
+): true | undefined | null => {
+  if (itemId.startsWith('song:')) {
+    const id = itemId.slice('song:'.length)
+    return ctx.playingId != null && id === ctx.playingId ? true : undefined
+  }
+  if (itemId.startsWith('offline:') && itemId !== 'offline:all') {
+    const id = itemId.slice('offline:'.length)
+    return ctx.playingId != null && id === ctx.playingId ? true : undefined
+  }
+  if (itemId.startsWith('trackAt:')) {
+    const index = Number(itemId.slice('trackAt:'.length))
+    if (!Number.isFinite(index)) return null
+    const trackId = ctx.trackBuffer?.[index]?.id
+    return ctx.playingId != null && trackId === ctx.playingId ? true : undefined
+  }
+  if (itemId.startsWith('queue:')) {
+    const index = Number(itemId.slice('queue:'.length))
+    if (!Number.isFinite(index)) return null
+    return index === ctx.currentIndex ? true : undefined
+  }
+  return null
+}
+
+/**
+ * Update playing dots on list rows without rebuilding artwork.
+ * Returns the same sections reference when nothing changed.
+ */
+export const patchCarPlayPlayingIndicators = (
+  sections: readonly CarPlaySection[],
+  ctx: CarPlayPlayingContext,
+): readonly CarPlaySection[] => {
+  let changed = false
+  const next = sections.map((section) => {
+    let sectionChanged = false
+    const items = section.items.map((item) => {
+      const flag = playingFlagForRow(item.id, ctx)
+      if (flag === null) return item
+      const isPlaying = flag === true ? true : undefined
+      if (item.isPlaying === isPlaying) return item
+      sectionChanged = true
+      return isPlaying ? { ...item, isPlaying: true } : { ...item, isPlaying: undefined }
+    })
+    if (!sectionChanged) return section
+    changed = true
+    return { header: section.header, items }
+  })
+  return changed ? next : sections
+}
+
 export type CarPlayBrowseSection =
   | 'playlists'
   | 'albums'
@@ -598,6 +656,7 @@ export const buildGenreItems = (
 export const buildOfflineItems = (
   offline: readonly OfflineEntry[],
   melofinRootUri?: string,
+  playingId?: string,
 ): readonly CarPlayListItem[] => {
   const complete = offline.filter((entry) => entry.complete)
   return [
@@ -611,6 +670,7 @@ export const buildOfflineItems = (
       text: entry.title,
       detailText: entry.artist,
       artworkUri: offlineArtworkUri(entry.artworkPath, melofinRootUri),
+      isPlaying: playingId === entry.itemId ? true : undefined,
     })),
   ]
 }
