@@ -12,11 +12,13 @@ import {
 import { usePlayerStore } from '@/src/store/player'
 import { useSessionStore } from '@/src/store/session'
 import { presentCarPlayNotice } from '@/src/carplay/feedback'
+import { currentArtworkGeneration, resolveCarPlayArtwork } from '@/src/carplay/artwork'
 import { pushCarPlayList, showCarPlayNowPlaying } from '@/src/carplay/session'
 import { orderSearchResults } from '@/src/carplay/searchOrder'
 import { buildArtistDetailItems } from '@/src/carplay/templates'
 import { carPlayArtFor } from '@/src/carplay/itemArt'
 import { logger } from '@/src/logging/logger'
+import { startPlaybackEngine } from '@/src/player/playlistEngine'
 import type { QueueTrack } from '@/src/domain/queue'
 
 const searchDetail = (item: LibraryItem) => {
@@ -65,6 +67,7 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
       ],
       0,
     )
+    await startPlaybackEngine().catch(() => null)
     showCarPlayNowPlaying()
     return
   }
@@ -91,6 +94,7 @@ const playOrBrowse = async (item: LibraryItem): Promise<void> => {
     ),
   )
   playQueue(queue, 0)
+  await startPlaybackEngine().catch(() => null)
   showCarPlayNowPlaying()
 }
 
@@ -141,20 +145,31 @@ export const openCarPlaySearch = (): void => {
         }
         const results = [...orderSearchResults(result.value)]
         panel = { ...panel, results }
-        return results.map((item) => {
-          const uri = artworkUrl(
-            session.context!,
-            item.imageItemId ?? item.id,
-            item.imageTag,
-            'thumb',
-          )
-          // Runtime accepts imgUrl URLs. Typings mark it null-only.
-          return {
-            text: item.name,
-            detailText: searchDetail(item),
-            ...(uri ? { imgUrl: uri } : {}),
-          } as ListItem
-        })
+        const generation = currentArtworkGeneration()
+        return Promise.all(
+          results.map(async (item) => {
+            const uri = artworkUrl(
+              session.context!,
+              item.imageItemId ?? item.id,
+              item.imageTag,
+              'thumb',
+            )
+            const resolved = uri
+              ? await resolveCarPlayArtwork({
+                  uri,
+                  itemId: item.id,
+                  imageTag: item.imageTag,
+                  generation,
+                })
+              : undefined
+            // Runtime accepts imgUrl URLs. Typings mark it null-only.
+            return {
+              text: item.name,
+              detailText: searchDetail(item),
+              ...(resolved ? { imgUrl: resolved } : {}),
+            } as ListItem
+          }),
+        )
       },
       onItemSelect: async ({ index }) => {
         try {

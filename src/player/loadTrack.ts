@@ -46,6 +46,7 @@ import {
   setLocalOutputEnabled,
 } from '@/src/player/outputPolicy'
 import { resolveTrackSource } from '@/src/player/trackResolver'
+import { resolveLockScreenArtwork } from '@/src/carplay/artwork'
 import { bitrateForPreset, resolveStreamPreset } from '@/src/domain/streamQuality'
 import { fetchItem } from '@/src/services/jellyfin/library'
 import { melofinRootUri, offlineAudioExists } from '@/src/storage/jsonFile'
@@ -565,13 +566,16 @@ export const loadCurrent = async (
         })
         if (Platform.OS !== 'web') {
           try {
-            active.updateLockScreenMetadata({
-              title: track.title,
-              artist: track.artist,
-              albumTitle: track.album,
-              artworkUrl: track.artworkUrl,
-              duration: track.durationMs > 0 ? track.durationMs / 1000 : undefined,
-            })
+            const artworkUrl = await resolveLockScreenArtwork(track.artworkUrl)
+            if (currentTrack(usePlayerStore.getState())?.id === track.id) {
+              active.updateLockScreenMetadata({
+                title: track.title,
+                artist: track.artist,
+                albumTitle: track.album,
+                artworkUrl,
+                duration: track.durationMs > 0 ? track.durationMs / 1000 : undefined,
+              })
+            }
           } catch {
             // Ignore when lock screen is inactive.
           }

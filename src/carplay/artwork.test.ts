@@ -39,6 +39,7 @@ import {
   clearArtworkCache,
   currentArtworkGeneration,
   resolveCarPlayArtwork,
+  resolveLockScreenArtwork,
 } from '@/src/carplay/artwork'
 
 describe('carplay artwork', () => {
@@ -79,6 +80,13 @@ describe('carplay artwork', () => {
         generation: currentArtworkGeneration(),
       }),
     ).toBeUndefined()
+  })
+
+  it('resolves lock-screen artwork through the CarPlay cache', async () => {
+    expect(await resolveLockScreenArtwork(undefined)).toBeUndefined()
+    expect(await resolveLockScreenArtwork('   ')).toBeUndefined()
+    const uri = await resolveLockScreenArtwork('file:///melofin/cover.jpg')
+    expect(uri).toBe('file:///melofin/cover.jpg')
   })
 
   it('clears cache without throwing', () => {

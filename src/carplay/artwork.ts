@@ -117,3 +117,12 @@ export const resolveCarPlayArtwork = async (opts: {
     return opts.generation === artworkEpoch.generation ? resized : undefined
   }
 }
+
+/** Now Playing / lock screen: same local cache CarPlay's native loader needs. */
+export const resolveLockScreenArtwork = async (
+  uri: string | undefined,
+): Promise<string | undefined> => {
+  if (!uri?.trim()) return undefined
+  const generation = currentArtworkGeneration()
+  return resolveCarPlayArtwork({ uri, edge: 600, generation })
+}

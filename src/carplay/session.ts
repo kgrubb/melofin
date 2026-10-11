@@ -171,6 +171,19 @@ const decorateArtwork = async (
     return { header: section.header, items }
   })
 
+const applyDecoratedSections = (
+  handle: CarPlayListHandle | null,
+  sections: readonly CarPlaySection[],
+): void => {
+  if (!handle) return
+  handle.setSections(sections)
+  const artGen = currentArtworkGeneration()
+  void decorateArtwork(sections, artGen).then((decorated) => {
+    if (!handle || artGen !== currentArtworkGeneration()) return
+    handle.setSections(decorated)
+  })
+}
+
 const mixRows = (): readonly HomeMixRow[] =>
   Object.values(useHomeMixesStore.getState().byId).map((mix) => ({
     id: mix.id,
@@ -291,11 +304,7 @@ const refreshHome = async (gen: number): Promise<void> => {
       ),
       session.maxItems,
     )
-    session.search.setSections(explore)
-    const searchArt = await decorateArtwork(explore, artGen)
-    if (session.search && artGen === currentArtworkGeneration()) {
-      session.search.setSections(searchArt)
-    }
+    applyDecoratedSections(session.search, explore)
   }
 }
 
@@ -313,13 +322,7 @@ const libraryFromCache = (): readonly CarPlaySection[] => {
 
 const paintLibrary = (): void => {
   if (!session.library) return
-  const sections = libraryFromCache()
-  session.library.setSections(sections)
-  const artGen = currentArtworkGeneration()
-  void decorateArtwork(sections, artGen).then((decorated) => {
-    if (!session.library || artGen !== currentArtworkGeneration()) return
-    session.library.setSections(decorated)
-  })
+  applyDecoratedSections(session.library, libraryFromCache())
 }
 
 const publishListArt = (
@@ -460,7 +463,7 @@ const configureNowPlaying = (): void => {
 const refreshCarPlayPlayingIndicators = (): void => {
   if (!session.connected || !session.home) return
   try {
-    session.home.setSections(homeFromCache())
+    applyDecoratedSections(session.home, homeFromCache())
   } catch (cause) {
     logger.warn('CarPlay playing indicator refresh failed', { cause })
   }
@@ -533,9 +536,10 @@ export const connectCarPlaySession = (): void => {
       }
     })
 
-    home.setSections(homeFromCache())
+    applyDecoratedSections(home, homeFromCache())
     paintLibrary()
-    search.setSections(
+    applyDecoratedSections(
+      search,
       buildSearchExploreSections({
         mixes: mixRows(),
         playlists: useLibraryStore.getState().playlists.slice(0, 8),
@@ -568,7 +572,7 @@ export const syncCarPlaySession = (): void => {
     // Patch in place only. Avoid refreshHome here (it reopened Library in a loop).
     paintLibrary()
     if (session.home) {
-      session.home.setSections(homeFromCache())
+      applyDecoratedSections(session.home, homeFromCache())
     }
   } catch (cause) {
     logger.warn('CarPlay sync failed', { cause })
