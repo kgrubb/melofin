@@ -1,5 +1,5 @@
 import { Image, type ImageProps, type ImageStyle } from 'expo-image'
-import { useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { StyleSheet, View, type StyleProp } from 'react-native'
 import { colors } from '@/src/theme/tokens'
 
@@ -57,11 +57,9 @@ export const Artwork = ({
 }: ArtworkProps) => {
   const [failedUri, setFailedUri] = useState<string | null>(null)
   const recycleGen = recyclingKey ?? uri ?? ''
-  const seenGen = useRef(recycleGen)
-  if (seenGen.current !== recycleGen) {
-    seenGen.current = recycleGen
-    if (failedUri !== null) setFailedUri(null)
-  }
+  useEffect(() => {
+    setFailedUri(null)
+  }, [recycleGen])
   if (!uri || failedUri === uri) {
     return <ArtworkPlaceholder style={style} />
   }

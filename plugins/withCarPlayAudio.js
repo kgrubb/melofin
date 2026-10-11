@@ -93,12 +93,19 @@ const withCarPlayAudio = (config) => {
       if (fs.existsSync(appDelegate)) {
         const raw = fs.readFileSync(appDelegate, 'utf8')
         if (!raw.includes('configurationForConnecting')) {
-          const withImport = raw.includes('import CarPlay')
+          // SDK 57 AppDelegate uses `internal import Expo`. Keep CarPlay on the
+          // same access level so Swift does not error on ambiguous imports.
+          const withImport = /import CarPlay\b/.test(raw)
             ? raw
-            : raw.replace('import Expo', 'import CarPlay\nimport Expo')
+            : raw.replace(
+                /^(internal )?import Expo$/m,
+                (_match, access) =>
+                  `${access || ''}import CarPlay\n${access || ''}import Expo`,
+              )
+          // Insert inside AppDelegate, before its closing brace (not after it).
           const contents = withImport.replace(
-            '\nclass ReactNativeDelegate:',
-            `${sceneConfigMethod}\n\nclass ReactNativeDelegate:`,
+            '\n}\n\nclass ReactNativeDelegate:',
+            `${sceneConfigMethod}\n}\n\nclass ReactNativeDelegate:`,
           )
           fs.writeFileSync(appDelegate, contents)
         }
@@ -111,4 +118,4 @@ const withCarPlayAudio = (config) => {
   ])
 }
 
-module.exports = createRunOncePlugin(withCarPlayAudio, 'with-carplay-audio', '2.1.0')
+module.exports = createRunOncePlugin(withCarPlayAudio, 'with-carplay-audio', '2.2.0')

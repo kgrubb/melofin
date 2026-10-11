@@ -29,7 +29,7 @@ const usePlaybackProgress = (
   isPlaying: boolean,
 ) => {
   const progress = useSharedValue(scrubRatio(positionMs, durationMs))
-  const lastAnchor = useRef({ ms: positionMs, at: Date.now() })
+  const lastAnchor = useRef({ ms: positionMs, at: 0 })
   const wasPlaying = useRef(false)
 
   useEffect(() => {
@@ -80,7 +80,7 @@ const useSmoothClock = (
   isPlaying: boolean,
 ): number => {
   const [smoothMs, setSmoothMs] = useState(positionMs)
-  const anchor = useRef({ positionMs, at: Date.now() })
+  const anchor = useRef({ positionMs, at: 0 })
 
   useEffect(() => {
     const jumped = isPlaybackJump(

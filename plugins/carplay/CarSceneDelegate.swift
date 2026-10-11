@@ -1,5 +1,5 @@
-import UIKit
-import CarPlay
+internal import UIKit
+internal import CarPlay
 
 @objc(CarSceneDelegate)
 class CarSceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {

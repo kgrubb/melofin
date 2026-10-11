@@ -36,9 +36,17 @@ module.exports = defineConfig([
     },
   },
   {
-    files: ['app/**/*.{ts,tsx}', 'src/ui/**/*.{ts,tsx}'],
+    files: [
+      'app/**/*.{ts,tsx}',
+      'src/ui/**/*.{ts,tsx}',
+      'src/theme/**/*.{ts,tsx}',
+    ],
     rules: {
       'react-hooks/set-state-in-effect': 'off',
+      // Reanimated shared values and gesture handlers mutate `.value` by design.
+      // React Compiler eslint treats those as illegal immutability/ref access.
+      'react-hooks/immutability': 'off',
+      'react-hooks/refs': 'off',
     },
   },
   {
