@@ -476,6 +476,14 @@ export const fetchAlbumsByGenre = async (
   return lastError
 }
 
+const PLAYLIST_FIELDS = [
+  'PrimaryImageAspectRatio',
+  'Genres',
+  'ChildCount',
+  'ParentId',
+  'Overview',
+] as const
+
 export const fetchPlaylists = async (
   context: JellyfinContext,
   userId: string,
@@ -485,6 +493,7 @@ export const fetchPlaylists = async (
     includeItemTypes: ['Playlist'],
     sortBy: ['SortName'],
     sortOrder: ['Ascending'],
+    fields: PLAYLIST_FIELDS,
   })
 
 export const fetchRecentPlaylists = async (
@@ -498,6 +507,7 @@ export const fetchRecentPlaylists = async (
       includeItemTypes: ['Playlist'],
       sortBy: ['DatePlayed', 'DateLastContentAdded', 'SortName'],
       sortOrder: ['Descending'],
+      fields: PLAYLIST_FIELDS,
     },
     0,
     24,

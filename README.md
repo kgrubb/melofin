@@ -25,23 +25,23 @@ Melofin is a Jellyfin music client for iPhone. Browse your library, queue tracks
 
 | Home | Mix |
 | :---: | :---: |
-| <img src="store/screenshots/01-home.png" alt="Home" /> | <img src="store/screenshots/02-mix.png" alt="Instant Mix" /> |
+| <img src="store/screenshots/en-US/01-home.png" alt="Home" /> | <img src="store/screenshots/en-US/02-mix.png" alt="Instant Mix" /> |
 
 | Now playing | Queue |
 | :---: | :---: |
-| <img src="store/screenshots/03-now-playing.png" alt="Now playing" /> | <img src="store/screenshots/04-queue.png" alt="Queue" /> |
+| <img src="store/screenshots/en-US/03-now-playing.png" alt="Now playing" /> | <img src="store/screenshots/en-US/04-queue.png" alt="Queue" /> |
 
 | Library | Album |
 | :---: | :---: |
-| <img src="store/screenshots/05-library.png" alt="Library albums" /> | <img src="store/screenshots/06-album.png" alt="Album" /> |
+| <img src="store/screenshots/en-US/05-library.png" alt="Library albums" /> | <img src="store/screenshots/en-US/06-album.png" alt="Album" /> |
 
 | Artist | Playlist |
 | :---: | :---: |
-| <img src="store/screenshots/07-artist.png" alt="Artist" /> | <img src="store/screenshots/08-playlist.png" alt="Playlist" /> |
+| <img src="store/screenshots/en-US/07-artist.png" alt="Artist" /> | <img src="store/screenshots/en-US/08-playlist.png" alt="Playlist" /> |
 
 | Search | Downloads |
 | :---: | :---: |
-| <img src="store/screenshots/09-search.png" alt="Search" /> | <img src="store/screenshots/10-downloads.png" alt="Downloads" /> |
+| <img src="store/screenshots/en-US/09-search.png" alt="Search" /> | <img src="store/screenshots/en-US/10-downloads.png" alt="Downloads" /> |
 
 ## Features
 

@@ -62,7 +62,7 @@ export const mapBaseItem = (item: Record<string, unknown>): LibraryItem => {
   const albumIdRaw = fieldString(item, 'AlbumId', 'albumId')
   const parentIdRaw = fieldString(item, 'ParentId', 'parentId')
   const isAudio = String(item.Type ?? item.type ?? '') === 'Audio'
-  const overviewText = item.Overview ? String(item.Overview).trim() : ''
+  const overviewText = fieldString(item, 'Overview', 'overview')
   const playlistEntryRaw = item.PlaylistItemId ? String(item.PlaylistItemId).trim() : ''
   // Library audio ParentId is the album. Playlist children have PlaylistItemId
   // and must not treat the playlist as albumId.
