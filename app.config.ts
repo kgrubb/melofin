@@ -7,7 +7,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   owner: 'kgrubb',
   name: 'Melofin',
   slug: 'melofin',
-  version: '1.0.0', // x-release-please-version
+  version: '1.1.0', // x-release-please-version
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'melofin',
