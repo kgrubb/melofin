@@ -132,6 +132,14 @@ describe('library mappers', () => {
         Overview: '  Late night drive  ',
       }).overview,
     ).toBe('Late night drive')
+    expect(
+      mapBaseItem({
+        Id: 'p',
+        Name: 'Mix',
+        Type: 'Playlist',
+        overview: '  camel case blurb  ',
+      }).overview,
+    ).toBe('camel case blurb')
     expect(mapBaseItem({ Id: 'p', Name: 'Mix', Type: 'Playlist' }).overview).toBeUndefined()
   })
 
