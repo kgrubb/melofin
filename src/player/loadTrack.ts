@@ -46,6 +46,7 @@ import {
   setLocalOutputEnabled,
 } from '@/src/player/outputPolicy'
 import { resolveTrackSource } from '@/src/player/trackResolver'
+import { resolveLockScreenArtwork } from '@/src/carplay/artwork'
 import { bitrateForPreset, resolveStreamPreset } from '@/src/domain/streamQuality'
 import { fetchItem } from '@/src/services/jellyfin/library'
 import { melofinRootUri, offlineAudioExists } from '@/src/storage/jsonFile'
@@ -564,17 +565,35 @@ export const loadCurrent = async (
           fromFile: isFile,
         })
         if (Platform.OS !== 'web') {
+          const duration =
+            track.durationMs > 0 ? track.durationMs / 1000 : undefined
           try {
+            // Bind immediately so skips are not blocked on artwork download.
             active.updateLockScreenMetadata({
               title: track.title,
               artist: track.artist,
               albumTitle: track.album,
               artworkUrl: track.artworkUrl,
-              duration: track.durationMs > 0 ? track.durationMs / 1000 : undefined,
+              duration,
             })
           } catch {
             // Ignore when lock screen is inactive.
           }
+          void resolveLockScreenArtwork(track.artworkUrl).then((art) => {
+            if (art.status !== 'ok') return
+            if (currentTrack(usePlayerStore.getState())?.id !== track.id) return
+            try {
+              active.updateLockScreenMetadata({
+                title: track.title,
+                artist: track.artist,
+                albumTitle: track.album,
+                artworkUrl: art.uri ?? track.artworkUrl,
+                duration,
+              })
+            } catch {
+              // Ignore when lock screen is inactive.
+            }
+          })
         }
         afterSuccessfulLoad()
         return true

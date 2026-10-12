@@ -21,6 +21,7 @@ import {
   idleSeekGuard,
 } from '@/src/domain/seekPosition'
 import { logger } from '@/src/logging/logger'
+import { resolveLockScreenArtwork } from '@/src/carplay/artwork'
 import { mediaReachedEnd } from '@/src/player/playbackEnd'
 import {
   enqueue,
@@ -123,13 +124,16 @@ const syncRemoteScrobble = (
 
 const ADVANCE_DEBOUNCE_MS = 750
 
-const lockScreenMetadata = (track: ReturnType<typeof currentTrack>) => {
+const lockScreenMetadata = (
+  track: ReturnType<typeof currentTrack>,
+  artworkUrl?: string,
+) => {
   if (!track) return undefined
   return {
     title: track.title,
     artist: track.artist,
     albumTitle: track.album,
-    artworkUrl: track.artworkUrl,
+    artworkUrl: artworkUrl ?? track.artworkUrl,
     // Jellyfin mp3 streams often leave native duration at 0/NaN. Supply catalog length.
     duration: track.durationMs > 0 ? track.durationMs / 1000 : undefined,
   }
@@ -138,15 +142,29 @@ const lockScreenMetadata = (track: ReturnType<typeof currentTrack>) => {
 /** Push Now Playing immediately (gapless handoff before primary replace). */
 const pushLockScreenTrack = (track: ReturnType<typeof currentTrack>) => {
   if (Platform.OS === 'web' || !track) return
-  const meta = lockScreenMetadata(track)
-  if (!meta) return
   const player = activePlayer()
   if (!player) return
+  const trackId = track.id
+  // Catalog URL first so gapless handoff is not waiting on a download.
   try {
-    player.updateLockScreenMetadata(meta)
+    const immediate = lockScreenMetadata(track, track.artworkUrl)
+    if (immediate) player.updateLockScreenMetadata(immediate)
   } catch {
     // Lock screen may be inactive.
   }
+  void resolveLockScreenArtwork(track.artworkUrl).then((art) => {
+    if (art.status === 'cancelled') return
+    if (currentTrack(usePlayerStore.getState())?.id !== trackId) return
+    const active = activePlayer()
+    if (!active) return
+    const meta = lockScreenMetadata(track, art.uri)
+    if (!meta) return
+    try {
+      active.updateLockScreenMetadata(meta)
+    } catch {
+      // Lock screen may be inactive.
+    }
+  })
 }
 
 const LOCK_SCREEN_REMOTE = {
@@ -160,24 +178,35 @@ const LOCK_SCREEN_REMOTE = {
 export const refreshLockScreenNowPlaying = (): void => {
   if (Platform.OS === 'web') return
   const track = currentTrack(usePlayerStore.getState())
-  const player = activePlayer()
-  if (!player || !track) return
-  const meta = lockScreenMetadata(track)
-  if (!meta) return
-  try {
-    // Drop artwork first so expo-audio reloads instead of reusing its URL cache.
-    if (meta.artworkUrl) {
-      player.updateLockScreenMetadata({
-        title: meta.title,
-        artist: meta.artist,
-        albumTitle: meta.albumTitle,
-        duration: meta.duration,
-      })
+  if (!activePlayer() || !track) return
+  const trackId = track.id
+  const bind = (artworkUrl: string | undefined) => {
+    const active = activePlayer()
+    if (!active) return
+    const meta = lockScreenMetadata(track, artworkUrl)
+    if (!meta) return
+    try {
+      // Drop artwork first so expo-audio reloads instead of reusing its URL cache.
+      if (meta.artworkUrl) {
+        active.updateLockScreenMetadata({
+          title: meta.title,
+          artist: meta.artist,
+          albumTitle: meta.albumTitle,
+          duration: meta.duration,
+        })
+      }
+      active.setActiveForLockScreen(true, meta, LOCK_SCREEN_REMOTE)
+    } catch {
+      // Lock screen may be inactive.
     }
-    player.setActiveForLockScreen(true, meta, LOCK_SCREEN_REMOTE)
-  } catch {
-    // Lock screen may be inactive.
   }
+  // Remotes first, then upgrade to the CarPlay local cache when ready.
+  bind(track.artworkUrl)
+  void resolveLockScreenArtwork(track.artworkUrl).then((art) => {
+    if (art.status === 'cancelled') return
+    if (currentTrack(usePlayerStore.getState())?.id !== trackId) return
+    bind(art.uri)
+  })
 }
 
 const advanceFromEnd = () => {
@@ -342,16 +371,24 @@ const applyPlayPlan = (plan: TransportPlan) => {
       return
     }
 
-    const active = activePlayer()
-    if (Platform.OS !== 'web' && active && usePlayerStore.getState().isPlaying) {
+    if (Platform.OS !== 'web' && usePlayerStore.getState().isPlaying) {
       const track = currentTrack(usePlayerStore.getState())
+      const trackId = track?.id
       // Idempotent native bind (remote handlers are cleared before re-add).
       // Needed on resume after engine recreate as well as track start.
-      active.setActiveForLockScreen(
-        true,
-        lockScreenMetadata(track),
-        LOCK_SCREEN_REMOTE,
-      )
+      const bindLockScreen = (artworkUrl: string | undefined) => {
+        if (!trackId || currentTrack(usePlayerStore.getState())?.id !== trackId) return
+        const active = activePlayer()
+        if (!active) return
+        const meta = lockScreenMetadata(track, artworkUrl)
+        if (!meta) return
+        active.setActiveForLockScreen(true, meta, LOCK_SCREEN_REMOTE)
+      }
+      bindLockScreen(track?.artworkUrl)
+      void resolveLockScreenArtwork(track?.artworkUrl).then((art) => {
+        if (art.status === 'cancelled') return
+        bindLockScreen(art.uri)
+      })
     }
 
     if (gen !== stateRef.transportGen) return

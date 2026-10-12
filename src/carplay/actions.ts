@@ -28,7 +28,7 @@ import {
   tracksFromOffline,
 } from '@/src/carplay/templates'
 import { logger } from '@/src/logging/logger'
-import type { QueueTrack } from '@/src/domain/queue'
+import { queueViewTracks, type QueueTrack } from '@/src/domain/queue'
 import {
   artworkUrl,
   fetchAlbumsByArtist,
@@ -47,6 +47,7 @@ import {
 import type { JellyfinContext } from '@/src/services/jellyfin/client'
 import { toggleFavoriteItem } from '@/src/services/jellyfin/favoriteToggle'
 import { startRadioFromItem } from '@/src/player/startRadio'
+import { startPlaybackEngine } from '@/src/player/playlistEngine'
 import { useHomeMixesStore } from '@/src/store/homeMixes'
 import { useLibraryStore } from '@/src/store/library'
 import { usePlayerStore } from '@/src/store/player'
@@ -95,7 +96,7 @@ const playingId = () => {
   return player.tracks[player.currentIndex]?.id
 }
 
-const playTracks = (
+const playTracks = async (
   tracks: readonly QueueTrack[],
   startIndex = 0,
   shuffle = false,
@@ -105,6 +106,12 @@ const playTracks = (
     return
   }
   usePlayerStore.getState().playQueue(tracks, startIndex, null, shuffle)
+  const engine = await startPlaybackEngine().catch(() => null)
+  if (!engine) {
+    usePlayerStore.getState().setPlaying(false)
+    presentCarPlayNotice(carplay.unavailable())
+    return
+  }
   showCarPlayNowPlaying()
 }
 
@@ -170,8 +177,10 @@ const openUpNext = () => {
   const player = usePlayerStore.getState()
   resetCarPlayNavigation()
   resetCarPlaySearchOpen()
-  setCarPlayTrackBuffer(player.tracks)
-  pushCarPlayList(carplay.upNext(), buildQueueItems(player.tracks, player.currentIndex))
+  const view = queueViewTracks(player)
+  pushCarPlayList(carplay.upNext(), buildQueueItems(view, 0), undefined, {
+    upNext: true,
+  })
 }
 
 const openAlbumArtist = async () => {
@@ -240,7 +249,18 @@ const handleNowPlaying = async (buttonId: string): Promise<void> => {
     const player = usePlayerStore.getState()
     const track = player.tracks[player.currentIndex]
     if (!track) return
-    await startRadioFromItem(track.id, track.artistId)
+    const started = await startRadioFromItem(track.id, track.artistId)
+    if (!started) {
+      presentCarPlayNotice(carplay.unavailable())
+      return
+    }
+    const engine = await startPlaybackEngine().catch(() => null)
+    if (!engine) {
+      usePlayerStore.getState().setPlaying(false)
+      presentCarPlayNotice(carplay.unavailable())
+      return
+    }
+    showCarPlayNowPlaying()
   }
 }
 
@@ -259,13 +279,16 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
 
   if (action.kind === 'offlineAll' || action.kind === 'offline') {
     const tracks = tracksFromOffline(offlineEntries(), melofinRootUri())
-    if (tracks.length === 0) return
+    if (tracks.length === 0) {
+      presentCarPlayNotice(carplay.nothingToPlay())
+      return
+    }
     const start =
       action.kind === 'offlineAll'
         ? 0
         : tracks.findIndex((track) => track.id === action.id)
     if (start < 0) return
-    playTracks(tracks, start)
+    await playTracks(tracks, start)
     return
   }
 
@@ -275,15 +298,21 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
   }
 
   if (action.kind === 'queue') {
-    const player = usePlayerStore.getState()
-    playTracks(player.tracks, action.index)
+    usePlayerStore.getState().playQueueViewIndex(action.index)
+    const engine = await startPlaybackEngine().catch(() => null)
+    if (!engine) {
+      usePlayerStore.getState().setPlaying(false)
+      presentCarPlayNotice(carplay.unavailable())
+      return
+    }
+    showCarPlayNowPlaying()
     return
   }
 
   if (action.kind === 'trackAt') {
     const buffer = getCarPlayTrackBuffer()
     if (buffer.length === 0) return
-    playTracks(buffer, action.index)
+    await playTracks(buffer, action.index)
     return
   }
 
@@ -354,7 +383,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
     } else {
       pushCarPlayList(
         carplay.downloads(),
-        buildOfflineItems(offlineEntries(), melofinRootUri()),
+        buildOfflineItems(offlineEntries(), melofinRootUri(), playingId()),
         carplay.nothingDownloaded(),
       )
     }
@@ -449,6 +478,16 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
     return
   }
 
+  if (action.kind === 'shuffleDownloads') {
+    const tracks = tracksFromOffline(offlineEntries(), melofinRootUri())
+    if (tracks.length === 0) {
+      presentCarPlayNotice(carplay.nothingToPlay())
+      return
+    }
+    await playTracks(tracks, 0, true)
+    return
+  }
+
   const session = useSessionStore.getState()
   if (!session.context || !session.session) {
     logger.warn('CarPlay action skipped', { reason: 'no_session', kind: action.kind })
@@ -472,7 +511,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       noticeLoad(songs.ok)
       return
     }
-    playTracks(toQueue(context, pool), 0, true)
+    await playTracks(toQueue(context, pool), 0, true)
     return
   }
 
@@ -491,12 +530,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       noticeLoad(songs.ok)
       return
     }
-    playTracks(toQueue(context, pool), 0, true)
-    return
-  }
-
-  if (action.kind === 'shuffleDownloads') {
-    playTracks(tracksFromOffline(offlineEntries(), melofinRootUri()), 0, true)
+    await playTracks(toQueue(context, pool), 0, true)
     return
   }
 
@@ -510,7 +544,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       .songs.find((song) => song.id === action.id)
     if (fromLibrary) {
       if (fromLibrary.type !== 'Audio') return
-      playTracks(toQueue(context, [fromLibrary]), 0)
+      await playTracks(toQueue(context, [fromLibrary]), 0)
       return
     }
     const fetched = await fetchItem(context, userId, action.id)
@@ -520,7 +554,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       return
     }
     if (fetched.value.type !== 'Audio') return
-    playTracks(toQueue(context, [fetched.value]), 0)
+    await playTracks(toQueue(context, [fetched.value]), 0)
     return
   }
   if (action.kind === 'artistAlbumsMore') {
@@ -537,7 +571,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
         noticeLoad(songs.ok)
         return
       }
-      playTracks(toQueue(context, songs.value), 0, shuffle)
+      await playTracks(toQueue(context, songs.value), 0, shuffle)
       return
     }
     if (action.type === 'playlist') {
@@ -547,7 +581,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
         noticeLoad(result.ok)
         return
       }
-      playTracks(toQueue(context, result.value), 0, shuffle)
+      await playTracks(toQueue(context, result.value), 0, shuffle)
       return
     }
     const result = await fetchChildren(context, userId, action.id)
@@ -556,7 +590,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       noticeLoad(result.ok)
       return
     }
-    playTracks(toQueue(context, result.value), 0, shuffle)
+    await playTracks(toQueue(context, result.value), 0, shuffle)
     return
   }
 
@@ -610,7 +644,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       noticeLoad(result.ok)
       return
     }
-    playTracks(toQueue(context, result.value), 0, true)
+    await playTracks(toQueue(context, result.value), 0, true)
     return
   }
 
@@ -620,7 +654,7 @@ export const handleCarPlayItemPress = async (itemId: string): Promise<void> => {
       presentCarPlayNotice(carplay.nothingToPlay())
       return
     }
-    playTracks(toQueue(context, mix.tracks), 0, true)
+    await playTracks(toQueue(context, mix.tracks), 0, true)
   }
 }
 

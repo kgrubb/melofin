@@ -16,8 +16,10 @@ import {
 import {
   buildHomeSections,
   buildLibraryHubSections,
+  buildQueueItems,
   buildSearchExploreSections,
   CARPLAY_DEFAULT_MAX_ITEMS,
+  patchCarPlayPlayingIndicators,
   trimSectionsToBudget,
   type CarPlayListItem,
   type CarPlaySection,
@@ -25,7 +27,7 @@ import {
 } from '@/src/carplay/templates'
 import { carPlayArtFor, carPlayMixArtworkUris } from '@/src/carplay/itemArt'
 import { mapPool } from '@/src/domain/asyncPool'
-import type { QueueTrack } from '@/src/domain/queue'
+import { queueViewIndices, queueViewTracks, type QueueTrack } from '@/src/domain/queue'
 import { carplay } from '@/src/i18n/carplayCopy'
 import { logger } from '@/src/logging/logger'
 import { refreshLockScreenNowPlaying } from '@/src/player/engineLifecycle'
@@ -117,12 +119,17 @@ export const setCarPlayNowPlayingHandler = (fn: NowPlayingHandler): void => {
 const stackTop = (): CarPlayListHandle | null =>
   session.stack[session.stack.length - 1] ?? null
 
+/** Pushed Up Next list, if any (rebuilds on track change). */
+let upNextHandle: CarPlayListHandle | null = null
+
 const dropFromStack = (handle: CarPlayListHandle): void => {
+  if (handle === upNextHandle) upNextHandle = null
   const index = session.stack.indexOf(handle)
   if (index >= 0) {
     patchSession({ stack: session.stack.slice(0, index) })
   }
 }
+
 
 const offlineEntries = () =>
   Object.values(useSettingsStore.getState().offlineIndex.entries)
@@ -170,6 +177,34 @@ const decorateArtwork = async (
     })
     return { header: section.header, items }
   })
+
+/** Last home sections shown (keeps local artwork across track changes). */
+let homePainted: readonly CarPlaySection[] = []
+
+const applyDecoratedSections = (
+  handle: CarPlayListHandle | null,
+  sections: readonly CarPlaySection[],
+): void => {
+  if (!handle) return
+  handle.setSections(sections)
+  if (handle === session.home) homePainted = sections
+  const artGen = currentArtworkGeneration()
+  void decorateArtwork(sections, artGen).then((decorated) => {
+    if (!handle || artGen !== currentArtworkGeneration()) return
+    const next = patchCarPlayPlayingIndicators(decorated, playingContext())
+    handle.setSections(next)
+    if (handle === session.home) homePainted = next
+  })
+}
+
+const playingContext = () => {
+  const player = usePlayerStore.getState()
+  return {
+    playingId: playingId(),
+    trackBuffer: session.trackBuffer,
+    currentIndex: player.currentIndex,
+  }
+}
 
 const mixRows = (): readonly HomeMixRow[] =>
   Object.values(useHomeMixesStore.getState().byId).map((mix) => ({
@@ -268,11 +303,14 @@ const refreshHome = async (gen: number): Promise<void> => {
     session.maxItems,
   )
   session.home.setSections(sections)
+  homePainted = sections
   const artGen = currentArtworkGeneration()
   const decorated = await decorateArtwork(sections, artGen)
   if (gen !== session.homeGen || !session.home) return
   if (artGen === currentArtworkGeneration()) {
-    session.home.setSections(decorated)
+    const next = patchCarPlayPlayingIndicators(decorated, playingContext())
+    session.home.setSections(next)
+    homePainted = next
   }
 
   paintLibrary()
@@ -291,11 +329,7 @@ const refreshHome = async (gen: number): Promise<void> => {
       ),
       session.maxItems,
     )
-    session.search.setSections(explore)
-    const searchArt = await decorateArtwork(explore, artGen)
-    if (session.search && artGen === currentArtworkGeneration()) {
-      session.search.setSections(searchArt)
-    }
+    applyDecoratedSections(session.search, explore)
   }
 }
 
@@ -313,26 +347,29 @@ const libraryFromCache = (): readonly CarPlaySection[] => {
 
 const paintLibrary = (): void => {
   if (!session.library) return
-  const sections = libraryFromCache()
-  session.library.setSections(sections)
-  const artGen = currentArtworkGeneration()
-  void decorateArtwork(sections, artGen).then((decorated) => {
-    if (!session.library || artGen !== currentArtworkGeneration()) return
-    session.library.setSections(decorated)
-  })
+  applyDecoratedSections(session.library, libraryFromCache())
 }
+
+/** Invalidate in-flight list art so an older decorate cannot clobber a newer list. */
+const listArtPublishGen = new WeakMap<CarPlayListHandle, number>()
 
 const publishListArt = (
   handle: CarPlayListHandle,
   items: readonly CarPlayListItem[],
 ): void => {
   const artGen = currentArtworkGeneration()
+  const publishId = (listArtPublishGen.get(handle) ?? 0) + 1
+  listArtPublishGen.set(handle, publishId)
   void decorateArtwork([{ items }], artGen).then((decorated) => {
+    if (listArtPublishGen.get(handle) !== publishId) return
     if (!session.stack.includes(handle) || artGen !== currentArtworkGeneration()) {
       return
     }
     const next = decorated[0]?.items
-    if (next) handle.setItems(next)
+    if (!next) return
+    // Re-apply playing dots after art resolve so a mid-flight track change wins.
+    const sections = patchCarPlayPlayingIndicators([{ items: next }], playingContext())
+    handle.setSections(sections)
   })
 }
 
@@ -340,6 +377,7 @@ export const pushCarPlayList = (
   title: string,
   items: readonly CarPlayListItem[],
   emptyTitle?: string,
+  opts?: { readonly upNext?: boolean },
 ): CarPlayListHandle => {
   const handle = createListTemplate(title, items, handlePress, {
     emptyTitle,
@@ -352,6 +390,7 @@ export const pushCarPlayList = (
     return handle
   }
   patchSession({ stack: [...session.stack, handle] })
+  if (opts?.upNext) upNextHandle = handle
   publishListArt(handle, items)
   return handle
 }
@@ -363,6 +402,7 @@ export const resetCarPlayNavigation = (): void => {
   } catch {
     // Already at root.
   }
+  upNextHandle = null
   patchSession({ stack: [] })
 }
 
@@ -457,10 +497,38 @@ const configureNowPlaying = (): void => {
   }
 }
 
+const rebuildUpNext = (): void => {
+  if (!upNextHandle || !session.stack.includes(upNextHandle)) return
+  const player = usePlayerStore.getState()
+  const items = buildQueueItems(queueViewTracks(player), 0)
+  upNextHandle.setItems(items)
+  publishListArt(upNextHandle, items)
+}
+
 const refreshCarPlayPlayingIndicators = (): void => {
-  if (!session.connected || !session.home) return
+  if (!session.connected) return
   try {
-    session.home.setSections(homeFromCache())
+    const ctx = playingContext()
+    if (session.home) {
+      if (homePainted.length === 0) {
+        applyDecoratedSections(session.home, homeFromCache())
+      } else {
+        const next = patchCarPlayPlayingIndicators(homePainted, ctx)
+        if (next !== homePainted) {
+          homePainted = next
+          session.home.setSections(next)
+        }
+      }
+    }
+    if (upNextHandle && session.stack.includes(upNextHandle)) {
+      rebuildUpNext()
+    }
+    for (const handle of session.stack) {
+      if (handle === upNextHandle) continue
+      const current = handle.getSections()
+      const next = patchCarPlayPlayingIndicators(current, ctx)
+      if (next !== current) handle.setSections(next)
+    }
   } catch (cause) {
     logger.warn('CarPlay playing indicator refresh failed', { cause })
   }
@@ -468,12 +536,17 @@ const refreshCarPlayPlayingIndicators = (): void => {
 
 const wirePlayerUpdates = (): void => {
   handlers.playerUnsub?.()
-  let lastId = playingId()
+  // Fingerprint play-order so Up Next rebuilds on shuffle / queue growth, not only skips.
+  const playerKey = () => {
+    const player = usePlayerStore.getState()
+    return `${player.shuffle ? 1 : 0}:${player.queueGen}:${queueViewIndices(player).join(',')}`
+  }
+  let lastKey = playerKey()
   patchHandlers({
-    playerUnsub: usePlayerStore.subscribe((state) => {
-      const nextId = state.tracks[state.currentIndex]?.id
-      if (nextId === lastId) return
-      lastId = nextId
+    playerUnsub: usePlayerStore.subscribe(() => {
+      const nextKey = playerKey()
+      if (nextKey === lastKey) return
+      lastKey = nextKey
       refreshCarPlayPlayingIndicators()
     }),
   })
@@ -482,6 +555,8 @@ const wirePlayerUpdates = (): void => {
 const clearLiveTemplates = (): void => {
   handlers.playerUnsub?.()
   patchHandlers({ playerUnsub: null })
+  homePainted = []
+  upNextHandle = null
   patchSession({
     connected: false,
     tabBar: null,
@@ -533,9 +608,10 @@ export const connectCarPlaySession = (): void => {
       }
     })
 
-    home.setSections(homeFromCache())
+    applyDecoratedSections(home, homeFromCache())
     paintLibrary()
-    search.setSections(
+    applyDecoratedSections(
+      search,
       buildSearchExploreSections({
         mixes: mixRows(),
         playlists: useLibraryStore.getState().playlists.slice(0, 8),
@@ -568,7 +644,7 @@ export const syncCarPlaySession = (): void => {
     // Patch in place only. Avoid refreshHome here (it reopened Library in a loop).
     paintLibrary()
     if (session.home) {
-      session.home.setSections(homeFromCache())
+      applyDecoratedSections(session.home, homeFromCache())
     }
   } catch (cause) {
     logger.warn('CarPlay sync failed', { cause })
